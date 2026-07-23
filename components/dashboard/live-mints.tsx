@@ -273,11 +273,13 @@ export function LiveMints() {
   const filteredCount = mints.filter((m) => m.risky).length;
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+    <div className="overflow-hidden rounded-2xl bg-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div>
-          <p className="text-sm font-medium">Live token creations</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+            Live Token Creations
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
             Streamed from pump.fun via PumpPortal · {filteredCount} rug-risk
             mint{filteredCount === 1 ? "" : "s"} filtered
             {solUsd ? ` · SOL $${solUsd.toFixed(0)}` : ""}
@@ -310,11 +312,11 @@ export function LiveMints() {
               All
             </button>
           </div>
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground capitalize">
+          <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
             <span
               className={cn(
                 "inline-block size-1.5 rounded-full",
-                status === "live" && "bg-emerald-600",
+                status === "live" && "bg-sol-green",
                 status === "connecting" && "bg-accent animate-blink",
                 status === "offline" && "bg-destructive"
               )}
@@ -353,14 +355,14 @@ export function LiveMints() {
                 <li
                   key={m.mint}
                   className={cn(
-                    "flex items-center gap-3 border-b px-4 py-3 first:animate-fade-up last:border-b-0",
+                    "flex items-center gap-3 border-b border-white/5 px-4 py-3 first:animate-fade-up last:border-b-0",
                     m.risky && "opacity-60"
                   )}
                 >
                   <span
                     className={cn(
                       "shrink-0",
-                      m.risky ? "text-destructive" : "text-emerald-700"
+                      m.risky ? "text-destructive" : "text-sol-green-ink"
                     )}
                     title={m.risky ? m.reasons.join(", ") : "Passed all checks"}
                   >
@@ -403,7 +405,7 @@ export function LiveMints() {
                           className={cn(
                             "ml-2 text-xs font-semibold",
                             changePct >= 0
-                              ? "text-emerald-700"
+                              ? "text-sol-green-ink"
                               : "text-destructive"
                           )}
                         >
@@ -427,7 +429,7 @@ export function LiveMints() {
                     className="text-muted-foreground transition-colors hover:text-accent"
                   >
                     {copiedMint === m.mint ? (
-                      <Check className="size-4 text-emerald-700" />
+                      <Check className="size-4 text-sol-green-ink" />
                     ) : (
                       <Copy className="size-4" />
                     )}

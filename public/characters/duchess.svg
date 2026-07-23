@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <!-- The Duchess — porcelain automaton, flat house palette -->
+  <g fill="none" stroke="#101014" stroke-width="6" stroke-linecap="round">
+    <!-- side buns (gears) -->
+    <circle cx="86" cy="180" r="38" fill="#9945FF" stroke="none"/>
+    <circle cx="314" cy="180" r="38" fill="#9945FF" stroke="none"/>
+    <circle cx="86" cy="180" r="14" fill="#ffffff" stroke="none"/>
+    <circle cx="314" cy="180" r="14" fill="#ffffff" stroke="none"/>
+    <!-- head -->
+    <ellipse cx="200" cy="196" rx="118" ry="132" fill="#ffffff"/>
+    <!-- hairline plate -->
+    <path d="M 92 160 Q 200 60 308 160" fill="#101014" stroke="none"/>
+    <path d="M 92 160 Q 200 84 308 160 L 308 130 Q 200 40 92 130 Z" fill="#101014" stroke="none"/>
+    <!-- eyes -->
+    <circle cx="156" cy="210" r="10" fill="#101014" stroke="none"/>
+    <circle cx="244" cy="210" r="10" fill="#101014" stroke="none"/>
+    <!-- lashes -->
+    <path d="M 140 192 Q 156 184 172 192" stroke-width="5"/>
+    <path d="M 228 192 Q 244 184 260 192" stroke-width="5"/>
+    <!-- cheeks -->
+    <circle cx="138" cy="248" r="14" fill="#9945FF" opacity="0.35" stroke="none"/>
+    <circle cx="262" cy="248" r="14" fill="#9945FF" opacity="0.35" stroke="none"/>
+    <!-- small smile -->
+    <path d="M 178 272 Q 200 288 222 272" stroke-width="5"/>
+    <!-- chin seam (porcelain jaw) -->
+    <path d="M 160 316 L 240 316" stroke-width="4" opacity="0.4"/>
+    <!-- collar -->
+    <path d="M 148 330 Q 200 366 252 330 L 252 366 Q 200 396 148 366 Z" fill="#9945FF" stroke="none"/>
+    <circle cx="200" cy="356" r="9" fill="#ffffff" stroke="none"/>
+  </g>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <!-- The Hound — loyal watchdog automaton, flat house palette -->
+  <g fill="none" stroke="#101014" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- ears -->
+    <path d="M 110 70 L 156 128 L 96 150 Z" fill="#101014" stroke="none"/>
+    <path d="M 290 70 L 244 128 L 304 150 Z" fill="#101014" stroke="none"/>
+    <!-- head -->
+    <rect x="88" y="112" width="224" height="192" rx="64" fill="#ffffff"/>
+    <!-- brow plate -->
+    <path d="M 118 148 Q 200 118 282 148" stroke-width="5" opacity="0.4"/>
+    <!-- eyes -->
+    <circle cx="158" cy="192" r="11" fill="#101014" stroke="none"/>
+    <circle cx="242" cy="192" r="11" fill="#101014" stroke="none"/>
+    <!-- snout -->
+    <rect x="152" y="222" width="96" height="66" rx="30" fill="#f4f4f6" stroke="none"/>
+    <circle cx="200" cy="240" r="12" fill="#9945FF" stroke="none"/>
+    <path d="M 200 252 L 200 268" stroke-width="5"/>
+    <path d="M 182 274 Q 200 284 218 274" stroke-width="5"/>
+    <!-- rivets -->
+    <circle cx="116" cy="220" r="5" fill="#101014" stroke="none" opacity="0.5"/>
+    <circle cx="284" cy="220" r="5" fill="#101014" stroke="none" opacity="0.5"/>
+    <!-- collar -->
+    <path d="M 128 304 L 272 304 L 272 336 L 128 336 Z" fill="#9945FF" stroke="none"/>
+    <circle cx="200" cy="352" r="14" fill="#9945FF" stroke="none"/>
+    <circle cx="200" cy="352" r="6" fill="#ffffff" stroke="none"/>
+  </g>
+</svg>

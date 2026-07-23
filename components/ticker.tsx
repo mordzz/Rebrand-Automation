@@ -22,10 +22,7 @@ export function Ticker({
   return (
     <div
       aria-hidden
-      className={cn(
-        "overflow-hidden bg-primary text-primary-foreground",
-        className
-      )}
+      className={cn("overflow-hidden bg-sol-green text-primary-foreground", className)}
     >
       <div className="flex w-max animate-marquee py-2.5">
         {tape.map((item, i) => (

@@ -6,22 +6,30 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: "Dashboard — The Fable",
+  title: "Dashboard — Noah Engine",
   description:
-    "Your trading desk at The Fable: wallet balance, open positions, trade history, and the automatons on duty.",
+    "Your live agent desk: wallet balance, open positions, trade history, and the strategies on duty.",
 };
 
 export default function DashboardPage() {
   return (
     <>
-      <SiteHeader compact />
+      <SiteHeader />
       <main className="flex-1">
-        <div className="max-w-full px-4 py-6 sm:px-6">
-          <div className="mb-5">
-            <h1 className="font-display text-2xl font-medium">Dashboard</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The house automatons at your service — balances, positions, and
-              the ledger, all in one parlour.
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+          <div className="mb-6 border-b border-border/60 pb-6">
+            <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
+              Live desk
+            </p>
+            <h1 className="mt-3 text-4xl font-medium tracking-tight sm:text-5xl">
+              Your agent,{" "}
+              <em className="font-instrument font-normal italic text-foreground/60">
+                on duty.
+              </em>
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              Wallet balance, open positions, and trade history, all in one
+              view.
             </p>
           </div>
           <DashboardShell />

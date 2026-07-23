@@ -17,6 +17,7 @@ export async function GET() {
       cause: lessons.cause,
       lesson: lessons.lesson,
       status: lessons.status,
+      suggestedConfig: lessons.suggestedConfig,
       createdAt: lessons.createdAt,
       token: trades.token,
       strategy: trades.strategy,

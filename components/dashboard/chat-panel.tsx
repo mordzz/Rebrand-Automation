@@ -39,10 +39,12 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-xl border bg-card">
-      <div className="border-b px-4 py-3">
-        <p className="text-sm font-medium">The Concierge</p>
-        <p className="text-xs text-muted-foreground">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="px-4 py-3">
+        <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+          The Concierge
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
           Ask about your balance, positions, or strategies.
         </p>
       </div>
@@ -73,7 +75,7 @@ export function ChatPanel({
       </div>
 
       <form
-        className="flex items-center gap-2 border-t p-3"
+        className="m-3 mt-1 flex items-center gap-2 rounded-full bg-secondary py-1 pr-1.5 pl-4"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -83,9 +85,15 @@ export function ChatPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Ask the concierge…"
-          className="h-9 flex-1 rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
         />
-        <Button type="submit" size="icon" aria-label="Send message">
+        <Button
+          type="submit"
+          size="icon"
+          variant="ghost"
+          aria-label="Send message"
+          className="text-accent hover:text-accent"
+        >
           <SendHorizonal className="size-4" />
         </Button>
       </form>

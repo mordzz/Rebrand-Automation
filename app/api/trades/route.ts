@@ -1,18 +1,26 @@
-import { desc } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { desc, eq, isNull } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 
-import { analyzeLoss, type ClosedTradeInput } from "@/lib/agent/analyze-loss";
+import type { ClosedTradeInput } from "@/lib/agent/analyze-loss";
+import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
-import { lessons, trades } from "@/lib/db/schema";
+import { trades } from "@/lib/db/schema";
 
-export async function GET() {
+/** `?wallet=` scopes to one deployed bot's own trade history; omitted
+ * means the house desk — see app/api/positions/route.ts for the same
+ * null-means-house convention. */
+export async function GET(request: NextRequest) {
   const db = getDb();
   if (!db) {
     return NextResponse.json({ configured: false, data: [] });
   }
+  const wallet = request.nextUrl.searchParams.get("wallet");
   const rows = await db
     .select()
     .from(trades)
+    .where(
+      wallet ? eq(trades.walletAddress, wallet) : isNull(trades.walletAddress),
+    )
     .orderBy(desc(trades.closedAt))
     .limit(50);
   return NextResponse.json({ configured: true, data: rows });
@@ -20,10 +28,12 @@ export async function GET() {
 
 /**
  * Record a closed trade. Losing trades are sent to Claude for a post-mortem;
- * the resulting cause + lesson is stored as agent memory.
+ * the resulting cause + lesson is stored as agent memory. An optional
+ * `walletAddress` scopes the trade to one deployed bot instead of the
+ * shared house desk.
  */
 export async function POST(request: Request) {
-  let body: ClosedTradeInput;
+  let body: ClosedTradeInput & { walletAddress?: string | null };
   try {
     body = await request.json();
   } catch {
@@ -33,62 +43,10 @@ export async function POST(request: Request) {
   if (!body.token || !body.strategy || body.pnlSol === undefined) {
     return NextResponse.json(
       { error: "token, strategy, and pnlSol are required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const pnl = Number(body.pnlSol);
-  const isLoss = pnl < 0;
-
-  // 1. The learning step — losing trades get a post-mortem from Claude
-  let analysis = null;
-  let analysisError: string | null = null;
-  if (isLoss) {
-    try {
-      analysis = await analyzeLoss(body);
-    } catch (error) {
-      analysisError =
-        error instanceof Error ? error.message : "Analysis failed";
-    }
-  }
-
-  // 2. Persist trade + lesson when the database is configured
-  const db = getDb();
-  if (!db) {
-    return NextResponse.json({
-      stored: false,
-      reason: "DATABASE_URL not configured",
-      analysis,
-      analysisError,
-    });
-  }
-
-  const [trade] = await db
-    .insert(trades)
-    .values({
-      token: body.token,
-      strategy: body.strategy,
-      entryPrice: body.entryPrice != null ? String(body.entryPrice) : null,
-      exitPrice: body.exitPrice != null ? String(body.exitPrice) : null,
-      sizeSol: body.sizeSol != null ? String(body.sizeSol) : null,
-      pnlSol: String(body.pnlSol),
-      openedAt: body.openedAt ? new Date(body.openedAt) : null,
-      closedAt: body.closedAt ? new Date(body.closedAt) : new Date(),
-      context: body.context ?? null,
-    })
-    .returning();
-
-  let lesson = null;
-  if (analysis) {
-    [lesson] = await db
-      .insert(lessons)
-      .values({
-        tradeId: trade.id,
-        cause: analysis.cause,
-        lesson: analysis.lesson,
-      })
-      .returning();
-  }
-
-  return NextResponse.json({ stored: true, trade, lesson, analysisError });
+  const result = await recordClosedTrade(body, body.walletAddress ?? null);
+  return NextResponse.json(result);
 }

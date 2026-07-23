@@ -1,82 +1,113 @@
+import { Globe } from "lucide-react";
 import Link from "next/link";
 
-import { Separator } from "@/components/ui/separator";
+import { Logo } from "@/components/logo";
+import { InstagramIcon, TwitterIcon, XIcon } from "@/components/social-icons";
+
+const PAGE_LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/#strategies", label: "Autonomous" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/deploy", label: "Deploy agent" },
+];
 
 export function SiteFooter({ slim = false }: { slim?: boolean }) {
   if (slim) {
     return (
-      <footer className="border-t">
+      <footer className="bg-background">
         <div className="flex items-center justify-between px-4 py-3 text-xs text-muted-foreground sm:px-6">
-          <p>
-            <span className="font-display font-semibold text-foreground">
-              The Fable.
-            </span>{" "}
-            · Est. in the trenches
-          </p>
-          <p>Built on Solana · 400ms blocks · No sleep</p>
+          <div className="flex items-center gap-3">
+            <p className="flex items-center gap-1.5">
+              <Logo className="size-4 shrink-0 text-foreground" />
+              <span>
+                <span className="text-sm font-bold text-foreground">
+                  Noah Engine
+                </span>{" "}
+                · Est. 2026
+              </span>
+            </p>
+            <a
+              href="#"
+              aria-label="Noah Engine on X"
+              className="transition-colors hover:text-foreground"
+            >
+              <XIcon size={13} />
+            </a>
+          </div>
+          <p>Autonomous · Risk-guarded · Always learning</p>
         </div>
       </footer>
     );
   }
 
   return (
-    <footer className="bg-primary text-primary-foreground">
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-10 md:grid-cols-3">
+    <footer className="bg-background px-4 pb-4 sm:px-6 md:px-8 md:pb-6">
+      <div className="mx-auto max-w-7xl rounded-2xl bg-card px-6 py-14 sm:px-10 md:rounded-[2rem]">
+        <div className="grid gap-12 md:grid-cols-3">
           <div>
-            <p className="font-display text-2xl font-semibold">The Fable.</p>
-            <p className="mt-3 max-w-xs text-sm leading-relaxed text-primary-foreground/70">
-              A fine house of trading automation, serving the Solana trenches
-              since the great memecoin rush. Machines of impeccable manners.
+            <p className="flex items-center gap-2 text-3xl font-medium tracking-tight text-foreground">
+              <Logo className="size-7 shrink-0 text-foreground" />
+              <span>
+                Noah{" "}
+                <em className="font-instrument italic text-foreground/60">
+                  Engine
+                </em>
+                <span className="align-super text-[0.5em]">*</span>
+              </span>
             </p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+              An autonomous AI agent that trades meme coins around the clock —
+              sniping new mints, managing risk, and learning from every loss.
+            </p>
+            <div className="mt-6 flex gap-3">
+              {[
+                { label: "Instagram", icon: <InstagramIcon size={16} /> },
+                { label: "Twitter", icon: <TwitterIcon size={16} /> },
+                { label: "Website", icon: <Globe size={16} /> },
+              ].map((social) => (
+                <button
+                  key={social.label}
+                  aria-label={social.label}
+                  className="rounded-full bg-secondary p-3 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {social.icon}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
-            <p className="text-xs font-medium tracking-widest uppercase text-primary-foreground/50">
+            <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
               Pages
             </p>
-            <ul className="mt-4 space-y-2 text-sm">
-              <li>
-                <Link
-                  href="/"
-                  className="text-primary-foreground/80 transition-colors hover:text-accent"
-                >
-                  Home
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/strategies"
-                  className="text-primary-foreground/80 transition-colors hover:text-accent"
-                >
-                  Strategies
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/pricing"
-                  className="text-primary-foreground/80 transition-colors hover:text-accent"
-                >
-                  Pricing
-                </Link>
-              </li>
+            <ul className="mt-5 space-y-3 text-sm">
+              {PAGE_LINKS.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
           <div>
-            <p className="text-xs font-medium tracking-widest uppercase text-primary-foreground/50">
-              House rules
+            <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
+              Fine print
             </p>
-            <p className="mt-4 text-sm leading-relaxed text-primary-foreground/70">
-              Nothing herein constitutes financial advice. The trenches are
-              muddy; enter at your own peril. Your keys remain your own.
+            <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
+              Meme coins are volatile and can go to zero. Noah manages risk
+              with hard stops and dry-run defaults — it never promises profit.
+              Your keys, your trades, your call.
             </p>
           </div>
         </div>
 
-        <Separator className="my-8 bg-primary-foreground/15" />
-
-        <div className="flex flex-col items-center justify-between gap-3 text-xs text-primary-foreground/50 sm:flex-row">
-          <p>Est. in the trenches · All rights reserved</p>
-          <p>Built on Solana · 400ms blocks · No sleep</p>
+        <div className="mt-14 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground/70 sm:flex-row">
+          <p>Est. 2026 · All rights reserved</p>
+          <p>Autonomous · Risk-guarded · Always learning</p>
         </div>
       </div>
     </footer>

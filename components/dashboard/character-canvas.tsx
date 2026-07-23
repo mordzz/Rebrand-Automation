@@ -9,7 +9,7 @@ export type CharacterMood = "idle" | "thinking" | "talking";
 
 const CREAM = "#faf9f5";
 const INK = "#3d3929";
-const ORANGE = "#d97757";
+const RUST = "#d97757";
 
 function Automaton({ mood }: { mood: CharacterMood }) {
   const root = useRef<THREE.Group>(null);
@@ -96,20 +96,20 @@ function Automaton({ mood }: { mood: CharacterMood }) {
       {/* chest badge */}
       <mesh position={[0, -0.62, 0.44]}>
         <cylinderGeometry args={[0.12, 0.12, 0.04, 24]} />
-        <meshStandardMaterial color={ORANGE} roughness={0.5} />
+        <meshStandardMaterial color={RUST} roughness={0.5} />
       </mesh>
 
       {/* arms */}
       <group ref={armLeft} position={[-0.72, -0.45, 0]}>
         <mesh position={[0, -0.28, 0]}>
           <capsuleGeometry args={[0.11, 0.35, 8, 16]} />
-          <meshStandardMaterial color={ORANGE} roughness={0.55} />
+          <meshStandardMaterial color={RUST} roughness={0.55} />
         </mesh>
       </group>
       <group ref={armRight} position={[0.72, -0.45, 0]}>
         <mesh position={[0, -0.28, 0]}>
           <capsuleGeometry args={[0.11, 0.35, 8, 16]} />
-          <meshStandardMaterial color={ORANGE} roughness={0.55} />
+          <meshStandardMaterial color={RUST} roughness={0.55} />
         </mesh>
       </group>
 
@@ -143,19 +143,19 @@ function Automaton({ mood }: { mood: CharacterMood }) {
         <mesh ref={mouth} position={[0, -0.18, 0.53]}>
           <boxGeometry args={[0.28, 0.045, 0.02]} />
           <meshStandardMaterial
-            color={ORANGE}
-            emissive={ORANGE}
+            color={RUST}
+            emissive={RUST}
             emissiveIntensity={0.5}
           />
         </mesh>
         {/* ears */}
         <mesh position={[-0.72, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.14, 0.14, 0.12, 24]} />
-          <meshStandardMaterial color={ORANGE} roughness={0.55} />
+          <meshStandardMaterial color={RUST} roughness={0.55} />
         </mesh>
         <mesh position={[0.72, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.14, 0.14, 0.12, 24]} />
-          <meshStandardMaterial color={ORANGE} roughness={0.55} />
+          <meshStandardMaterial color={RUST} roughness={0.55} />
         </mesh>
         {/* antenna */}
         <mesh position={[0, 0.62, 0]}>
@@ -165,8 +165,8 @@ function Automaton({ mood }: { mood: CharacterMood }) {
         <mesh ref={antennaTip} position={[0, 0.8, 0]}>
           <sphereGeometry args={[0.08, 24, 24]} />
           <meshStandardMaterial
-            color={ORANGE}
-            emissive={ORANGE}
+            color={RUST}
+            emissive={RUST}
             emissiveIntensity={0.25}
           />
         </mesh>

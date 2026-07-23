@@ -1,21 +1,26 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Almarai, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 
-const displayFont = Fraunces({
+import { Providers } from "@/components/providers";
+
+const displayFont = Instrument_Serif({
   variable: "--font-display",
+  weight: "400",
+  style: ["normal", "italic"],
   subsets: ["latin"],
 });
 
-const bodyFont = Inter({
+const bodyFont = Almarai({
   variable: "--font-body",
+  weight: ["300", "400", "700", "800"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "The Fable — Automated Trading for Solana Trenchers",
+  title: "Noah Engine — Autonomous Meme-Coin Trading",
   description:
-    "A fine house of trading automation. Snipers, copy-trading, and risk engines for the Solana trenches — est. for those who never sleep.",
+    "An autonomous AI agent that trades meme coins around the clock — sniping new mints, managing risk, and learning from every loss while you sleep.",
 };
 
 export default function RootLayout({
@@ -24,11 +29,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // Dark-only: the `dark` class is stamped server-side, no toggle, no
+    // theme script — every page shares the one cream-on-black palette.
     <html
       lang="en"
-      className={`${displayFont.variable} ${bodyFont.variable} h-full antialiased`}
+      className={`${displayFont.variable} ${bodyFont.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

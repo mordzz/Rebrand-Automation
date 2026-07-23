@@ -1,9 +1,10 @@
 "use client";
 
 import { Bot, Brain, Cable, Gauge, MessageSquareText } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
+import { ExecutionTerminal } from "@/components/dashboard/execution-terminal";
 import { AnimatedBeam } from "@/components/ui/animated-beam";
 import {
   ChartContainer,
@@ -13,400 +14,402 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-type ModelId = "claude" | "gpt" | "gemini" | "llama" | "deepseek";
+type ProviderId = "openrouter" | "anthropic" | "openai";
 
-const MODELS: {
-  id: ModelId;
-  name: string;
-  provider: string;
-  short: string;
-  latency: string;
-  charted: boolean;
-}[] = [
-  { id: "claude", name: "Claude Fable 5", provider: "Anthropic", short: "CL", latency: "640ms", charted: true },
-  { id: "gpt", name: "GPT-5", provider: "OpenAI", short: "G5", latency: "710ms", charted: true },
-  { id: "gemini", name: "Gemini 3 Pro", provider: "Google", short: "GM", latency: "820ms", charted: true },
-  { id: "llama", name: "Llama 4", provider: "Meta", short: "L4", latency: "480ms", charted: false },
-  { id: "deepseek", name: "DeepSeek V4", provider: "DeepSeek", short: "DS", latency: "902ms", charted: false },
-];
-
-/* Entity colors validated with the dataviz palette checker
-   (light on #faf9f5, dark on #30302e — all checks pass) */
+/* Same 3 validated categorical slots this project already uses elsewhere
+   (light on #faf9f5, dark on #30302e) — anthropic/openai keep their prior
+   slots, openrouter takes the 3rd slot the old "gemini" mock occupied.
+   Fixed order, not re-picked, per the dataviz skill's "never cycle
+   categorical hues" rule. */
 const CHART_CONFIG = {
-  claude: {
-    label: "Claude",
+  anthropic: {
+    label: "Anthropic",
     theme: { light: "#c96442", dark: "#d47250" },
   },
-  gpt: {
-    label: "GPT-5",
+  openai: {
+    label: "OpenAI",
     theme: { light: "#2e74ad", dark: "#3f82bd" },
   },
-  gemini: {
-    label: "Gemini",
+  openrouter: {
+    label: "OpenRouter",
     theme: { light: "#9c7e16", dark: "#ab8b1d" },
   },
 } satisfies ChartConfig;
 
-/* Losses distilled into rules the connected models reuse */
-const MEMORY: {
+type ProviderStatusRow = {
+  id: ProviderId;
+  name: string;
+  configured: boolean;
+  enabled: boolean;
+};
+
+type HourBucket = { hour: string } & Record<ProviderId, number>;
+
+type ModelUsageResponse = {
+  configured: boolean;
+  providers: ProviderStatusRow[];
+  hourly: HourBucket[];
+  totalRequests24h: number;
+  avgLatencyMs: number | null;
+};
+
+type MemoryRow = {
+  id: string;
   date: string;
   token: string;
   strategy: string;
   pnl: string;
   cause: string;
   lesson: string;
-  status: "Applied" | "Learning";
-}[] = [
-  {
-    date: "Jul 7",
-    token: "BODEN",
-    strategy: "The Sniper",
-    pnl: "-1.2 SOL",
-    cause: "Entered a pool with unlocked LP; rugged 4 minutes after entry",
-    lesson: "Require LP locked or burned before any snipe",
-    status: "Applied",
-  },
-  {
-    date: "Jul 6",
-    token: "PONKE",
-    strategy: "The Shadow",
-    pnl: "-0.8 SOL",
-    cause: "Mirrored the leader's exit 45 seconds late",
-    lesson: "Cap mirror latency at one block; skip the trade if missed",
-    status: "Applied",
-  },
-  {
-    date: "Jul 5",
-    token: "SLERF",
-    strategy: "The Sniper",
-    pnl: "-0.5 SOL",
-    cause: "Chased three green candles and bought the local top",
-    lesson: "Never enter later than block 5 after launch",
-    status: "Applied",
-  },
-  {
-    date: "Jul 4",
-    token: "MYRO",
-    strategy: "The Clockwork",
-    pnl: "-0.3 SOL",
-    cause: "Kept laddering through a 40% drawdown",
-    lesson: "Pause the ladder when 24h drawdown exceeds 15%",
-    status: "Learning",
-  },
-  {
-    date: "Jul 3",
-    token: "WIF",
-    strategy: "The Sentry",
-    pnl: "-0.6 SOL",
-    cause: "Trailing stop at 5% was shaken out before the run",
-    lesson: "Widen the trail to 12% on high-volatility pairs",
-    status: "Applied",
-  },
-  {
-    date: "Jul 2",
-    token: "GIGA",
-    strategy: "The Shadow",
-    pnl: "-1.1 SOL",
-    cause: "Copied a wallet that bundle-dumped its own token",
-    lesson: "Blacklist wallets with dev-linked funding",
-    status: "Learning",
-  },
-];
+  status: "applied" | "learning";
+  suggestedConfig: Record<string, unknown> | null;
+};
 
-/* Deterministic mock: requests per hour per model */
-const USAGE = Array.from({ length: 24 }, (_, h) => ({
-  hour: `${String(h).padStart(2, "0")}:00`,
-  claude: Math.round(150 + 90 * Math.sin((h - 7) / 3.4) + (h % 5) * 8),
-  gpt: Math.round(110 + 60 * Math.sin((h - 10) / 3.1) + (h % 4) * 7),
-  gemini: Math.round(75 + 45 * Math.sin((h - 5) / 2.8) + (h % 3) * 6),
-}));
+/** Shape of a row returned by GET /api/lessons */
+type LessonApiRow = {
+  id: string;
+  cause: string;
+  lesson: string;
+  status: string;
+  suggestedConfig: Record<string, unknown> | null;
+  createdAt: string;
+  token: string | null;
+  strategy: string | null;
+  pnlSol: string | null;
+  closedAt: string | null;
+};
+
+function toMemoryRow(row: LessonApiRow): MemoryRow {
+  const pnl = Number(row.pnlSol ?? 0);
+  return {
+    id: row.id,
+    date: new Date(row.closedAt ?? row.createdAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    token: row.token ?? "—",
+    strategy: row.strategy ?? "—",
+    pnl: `${pnl > 0 ? "+" : ""}${pnl} SOL`,
+    cause: row.cause,
+    lesson: row.lesson,
+    status: row.status === "applied" ? "applied" : "learning",
+    suggestedConfig: row.suggestedConfig,
+  };
+}
+
+/** Turns {maxHoldTimeSec: 900} into "maxHoldTimeSec → 900" for a compact
+ * one-line preview of what "Apply" would actually change. */
+function summarizeSuggestion(config: Record<string, unknown>): string {
+  return Object.entries(config)
+    .map(([key, value]) => `${key} → ${value}`)
+    .join(", ");
+}
+
+/** Polls a JSON API; keeps the last good value on a transient fetch failure. */
+function usePolledJson<T>(url: string, intervalMs: number): T | null {
+  const [data, setData] = useState<T | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    async function load() {
+      try {
+        const res = await fetch(url);
+        const json = (await res.json()) as T;
+        if (!disposed) setData(json);
+      } catch {
+        // keep whatever we already have
+      }
+    }
+    load();
+    const interval = setInterval(load, intervalMs);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [url, intervalMs]);
+  return data;
+}
 
 export function LlmConnections() {
-  const [connected, setConnected] = useState<Record<ModelId, boolean>>({
-    claude: true,
-    gpt: true,
-    gemini: true,
-    llama: false,
-    deepseek: false,
-  });
-  const [autoConnect, setAutoConnect] = useState(false);
+  const usage = usePolledJson<ModelUsageResponse>("/api/model-usage", 5_000);
+  const lessonsResponse = usePolledJson<{ configured: boolean; data: LessonApiRow[] }>(
+    "/api/lessons",
+    15_000
+  );
+
+  const providers = usage?.providers ?? [];
+  const memoryRows: MemoryRow[] = (lessonsResponse?.data ?? []).map(toMemoryRow);
+  const memoryLive = lessonsResponse?.configured === true;
+
+  // Optimistic — the real status also flips server-side; this just avoids
+  // waiting out the 15s poll before the button's own row updates.
+  const [locallyApplied, setLocallyApplied] = useState<Set<string>>(new Set());
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+
+  async function applySuggestion(id: string) {
+    setApplyingId(id);
+    try {
+      const res = await fetch(`/api/lessons/${id}/apply`, { method: "POST" });
+      if (res.ok) {
+        setLocallyApplied((prev) => new Set(prev).add(id));
+      }
+    } finally {
+      setApplyingId(null);
+    }
+  }
 
   const containerRef = useRef<HTMLDivElement>(null);
   const agentRef = useRef<HTMLDivElement>(null);
-  const nodeRefs = {
-    claude: useRef<HTMLDivElement>(null),
-    gpt: useRef<HTMLDivElement>(null),
-    gemini: useRef<HTMLDivElement>(null),
-    llama: useRef<HTMLDivElement>(null),
-    deepseek: useRef<HTMLDivElement>(null),
+  const nodeRefs: Record<ProviderId, React.RefObject<HTMLDivElement | null>> = {
+    openrouter: useRef<HTMLDivElement>(null),
+    anthropic: useRef<HTMLDivElement>(null),
+    openai: useRef<HTMLDivElement>(null),
   };
 
-  function toggle(id: ModelId, value: boolean) {
-    setConnected((c) => ({ ...c, [id]: value }));
-    if (!value) setAutoConnect(false);
-  }
-
-  function toggleAuto(value: boolean) {
-    setAutoConnect(value);
-    if (value) {
-      setConnected({
-        claude: true,
-        gpt: true,
-        gemini: true,
-        llama: true,
-        deepseek: true,
-      });
-    }
-  }
-
-  const connectedCount = Object.values(connected).filter(Boolean).length;
-
-  const totals = useMemo(() => {
-    const chartedIds = MODELS.filter((m) => m.charted).map((m) => m.id) as (
-      | "claude"
-      | "gpt"
-      | "gemini"
-    )[];
-    let requests = 0;
-    for (const row of USAGE) {
-      for (const id of chartedIds) {
-        if (connected[id]) requests += row[id];
-      }
-    }
-    return { requests };
-  }, [connected]);
+  const connectedCount = providers.filter((p) => p.enabled).length;
 
   return (
-    <section className="mt-5 grid gap-5 lg:grid-cols-5">
-      {/* Connections diagram + settings */}
-      <div className="rounded-xl border bg-card lg:col-span-2">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div>
-            <p className="text-sm font-medium">Model connections</p>
-            <p className="text-xs text-muted-foreground">
-              LLMs wired into the house agent
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Auto-connect
-            <Switch
-              size="sm"
-              checked={autoConnect}
-              onCheckedChange={toggleAuto}
-            />
-          </label>
+    <section className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-5">
+      {/* Connections diagram */}
+      <div className="min-w-0 rounded-2xl bg-card lg:col-span-2">
+        <div className="px-4 py-3">
+          <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+            Model Connections
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Real LLM providers wired into the house agent — set via env vars,
+            not a UI toggle (see .env.example).
+          </p>
         </div>
 
         <div
           ref={containerRef}
           className="relative flex items-center justify-between px-8 py-6"
         >
-          {/* beams under the nodes */}
-          {MODELS.map(
-            (m, i) =>
-              connected[m.id] && (
+          {providers.map(
+            (p, i) =>
+              p.enabled && (
                 <AnimatedBeam
-                  key={m.id}
+                  key={p.id}
                   containerRef={containerRef}
-                  fromRef={nodeRefs[m.id]}
+                  fromRef={nodeRefs[p.id]}
                   toRef={agentRef}
-                  curvature={(2 - i) * -28}
+                  curvature={(1 - i) * -28}
                   duration={4 + i}
                   delay={i * 0.6}
                   pathColor="var(--border)"
                   pathOpacity={0.6}
                   pathWidth={1.5}
-                  gradientStartColor="#d97757"
-                  gradientStopColor="#c96442"
+                  gradientStartColor="#dedbc8"
+                  gradientStopColor="#8a877a"
                 />
               )
           )}
 
           <div className="z-10 flex flex-col gap-3">
-            {MODELS.map((m) => (
+            {providers.map((p) => (
               <div
-                key={m.id}
-                ref={nodeRefs[m.id]}
+                key={p.id}
+                ref={nodeRefs[p.id]}
                 className={cn(
-                  "flex size-10 items-center justify-center rounded-full border bg-background text-xs font-semibold transition-opacity",
-                  connected[m.id] ? "border-accent/50" : "opacity-35"
+                  "flex size-10 items-center justify-center rounded-full bg-secondary text-xs font-semibold transition-opacity",
+                  p.enabled ? "" : "opacity-35"
                 )}
-                title={m.name}
+                title={p.name}
               >
-                {m.short}
+                {p.id === "openrouter" ? "OR" : p.id === "anthropic" ? "CL" : "OA"}
               </div>
             ))}
           </div>
 
           <div
             ref={agentRef}
-            className="z-10 flex size-16 items-center justify-center rounded-full border-2 border-accent bg-background"
+            className="z-10 flex size-16 items-center justify-center rounded-full bg-primary"
           >
-            <Bot className="size-7 text-accent" />
+            <Bot className="size-7 text-black" />
           </div>
         </div>
 
-        <ul className="border-t">
-          {MODELS.map((m) => (
+        <ul>
+          {providers.map((p) => (
             <li
-              key={m.id}
-              className="flex items-center gap-3 border-b px-4 py-2.5 last:border-b-0"
+              key={p.id}
+              className="flex items-center gap-3 border-b border-white/5 px-4 py-2.5 last:border-b-0"
             >
               <span
                 className="inline-block size-2 rounded-full"
                 style={{
-                  backgroundColor: m.charted
-                    ? `var(--color-${m.id}, var(--muted-foreground))`
-                    : "var(--muted-foreground)",
-                  opacity: connected[m.id] ? 1 : 0.3,
+                  backgroundColor: `var(--color-${p.id}, var(--muted-foreground))`,
+                  opacity: p.enabled ? 1 : 0.3,
                 }}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{m.name}</p>
+                <p className="text-sm font-medium">{p.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {m.provider} · {m.latency} avg
+                  {p.configured ? "API key configured" : "No API key set"}
                 </p>
               </div>
               <span
                 className={cn(
                   "text-xs",
-                  connected[m.id]
-                    ? "text-emerald-700"
-                    : "text-muted-foreground"
+                  p.enabled ? "text-sol-green-ink" : "text-muted-foreground"
                 )}
               >
-                {connected[m.id] ? "Connected" : "Off"}
+                {p.enabled ? "Connected" : p.configured ? "Disabled" : "Off"}
               </span>
-              <Switch
-                checked={connected[m.id]}
-                onCheckedChange={(v) => toggle(m.id, v)}
-                aria-label={`Connect ${m.name}`}
-              />
             </li>
           ))}
+          {providers.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+              Loading provider status…
+            </li>
+          )}
         </ul>
       </div>
 
       {/* Stats + usage chart */}
-      <div className="rounded-xl border bg-card lg:col-span-3">
-        <div className="grid grid-cols-3 divide-x border-b">
-          <div className="px-4 py-3">
+      <div className="min-w-0 rounded-2xl bg-card lg:col-span-3">
+        <div className="grid grid-cols-3 gap-1 p-1">
+          <div className="rounded-xl bg-secondary px-4 py-4">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Cable className="size-4" />
-              <p className="text-xs">Models connected</p>
+              <Cable className="size-3.5" />
+              <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase">
+                Models connected
+              </p>
             </div>
-            <p className="mt-1 font-display text-2xl font-medium">
+            <p className="mt-2.5 text-2xl font-medium">
               {connectedCount}
               <span className="text-sm font-normal text-muted-foreground">
                 {" "}
-                of {MODELS.length}
+                of {providers.length || 3}
               </span>
             </p>
           </div>
-          <div className="px-4 py-3">
+          <div className="rounded-xl bg-secondary px-4 py-4">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <MessageSquareText className="size-4" />
-              <p className="text-xs">Requests · 24h</p>
+              <MessageSquareText className="size-3.5" />
+              <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase">
+                Requests · 24h
+              </p>
             </div>
-            <p className="mt-1 font-display text-2xl font-medium">
-              {totals.requests.toLocaleString("en-US")}
+            <p className="mt-2.5 text-2xl font-medium">
+              {(usage?.totalRequests24h ?? 0).toLocaleString("en-US")}
             </p>
           </div>
-          <div className="px-4 py-3">
+          <div className="rounded-xl bg-secondary px-4 py-4">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Gauge className="size-4" />
-              <p className="text-xs">Avg latency</p>
+              <Gauge className="size-3.5" />
+              <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase">
+                Avg latency
+              </p>
             </div>
-            <p className="mt-1 font-display text-2xl font-medium">
-              724<span className="text-sm font-normal text-muted-foreground">ms</span>
+            <p className="mt-2.5 text-2xl font-medium">
+              {usage?.avgLatencyMs != null ? (
+                <>
+                  {Math.round(usage.avgLatencyMs)}
+                  <span className="text-sm font-normal text-muted-foreground">ms</span>
+                </>
+              ) : (
+                "—"
+              )}
             </p>
           </div>
         </div>
 
         <div className="p-4">
-          <p className="text-sm font-medium">Inference requests · last 24h</p>
-          <ChartContainer
-            config={CHART_CONFIG}
-            className="mt-3 h-64 w-full"
-          >
-            <LineChart data={USAGE} margin={{ left: 4, right: 12, top: 4 }}>
-              <CartesianGrid
-                vertical={false}
-                stroke="var(--border)"
-                strokeDasharray="3 3"
-              />
-              <XAxis
-                dataKey="hour"
-                tickLine={false}
-                axisLine={false}
-                interval={5}
-                tickMargin={8}
-              />
-              <YAxis
-                width={36}
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
-              {connected.claude && (
+          <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+            Inference Requests · Last 24h
+          </p>
+          {usage?.configured && (usage.hourly.length === 0 || usage.totalRequests24h === 0) ? (
+            <div className="mt-3 flex h-64 items-center justify-center text-sm text-muted-foreground">
+              No model requests yet — chat with Noah to see real traffic here.
+            </div>
+          ) : !usage?.configured ? (
+            <div className="mt-3 flex h-64 items-center justify-center text-sm text-muted-foreground">
+              Connect DATABASE_URL to track real usage.
+            </div>
+          ) : (
+            <ChartContainer config={CHART_CONFIG} className="mt-3 h-64 w-full">
+              <LineChart data={usage.hourly} margin={{ left: 4, right: 12, top: 4 }}>
+                <CartesianGrid
+                  vertical={false}
+                  stroke="var(--border)"
+                  strokeDasharray="3 3"
+                />
+                <XAxis
+                  dataKey="hour"
+                  tickLine={false}
+                  axisLine={false}
+                  interval={5}
+                  tickMargin={8}
+                />
+                <YAxis width={36} tickLine={false} axisLine={false} tickMargin={4} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartLegend content={<ChartLegendContent />} />
                 <Line
-                  dataKey="claude"
+                  dataKey="openrouter"
                   type="monotone"
-                  stroke="var(--color-claude)"
+                  stroke="var(--color-openrouter)"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
                 />
-              )}
-              {connected.gpt && (
                 <Line
-                  dataKey="gpt"
+                  dataKey="anthropic"
                   type="monotone"
-                  stroke="var(--color-gpt)"
+                  stroke="var(--color-anthropic)"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
                 />
-              )}
-              {connected.gemini && (
                 <Line
-                  dataKey="gemini"
+                  dataKey="openai"
                   type="monotone"
-                  stroke="var(--color-gemini)"
+                  stroke="var(--color-openai)"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
                 />
-              )}
-            </LineChart>
-          </ChartContainer>
+              </LineChart>
+            </ChartContainer>
+          )}
         </div>
       </div>
 
+      {/* Live execution log — sits directly below the chart */}
+      <div className="min-w-0 lg:col-span-5">
+        <ExecutionTerminal />
+      </div>
+
       {/* Agent memory — losses distilled into rules */}
-      <div className="overflow-hidden rounded-xl border bg-card lg:col-span-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+      <div className="min-w-0 overflow-hidden rounded-2xl bg-card lg:col-span-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <span className="flex size-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
               <Brain className="size-4" />
             </span>
             <div>
-              <p className="text-sm font-medium">Agent memory</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+                Agent Memory
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Every losing trade is analysed and stored as a rule the
                 connected models reuse on the next decision.
               </p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-sm font-medium">{MEMORY.length} lessons stored</p>
-            <p className="text-xs text-emerald-700">
-              +9% win rate since learning began
+            <p className="text-sm font-medium">
+              {memoryRows.length} lesson{memoryRows.length === 1 ? "" : "s"} stored
+            </p>
+            <p
+              className={cn(
+                "text-xs",
+                memoryLive ? "text-sol-green-ink" : "text-muted-foreground"
+              )}
+            >
+              {memoryLive ? "Live from database" : "Connect DATABASE_URL to go live"}
             </p>
           </div>
         </div>
@@ -414,50 +417,84 @@ export function LlmConnections() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Closed</th>
-                <th className="px-4 py-3 font-medium">Token</th>
-                <th className="px-4 py-3 font-medium">Strategy</th>
-                <th className="px-4 py-3 font-medium">Loss</th>
-                <th className="px-4 py-3 font-medium">Why it lost</th>
-                <th className="px-4 py-3 font-medium">Lesson stored</th>
-                <th className="px-4 py-3 text-right font-medium">Status</th>
+              <tr className="border-b border-white/5 text-left text-muted-foreground">
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Closed</th>
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Token</th>
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Strategy</th>
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Loss</th>
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Why it lost</th>
+                <th className="px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Lesson stored</th>
+                <th className="px-4 py-3 text-right text-[0.65rem] font-semibold tracking-[0.15em] uppercase">Status</th>
               </tr>
             </thead>
             <tbody>
-              {MEMORY.map((m) => (
-                <tr key={m.date + m.token} className="border-b last:border-b-0">
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                    {m.date}
-                  </td>
-                  <td className="px-4 py-3 font-medium">${m.token}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                    {m.strategy}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap font-medium text-destructive">
-                    {m.pnl}
-                  </td>
-                  <td className="max-w-64 px-4 py-3 text-muted-foreground">
-                    {m.cause}
-                  </td>
-                  <td className="max-w-64 px-4 py-3">{m.lesson}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                        m.status === "Applied"
-                          ? "bg-accent/10 text-accent"
-                          : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {m.status === "Learning" && (
-                        <span className="inline-block size-1.5 animate-blink rounded-full bg-current" />
-                      )}
-                      {m.status}
-                    </span>
+              {!memoryLive ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    Connect DATABASE_URL to see real agent memory.
                   </td>
                 </tr>
-              ))}
+              ) : memoryRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    No lessons yet — the first losing trade will be analysed and stored here.
+                  </td>
+                </tr>
+              ) : (
+                memoryRows.map((m) => {
+                  const applied = m.status === "applied" || locallyApplied.has(m.id);
+                  const canApply = m.suggestedConfig && !applied;
+                  return (
+                    <tr key={m.id} className="border-b border-white/5 last:border-b-0">
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {m.date}
+                      </td>
+                      <td className="px-4 py-3 font-medium">${m.token}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {m.strategy}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-medium text-destructive">
+                        {m.pnl}
+                      </td>
+                      <td className="max-w-64 px-4 py-3 text-muted-foreground">{m.cause}</td>
+                      <td className="max-w-64 px-4 py-3">
+                        <p>{m.lesson}</p>
+                        {m.suggestedConfig && (
+                          <p className="mt-1 font-mono text-xs text-muted-foreground">
+                            {summarizeSuggestion(m.suggestedConfig)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-col items-end gap-1.5">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                              applied
+                                ? "bg-accent/10 text-accent"
+                                : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {!applied && (
+                              <span className="inline-block size-1.5 animate-blink rounded-full bg-current" />
+                            )}
+                            {applied ? "Applied" : "Learning"}
+                          </span>
+                          {canApply && (
+                            <button
+                              onClick={() => applySuggestion(m.id)}
+                              disabled={applyingId === m.id}
+                              className="text-xs text-accent underline-offset-2 hover:underline disabled:opacity-50"
+                            >
+                              {applyingId === m.id ? "Applying…" : "Apply suggestion"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
