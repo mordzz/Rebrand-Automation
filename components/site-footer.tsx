@@ -1,6 +1,14 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/logo";
+import { XIcon } from "@/components/social-icons";
+
+/** The one official account. Shown with its handle rather than as a bare
+ * icon: a public fleet attracts impersonation (whitepaper §14.6), and a
+ * reader can only check an account against the real one if the real one is
+ * written out somewhere they can read it. */
+const X_URL = "https://x.com/NoahengineX";
+const X_HANDLE = "@NoahengineX";
 
 const PAGE_LINKS = [
   { href: "/", label: "Home" },
@@ -29,6 +37,17 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
                 · Est. 2026
               </span>
             </p>
+            {/* Icon only here: this bar is every non-landing page's footer
+                and has no room for the handle, so the label carries it. */}
+            <a
+              href={X_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Noah Engine on X, ${X_HANDLE}`}
+              className="shrink-0 transition-colors hover:text-foreground"
+            >
+              <XIcon size={13} />
+            </a>
           </div>
           <p>Refuse by default · Rules before positions · Rank survival</p>
         </div>
@@ -56,6 +75,17 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               almost everything they see, size the survivors against a fixed
               risk budget, and write down why when they lose.
             </p>
+
+            <a
+              href={X_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Noah Engine on X, ${X_HANDLE}`}
+              className="mt-6 inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+            >
+              <XIcon size={14} />
+              {X_HANDLE}
+            </a>
           </div>
           <div>
             <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
