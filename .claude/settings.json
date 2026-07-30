@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nohup npx next dev -p 3100)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3100/)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3100/)",
+      "Bash(sed -i '' 's|localhost:3000|localhost:3001|' landing-audit.mjs)",
+      "Bash(node landing-audit.mjs)",
+      "Bash(curl -s -o /dev/null -w \"3000: HTTP %{http_code}\\\\n\" http://localhost:3000/__navpreview)",
+      "Bash(curl -s -o /dev/null -w \"3000/__navpreview: HTTP %{http_code}\\\\n\" http://localhost:3000/__navpreview)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/navpreview-tmp)",
+      "Bash(sed -i '' 's|localhost:3001/__navpreview|localhost:3000/navpreview-tmp|' navpreview.mjs)",
+      "Bash(node navpreview.mjs)",
+      "Bash(curl -s -o /dev/null -w \"landing: HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"whitepaper: HTTP %{http_code}\\\\n\" http://localhost:3000/whitepaper)",
+      "Bash(curl -s -o /dev/null -w \"atelier: HTTP %{http_code}\\\\n\" http://localhost:3000/atelier)",
+      "Bash(curl -s -o /dev/null -w \"deploy: HTTP %{http_code}\\\\n\" http://localhost:3000/deploy)",
+      "Bash(tee /tmp/mints.txt)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s http://localhost:3000/api/alpha)",
+      "Bash(curl -s https://api.dexscreener.com/latest/dex/tokens/__CMDSUB_OUTPUT__)",
+      "Bash(rm -f /Users/imrybrndo/Desktop/solana/automation/alpha.mjs)",
+      "Bash(node alpha.mjs)"
+    ]
+  }
+}

@@ -12,7 +12,7 @@ const STRATEGIES = [
     ships: "Ships dry-run",
     tagline: "First-block entries on fresh mints.",
     description:
-      "Watches the pump.fun mint stream from block one and filters hard — creator history, liquidity shape, holder spread — before committing a lamport. Sized entries in milliseconds, tiered targets, and a hard stop set before the trade exists.",
+      "Watches the pump.fun mint stream from block one and filters hard on creator history, liquidity shape, and holder spread before committing a lamport. Sized entries in milliseconds, tiered targets, and a hard stop set before the trade exists.",
   },
   {
     number: "02",
@@ -20,7 +20,7 @@ const STRATEGIES = [
     ships: "Ships dry-run",
     tagline: "Follows confirmed momentum, never the rumor.",
     description:
-      "Ignores the frantic first minutes and stalks tokens that survive them. Enters behind accelerating volume and holder growth, rides with a trailing stop that only ever tightens — giving up the bottom tick to avoid catching knives.",
+      "Ignores the frantic first minutes and stalks tokens that survive them. Enters behind accelerating volume and holder growth, rides with a trailing stop that only ever tightens, giving up the bottom tick to avoid catching knives.",
   },
   {
     number: "03",
@@ -28,7 +28,7 @@ const STRATEGIES = [
     ships: "Always on",
     tagline: "Guards every position the engine holds.",
     description:
-      "Never opens a trade — it watches all of them. Arms breakeven once a position is meaningfully green, tightens exits when momentum decays, and cuts without ceremony on stall or drawdown. Every other strategy answers to it.",
+      "Never opens a trade; it watches all of them. Arms breakeven once a position is meaningfully green, tightens exits when momentum decays, and cuts without ceremony on stall or drawdown. Every other strategy answers to it.",
   },
   {
     number: "04",
@@ -36,7 +36,7 @@ const STRATEGIES = [
     ships: "Always on",
     tagline: "Discipline on a schedule, not a mood.",
     description:
-      "Runs the engine's rhythm — position sizing against the risk budget, daily loss limits that halt the session, and the cadence that turns loss post-mortems into applied config changes. When it calls the day, the day is over.",
+      "Runs the engine's rhythm: position sizing against the risk budget, daily loss limits that halt the session, and the cadence that turns loss post-mortems into applied config changes. When it calls the day, the day is over.",
   },
 ];
 

@@ -38,10 +38,11 @@ export type SafetyCheckResult = {
  *   offset 50: freezeAuthority       32-byte pubkey (only valid if Some)
  */
 async function readMintAuthorities(
-  mint: string
+  mint: string,
+  rpcUrl?: string | null
 ): Promise<{ mintRenounced: boolean | null; freezeRenounced: boolean | null }> {
   try {
-    const rpc = getRpc();
+    const rpc = getRpc(rpcUrl);
     const { value } = await rpc
       .getAccountInfo(address(mint), { encoding: "base64" })
       .send();
@@ -161,8 +162,49 @@ function creatorBuyPercent(event: PumpPortalNewTokenEvent): number {
  *   theater, not a real check, so it's left out rather than implemented
  *   for appearance's sake.
  */
-export async function passesAll(
+export type TokenSafetyData = {
+  mintAuthorityRenounced: boolean | null;
+  freezeAuthorityRenounced: boolean | null;
+  metadata: TokenMetadata | null;
+};
+
+/**
+ * The token-level I/O in passesAll — an RPC mint-authority read and an IPFS
+ * metadata fetch — is identical for a given event regardless of whose
+ * config is being checked against it. A caller evaluating one token against
+ * many configs at once (e.g. a multi-tenant paper daemon) should call this
+ * once per token and reuse the result via evaluateSafety per config,
+ * instead of re-fetching the same shared data once per user against a
+ * rate-limited public RPC.
+ */
+export async function fetchTokenSafetyData(
   event: PumpPortalNewTokenEvent,
+  metadataFetchTimeoutMs: number,
+  /** Optional per-bot RPC (see lib/db/schema.ts#userBots.rpcUrl). Omitted
+   * uses the shared endpoint, which is what the house path always does. */
+  rpcUrl?: string | null
+): Promise<TokenSafetyData> {
+  const [{ mintRenounced, freezeRenounced }, metadata] = await Promise.all([
+    readMintAuthorities(event.mint, rpcUrl),
+    fetchTokenMetadata(event.uri, metadataFetchTimeoutMs),
+  ]);
+  return {
+    mintAuthorityRenounced: mintRenounced,
+    freezeAuthorityRenounced: freezeRenounced,
+    metadata,
+  };
+}
+
+/**
+ * Per-config evaluation against already-fetched shared token data (see
+ * fetchTokenSafetyData). Still does its own I/O for the alpha-wallet check,
+ * which — unlike the mint-authority/metadata reads — is genuinely per-user
+ * (different configs track different wallets) and off by default, so most
+ * callers pay nothing extra here.
+ */
+export async function evaluateSafety(
+  event: PumpPortalNewTokenEvent,
+  tokenData: TokenSafetyData,
   config: Pick<
     SniperConfig,
     | "requireMintAuthorityRenounced"
@@ -174,7 +216,6 @@ export async function passesAll(
     | "blockedKeywords"
     | "minTokenAgeSec"
     | "maxTokenAgeSec"
-    | "metadataFetchTimeoutMs"
   >,
   ageSec: number
 ): Promise<SafetyCheckResult> {
@@ -202,17 +243,13 @@ export async function passesAll(
 
   const alphaWalletGateActive =
     config.requireAlphaWalletBuy && config.alphaWallets.length > 0;
+  const alphaWalletResult = alphaWalletGateActive
+    ? await checkAlphaWalletBuy(event.mint, config.alphaWallets)
+    : null;
 
-  // Run independent checks in parallel — none of the RPC reads or the
-  // metadata fetch depend on each other, and sniping cares about total time.
-  const [{ mintRenounced, freezeRenounced }, metadata, alphaWalletResult] =
-    await Promise.all([
-      readMintAuthorities(event.mint),
-      fetchTokenMetadata(event.uri, config.metadataFetchTimeoutMs),
-      alphaWalletGateActive
-        ? checkAlphaWalletBuy(event.mint, config.alphaWallets)
-        : Promise.resolve(null),
-    ]);
+  const mintRenounced = tokenData.mintAuthorityRenounced;
+  const freezeRenounced = tokenData.freezeAuthorityRenounced;
+  const metadata = tokenData.metadata;
 
   if (config.requireMintAuthorityRenounced || config.requireFreezeAuthorityRenounced) {
     if (mintRenounced === null || freezeRenounced === null) {
@@ -258,4 +295,29 @@ export async function passesAll(
     alphaWalletDetected: alphaWalletGateActive ? (alphaWalletResult?.detected ?? false) : null,
     matchedAlphaWallets: alphaWalletResult?.matchedWallets ?? [],
   };
+}
+
+/** Thin wrapper of fetchTokenSafetyData + evaluateSafety for single-config
+ * callers (the house daemon) — fetches the shared token data and evaluates
+ * it against one config in one call, same signature/behavior as before this
+ * was split for multi-config reuse. */
+export async function passesAll(
+  event: PumpPortalNewTokenEvent,
+  config: Pick<
+    SniperConfig,
+    | "requireMintAuthorityRenounced"
+    | "requireFreezeAuthorityRenounced"
+    | "requireSocialLink"
+    | "requireAlphaWalletBuy"
+    | "alphaWallets"
+    | "maxCreatorBuyPct"
+    | "blockedKeywords"
+    | "minTokenAgeSec"
+    | "maxTokenAgeSec"
+    | "metadataFetchTimeoutMs"
+  >,
+  ageSec: number
+): Promise<SafetyCheckResult> {
+  const tokenData = await fetchTokenSafetyData(event, config.metadataFetchTimeoutMs);
+  return evaluateSafety(event, tokenData, config, ageSec);
 }

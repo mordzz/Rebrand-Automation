@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from "react";
 import type { CharacterMood } from "@/components/dashboard/character-canvas";
 import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
 import { LiveMints } from "@/components/dashboard/live-mints";
+import { NewLaunches } from "@/components/dashboard/new-launches";
 import { SniperConfigReadout } from "@/components/dashboard/sniper-config-readout";
+import { SniperStatusPanel } from "@/components/dashboard/sniper-status-panel";
 import {
   TradeHistoryTable,
   formatSignedSol,
@@ -296,6 +298,11 @@ export function DashboardShell() {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+      {/* Daemon health + circuit-breaker status — full width, above both columns */}
+      <div className="lg:col-span-5">
+        <SniperStatusPanel />
+      </div>
+
       {/* Left column — one flat panel: automaton on top, concierge below */}
       <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:col-span-2">
         <div className="flex items-center justify-between px-4 py-3">
@@ -584,7 +591,14 @@ export function DashboardShell() {
           </TabsContent>
 
           <TabsContent value="mints">
-            <LiveMints />
+            {/* Two feeds, deliberately: LiveMints is the real-time pump.fun
+                WebSocket the engine actually snipes from; NewLaunches is
+                the wider multi-launchpad view (bags, believe, letsbonk,
+                boop, moonshot, …) that PumpPortal alone cannot see. */}
+            <div className="flex flex-col gap-5">
+              <LiveMints />
+              <NewLaunches />
+            </div>
           </TabsContent>
         </Tabs>
       </div>

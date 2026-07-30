@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LayoutDashboard, type LucideIcon, Rocket } from "lucide-react";
+import { ChevronDown, LayoutDashboard, type LucideIcon, Rocket, Users } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,19 +17,27 @@ type NavLink = { href: string; label: string; icon?: LucideIcon };
 const NAV_LINKS: NavLink[] = [
   { href: "/#about", label: "Our story" },
   { href: "/#strategies", label: "Autonomous" },
+  { href: "/alpha", label: "Alpha" },
+  { href: "/whitepaper", label: "Whitepaper" },
   { href: "/#pricing", label: "Pricing" },
 ];
 
 const AGENT_LINKS: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/deploy", label: "Deploy Agent", icon: Rocket },
+  { href: "/atelier", label: "Atelier", icon: Users },
 ];
 
 const MOBILE_LINKS = [NAV_LINKS[0], ...AGENT_LINKS, ...NAV_LINKS.slice(1)];
 
 /** The one navbar — the same black pill everywhere, hero included, so
  * every page reads identically. Keep all nav changes here so every page
- * stays in step. */
+ * stays in step.
+ *
+ * The full link row appears at `lg`, not `md`: six links plus the brand
+ * and the auth button need ~730px, which at 768px leaves the pill almost
+ * touching both viewport edges and reading as a full-width bar rather
+ * than a floating pill. Tablets get the collapsed menu instead. */
 export function NavPill() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -48,7 +56,7 @@ export function NavPill() {
 
   return (
     <div className="rounded-b-2xl border border-t-0 border-white/10 bg-black px-4 py-2.5 md:rounded-b-3xl md:px-6 md:py-3">
-      <div className="flex items-center gap-6 lg:gap-10">
+      <div className="flex items-center gap-6 lg:gap-8">
         <Link
           href="/"
           onClick={() => setOpen(false)}
@@ -59,13 +67,13 @@ export function NavPill() {
           Noah Engine<span className="align-super text-[0.6em]">*</span>
         </Link>
 
-        <nav className="hidden md:block">
+        <nav className="hidden lg:block">
           <ul className="flex items-center gap-4 lg:gap-6">
             <li>
               <Link
                 href={NAV_LINKS[0].href}
                 className={cn(
-                  "prisma-nav-link whitespace-nowrap text-xs md:text-sm",
+                  "prisma-nav-link whitespace-nowrap text-sm",
                   pathname === NAV_LINKS[0].href && "!text-[#E1E0CC]"
                 )}
               >
@@ -83,7 +91,7 @@ export function NavPill() {
                 onClick={() => setAgentOpen((v) => !v)}
                 aria-expanded={agentOpen}
                 className={cn(
-                  "prisma-nav-link flex items-center gap-1 whitespace-nowrap text-xs md:text-sm",
+                  "prisma-nav-link flex items-center gap-1 whitespace-nowrap text-sm",
                   isAgentActive && "!text-[#E1E0CC]"
                 )}
               >
@@ -133,7 +141,7 @@ export function NavPill() {
                 <Link
                   href={link.href}
                   className={cn(
-                    "prisma-nav-link whitespace-nowrap text-xs md:text-sm",
+                    "prisma-nav-link whitespace-nowrap text-sm",
                     pathname === link.href && "!text-[#E1E0CC]"
                   )}
                 >
@@ -145,7 +153,7 @@ export function NavPill() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <AuthButton />
           </div>
           <button
@@ -153,7 +161,7 @@ export function NavPill() {
             aria-label="Toggle menu"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="prisma-nav-link flex size-8 items-center justify-center text-base md:hidden"
+            className="prisma-nav-link flex size-8 items-center justify-center text-base lg:hidden"
           >
             {open ? "✕" : "☰"}
           </button>
@@ -161,7 +169,7 @@ export function NavPill() {
       </div>
 
       {open && (
-        <nav className="pt-3 pb-2 md:hidden">
+        <nav className="pt-3 pb-2 lg:hidden">
           <ul className="flex flex-col">
             {MOBILE_LINKS.map((link) => {
               const Icon = link.icon;
@@ -179,8 +187,8 @@ export function NavPill() {
               );
             })}
           </ul>
-          <div className="mt-1 border-t border-white/10 pt-3 pb-1">
-            <AuthButton />
+          <div className="mt-1 border-t border-white/10 pt-2 pb-1">
+            <AuthButton inline />
           </div>
         </nav>
       )}

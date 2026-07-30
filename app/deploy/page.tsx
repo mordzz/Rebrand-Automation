@@ -20,7 +20,11 @@ export default function DeployPage() {
         className="pointer-events-none fixed -top-24 right-[15%] h-96 w-96 rounded-full bg-primary/10 blur-[130px]"
       />
       <SiteHeader />
-      <main className="relative flex-1 overflow-hidden">
+      {/* No overflow-hidden: it would break the sticky character/chat
+          column in DeployShell, the same way it broke the whitepaper's
+          sticky TOC. The decorations above are `fixed`, so they were
+          never actually being clipped by it anyway. */}
+      <main className="relative flex-1">
         <div className="relative mx-auto max-w-7xl px-6 py-8 sm:px-10">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4 pb-6">
             <div>

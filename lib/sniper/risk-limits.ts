@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { sniperState, type Position, type SniperState } from "@/lib/db/schema";
+import { sniperState, type Position, type SniperState, type Trade } from "@/lib/db/schema";
 import { getSniperConfig, type SniperConfig } from "./config";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +29,7 @@ export async function recordHeartbeat(mode: "dry_run" | "live"): Promise<void> {
 
 export function canOpenNewPosition(
   openPositions: Position[],
-  state: SniperState | null,
+  state: Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> | null,
   config: SniperConfig
 ): { allowed: boolean; reason?: string } {
   if (state?.tradingPaused) {
@@ -117,4 +117,52 @@ export async function setPaused(paused: boolean, reason?: string): Promise<void>
       pauseReason: paused ? (reason ?? "manually paused") : null,
     })
     .where(eq(sniperState.id, state.id));
+}
+
+export type DerivedTradeStats = {
+  /** Closed trades for one wallet, most recent first (see
+   * lib/sniper/wallet-trade-stats.ts#getRecentOutcomes). */
+  recentOutcomes: Pick<Trade, "pnlSol">[];
+  dailyPnlSol: number;
+  lastLossAt: Date | null;
+};
+
+/**
+ * Per-user circuit breaker, re-derived fresh every call from that wallet's
+ * own trades — deliberately NOT persisted/sticky like sniper_state's
+ * tradingPaused. The house breaker never auto-clears (only a manual
+ * /api/sniper/toggle call resets it); doing the same per-user with no
+ * per-user pause UI in scope would mean a bot could permanently stop
+ * trading after a bad streak with no way for its owner to know or fix it.
+ * This trips on exactly the same conditions (consecutive losses, daily
+ * drawdown) the house's recordTradeOutcome does, but self-heals the moment
+ * the underlying trades no longer breach them.
+ */
+export function deriveTradingPause(
+  stats: DerivedTradeStats,
+  config: Pick<SniperConfig, "maxConsecutiveLosses" | "maxDailyDrawdownSol">
+): Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> {
+  // Strict < 0, matching recordTradeOutcome's own strict inequality — a
+  // pnlSol === 0 trade resets the streak, same as a win.
+  let consecutiveLosses = 0;
+  for (const trade of stats.recentOutcomes) {
+    if (Number(trade.pnlSol) < 0) consecutiveLosses++;
+    else break;
+  }
+
+  if (consecutiveLosses >= config.maxConsecutiveLosses) {
+    return {
+      tradingPaused: true,
+      pauseReason: `${consecutiveLosses} consecutive losses (limit ${config.maxConsecutiveLosses})`,
+      lastLossAt: stats.lastLossAt,
+    };
+  }
+  if (stats.dailyPnlSol <= -config.maxDailyDrawdownSol) {
+    return {
+      tradingPaused: true,
+      pauseReason: `daily drawdown ${stats.dailyPnlSol.toFixed(3)} SOL exceeded limit ${config.maxDailyDrawdownSol}`,
+      lastLossAt: stats.lastLossAt,
+    };
+  }
+  return { tradingPaused: false, pauseReason: null, lastLossAt: stats.lastLossAt };
 }

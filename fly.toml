@@ -1,0 +1,46 @@
+# Deploy: fly deploy
+# One image (see Dockerfile), shared by multiple process groups — only
+# `app` serves HTTP traffic. `paper` is the always-safe, per-user
+# paper-trading worker (no real wallet key, can't touch real funds).
+#
+# `sniper` (the real house trading daemon, holds PRIVATE_KEY_SOLANA_WALLET)
+# is intentionally NOT listed below yet — it's not defined as a process
+# group at all, so no machine for it exists and its secret never needs to
+# be pushed to Fly. To add it later, once ready:
+#   1. add `sniper = "npm run sniper"` under [processes]
+#   2. fly secrets set PRIVATE_KEY_SOLANA_WALLET="..." SOLANA_RPC_URL="..."
+#   3. fly deploy
+app = "noah-engine"
+primary_region = "iad"
+
+[build]
+  # Public by design (inlined into the client bundle) — not a secret, safe
+  # to commit. Matches components/providers.tsx's PRIVY_APP_ID.
+  [build.args]
+    NEXT_PUBLIC_PRIVY_APP_ID = "cmroz267200ju0cjqohmdfj5j"
+
+[env]
+NODE_ENV = "production"
+PORT = "3000"
+
+[processes]
+app = "npm run start"
+paper = "npm run paper"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = "stop"
+auto_start_machines = true
+min_machines_running = 1
+processes = ["app"]
+
+[[vm]]
+processes = ["app"]
+size = "shared-cpu-1x"
+memory = "512mb"
+
+[[vm]]
+processes = ["paper"]
+size = "shared-cpu-1x"
+memory = "256mb"

@@ -1,15 +1,16 @@
-import { Globe } from "lucide-react";
 import Link from "next/link";
 
 import { Logo } from "@/components/logo";
-import { InstagramIcon, TwitterIcon, XIcon } from "@/components/social-icons";
 
 const PAGE_LINKS = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/#strategies", label: "Autonomous" },
+  { href: "/alpha", label: "Alpha" },
+  { href: "/atelier", label: "Atelier" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/deploy", label: "Deploy agent" },
+  { href: "/whitepaper", label: "Whitepaper" },
 ];
 
 export function SiteFooter({ slim = false }: { slim?: boolean }) {
@@ -27,13 +28,6 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
                 · Est. 2026
               </span>
             </p>
-            <a
-              href="#"
-              aria-label="Noah Engine on X"
-              className="transition-colors hover:text-foreground"
-            >
-              <XIcon size={13} />
-            </a>
           </div>
           <p>Autonomous · Risk-guarded · Always learning</p>
         </div>
@@ -57,30 +51,17 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               </span>
             </p>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              An autonomous AI agent that trades meme coins around the clock —
+              An autonomous AI agent that trades meme coins around the clock:
               sniping new mints, managing risk, and learning from every loss.
             </p>
-            <div className="mt-6 flex gap-3">
-              {[
-                { label: "Instagram", icon: <InstagramIcon size={16} /> },
-                { label: "Twitter", icon: <TwitterIcon size={16} /> },
-                { label: "Website", icon: <Globe size={16} /> },
-              ].map((social) => (
-                <button
-                  key={social.label}
-                  aria-label={social.label}
-                  className="rounded-full bg-secondary p-3 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {social.icon}
-                </button>
-              ))}
-            </div>
           </div>
           <div>
             <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
               Pages
             </p>
-            <ul className="mt-5 space-y-3 text-sm">
+            {/* Two columns: a single stack of eight runs far taller than the
+                two prose columns beside it and leaves the footer lopsided. */}
+            <ul className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {PAGE_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link
@@ -99,7 +80,7 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
             </p>
             <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
               Meme coins are volatile and can go to zero. Noah manages risk
-              with hard stops and dry-run defaults — it never promises profit.
+              with hard stops and dry-run defaults; it never promises profit.
               Your keys, your trades, your call.
             </p>
           </div>

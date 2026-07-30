@@ -24,6 +24,7 @@ import {
   loadSniperRuntimeFlags,
   type SniperConfig,
 } from "@/lib/sniper/config";
+import { evaluateFullExit, evaluateTieredExits, DUST_THRESHOLD_SOL } from "@/lib/sniper/exit-logic";
 import { getCurrentPrice } from "@/lib/sniper/exit-price";
 import {
   closePosition,
@@ -48,9 +49,6 @@ const HEARTBEAT_INTERVAL_MS = 5_000;
 // a sniper_config field.
 const QUEUE_DRAIN_INTERVAL_MS = 1_000;
 const MAX_PENDING_QUEUE = 500;
-// Below this remaining SOL, treat a tiered position as fully exited rather
-// than leaving a dust-sized "open" row behind.
-const DUST_THRESHOLD_SOL = 1e-6;
 // Deliberately aggressive-but-bounded — sniping needs to land fast, but a
 // runaway priority fee on a bot with no per-trade human check is its own
 // risk. Not exposed as an env var in v1; revisit if real usage shows it
@@ -203,80 +201,26 @@ async function checkExits(config: SniperConfig): Promise<void> {
     if (currentPrice == null) continue;
 
     const entryPrice = Number(position.entryPrice);
-    const previousPrice = position.lastPrice != null ? Number(position.lastPrice) : null;
+    const sizeSol = Number(position.sizeSol);
     const changePct = ((currentPrice - entryPrice) / entryPrice) * 100;
     const isDryRun = (position.context as PositionContext | null)?.dryRun === true;
 
-    // Trailing-stop / breakeven-lock share one "highest price ever seen"
-    // watermark — tracked whenever either feature is enabled, from open,
-    // not just after crossing an activation threshold, so "once armed,
-    // stays armed" survives a price pullback.
-    const trackPeak = config.trailingStopEnabled || config.breakevenAfterPct != null;
-    let peakPrice = position.peakPrice != null ? Number(position.peakPrice) : null;
-    if (trackPeak && (peakPrice == null || currentPrice > peakPrice)) {
-      peakPrice = currentPrice;
-    }
-    const peakChangePct =
-      trackPeak && peakPrice != null ? ((peakPrice - entryPrice) / entryPrice) * 100 : changePct;
+    const decision = evaluateFullExit(
+      {
+        entryPrice,
+        sizeSol,
+        lastPrice: position.lastPrice != null ? Number(position.lastPrice) : null,
+        peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null,
+        openedAt: position.openedAt,
+      },
+      config,
+      currentPrice
+    );
 
-    await updatePositionPrice(position.id, currentPrice, trackPeak ? peakPrice ?? currentPrice : undefined);
+    await updatePositionPrice(position.id, currentPrice, decision.peakPrice ?? undefined);
 
-    // "Fast out" — a sudden drop since the last check (a live rug/dump in
-    // progress) triggers an immediate exit regardless of every other rule
-    // below, so a position sitting at +80% that suddenly craters doesn't
-    // wait around for a slower stop to eventually catch up.
-    const dropSinceLastCheckPct =
-      previousPrice != null && previousPrice > 0
-        ? ((previousPrice - currentPrice) / previousPrice) * 100
-        : null;
-    const shouldCrashExit =
-      dropSinceLastCheckPct != null && dropSinceLastCheckPct >= config.crashDropPct;
-
-    const holdSec = (Date.now() - position.openedAt.getTime()) / 1000;
-    const shouldTimeExit =
-      config.maxHoldTimeSec != null && holdSec >= config.maxHoldTimeSec;
-
-    const trailingArmed =
-      config.trailingStopEnabled && peakChangePct >= config.trailingStopActivationPct;
-    const shouldTrailingExit =
-      trailingArmed &&
-      peakPrice != null &&
-      ((peakPrice - currentPrice) / peakPrice) * 100 >= config.trailingStopPct;
-
-    // Once price has ever reached breakevenAfterPct, the stop floor moves
-    // up to entry price (0%) instead of the configured stop-loss distance —
-    // this guarantees no loss from that point on, at the cost of a smaller
-    // worst-case exit than letting the full stop-loss run.
-    const breakevenActive =
-      config.breakevenAfterPct != null && peakChangePct >= config.breakevenAfterPct;
-    const effectiveStopLossPct = breakevenActive ? 0 : config.stopLossPct;
-    const shouldStopLoss = changePct <= -effectiveStopLossPct;
-
-    // The flat take-profit target only drives a full exit in "fixed" mode —
-    // in "tiered" mode, profit-taking is handled by the ladder below, while
-    // stop-loss/trailing/crash/time-exit still apply as a safety net either way.
-    const shouldFixedTakeProfit = config.exitMode === "fixed" && changePct >= config.takeProfitPct;
-
-    const shouldFullExit =
-      shouldCrashExit || shouldTimeExit || shouldTrailingExit || shouldStopLoss || shouldFixedTakeProfit;
-
-    if (shouldFullExit) {
-      const reason = shouldCrashExit
-        ? `crash-detected (${dropSinceLastCheckPct!.toFixed(1)}% in one check)`
-        : shouldTimeExit
-          ? `time-exit (held ${Math.round(holdSec)}s, max ${config.maxHoldTimeSec}s)`
-          : shouldTrailingExit
-            ? `trailing-stop (${config.trailingStopPct}% off peak)`
-            : shouldStopLoss
-              ? breakevenActive
-                ? "breakeven-stop"
-                : "stop-loss"
-              : "take-profit";
-
-      const pnlSol = Number(position.sizeSol) * (changePct / 100);
-      // guard = took profit on purpose; warn = a fast-out crash exit
-      // (urgent); sell = realized at or below cost.
-      const exitLevel: LogLevel = shouldCrashExit ? "warn" : pnlSol >= 0 ? "guard" : "sell";
+    if (decision.exit) {
+      const { reason, pnlSol, exitLevel } = decision;
 
       if (isDryRun) {
         record(
@@ -317,66 +261,58 @@ async function checkExits(config: SniperConfig): Promise<void> {
     }
 
     // Tiered take-profit ladder — only reached when no full-exit condition
-    // fired above. Walks configured tiers ascending; each untriggered tier
-    // whose atPct has been crossed sells sellPortionPct of the *currently
-    // remaining* size, so a position can ladder through several tiers in
-    // one tick if price gapped past more than one at once.
-    if (config.exitMode === "tiered" && config.takeProfitTiers.length > 0) {
-      const context = (position.context as PositionContext | null) ?? {};
-      const triggeredTiers = context.triggeredTiers ?? [];
-      const sortedTiers = config.takeProfitTiers
-        .map((tier, index) => ({ ...tier, index }))
-        .sort((a, b) => a.atPct - b.atPct);
+    // fired above. evaluateTieredExits returns the whole would-be sequence
+    // computed assuming each prior tier succeeds; if a real sell fails
+    // partway through, we simply stop applying results from that point on.
+    const context = (position.context as PositionContext | null) ?? {};
+    const triggeredTiers = context.triggeredTiers ?? [];
+    const tieredResults = evaluateTieredExits(
+      { entryPrice, sizeSol, triggeredTiers },
+      config,
+      currentPrice
+    );
 
-      let remainingSizeSol = Number(position.sizeSol);
-      let latestPosition = position;
+    let latestPosition = position;
+    let remainingSizeSol = sizeSol;
 
-      for (const tier of sortedTiers) {
-        if (triggeredTiers.includes(tier.index)) continue;
-        if (changePct < tier.atPct) continue;
-        if (remainingSizeSol <= DUST_THRESHOLD_SOL) break;
-
-        const soldSol = remainingSizeSol * (tier.sellPortionPct / 100);
-        const tranchePnl = soldSol * (changePct / 100);
-
-        let signature: string;
-        try {
-          signature = await executeSell(latestPosition, tier.sellPortionPct, isDryRun);
-        } catch (error) {
-          record(
-            "error",
-            `TIER SELL FAILED for ${position.symbol} (${position.token}) tier ${tier.index}: ${error instanceof Error ? error.message : error}`
-          );
-          break;
-        }
-
+    for (const tier of tieredResults) {
+      let signature: string;
+      try {
+        signature = await executeSell(latestPosition, tier.sellPortionPct, isDryRun);
+      } catch (error) {
         record(
-          "guard",
-          `${isDryRun ? "DRY RUN " : ""}tiered take-profit tier ${tier.index} — ${position.symbol} (${position.token}) sold ${tier.sellPortionPct}% of remainder at ${changePct.toFixed(1)}% (pnl ${tranchePnl.toFixed(4)} SOL)`,
-          signature === "dry-run" ? undefined : signature
+          "error",
+          `TIER SELL FAILED for ${position.symbol} (${position.token}) tier ${tier.tierIndex}: ${error instanceof Error ? error.message : error}`
         );
+        break;
+      }
 
-        await recordPartialExit(latestPosition, {
-          soldSol,
-          exitPrice: currentPrice,
-          exitTxSignature: signature,
-          pnlSol: tranchePnl,
-          tierIndex: tier.index,
-        });
-        await recordTradeOutcome(tranchePnl);
+      record(
+        "guard",
+        `${isDryRun ? "DRY RUN " : ""}tiered take-profit tier ${tier.tierIndex} — ${position.symbol} (${position.token}) sold ${tier.sellPortionPct}% of remainder at ${changePct.toFixed(1)}% (pnl ${tier.pnlSol.toFixed(4)} SOL)`,
+        signature === "dry-run" ? undefined : signature
+      );
 
-        triggeredTiers.push(tier.index);
-        remainingSizeSol -= soldSol;
-        latestPosition = {
-          ...latestPosition,
-          sizeSol: String(remainingSizeSol),
-          context: { ...context, triggeredTiers },
-        };
+      await recordPartialExit(latestPosition, {
+        soldSol: tier.soldSol,
+        exitPrice: currentPrice,
+        exitTxSignature: signature,
+        pnlSol: tier.pnlSol,
+        tierIndex: tier.tierIndex,
+      });
+      await recordTradeOutcome(tier.pnlSol);
 
-        if (remainingSizeSol <= DUST_THRESHOLD_SOL) {
-          await markPositionClosed(position.id);
-          break;
-        }
+      triggeredTiers.push(tier.tierIndex);
+      remainingSizeSol -= tier.soldSol;
+      latestPosition = {
+        ...latestPosition,
+        sizeSol: String(remainingSizeSol),
+        context: { ...context, triggeredTiers },
+      };
+
+      if (remainingSizeSol <= DUST_THRESHOLD_SOL) {
+        await markPositionClosed(position.id);
+        break;
       }
     }
   }

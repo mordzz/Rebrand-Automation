@@ -1,33 +1,52 @@
-import { desc, eq } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { desc, eq, isNull } from "drizzle-orm";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { lessons, trades } from "@/lib/db/schema";
 
-/** Agent memory: lessons joined with the trades that taught them. */
-export async function GET() {
+/** Agent memory: lessons joined with the trades that taught them.
+ *
+ * `?wallet=` scopes to one deployed bot's own lessons; omitted means the
+ * house desk. A lesson has no wallet of its own — it inherits one from the
+ * trade that produced it, so the scope is applied on the joined trade. The
+ * join therefore has to become an inner join when scoping: a lesson whose
+ * trade row is missing cannot be attributed to anyone. */
+export async function GET(request: NextRequest) {
   const db = getDb();
   if (!db) {
     return NextResponse.json({ configured: false, data: [] });
   }
 
-  const rows = await db
-    .select({
-      id: lessons.id,
-      cause: lessons.cause,
-      lesson: lessons.lesson,
-      status: lessons.status,
-      suggestedConfig: lessons.suggestedConfig,
-      createdAt: lessons.createdAt,
-      token: trades.token,
-      strategy: trades.strategy,
-      pnlSol: trades.pnlSol,
-      closedAt: trades.closedAt,
-    })
-    .from(lessons)
-    .leftJoin(trades, eq(lessons.tradeId, trades.id))
-    .orderBy(desc(lessons.createdAt))
-    .limit(50);
+  const wallet = request.nextUrl.searchParams.get("wallet");
+
+  const columns = {
+    id: lessons.id,
+    cause: lessons.cause,
+    lesson: lessons.lesson,
+    status: lessons.status,
+    suggestedConfig: lessons.suggestedConfig,
+    createdAt: lessons.createdAt,
+    token: trades.token,
+    strategy: trades.strategy,
+    pnlSol: trades.pnlSol,
+    closedAt: trades.closedAt,
+  };
+
+  const rows = wallet
+    ? await db
+        .select(columns)
+        .from(lessons)
+        .innerJoin(trades, eq(lessons.tradeId, trades.id))
+        .where(eq(trades.walletAddress, wallet))
+        .orderBy(desc(lessons.createdAt))
+        .limit(50)
+    : await db
+        .select(columns)
+        .from(lessons)
+        .leftJoin(trades, eq(lessons.tradeId, trades.id))
+        .where(isNull(trades.walletAddress))
+        .orderBy(desc(lessons.createdAt))
+        .limit(50);
 
   return NextResponse.json({ configured: true, data: rows });
 }

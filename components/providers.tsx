@@ -21,6 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           theme: "light",
           accentColor: "#d97757",
           walletChainType: "solana-only",
+          walletList: ["phantom"],
         },
         externalWallets: {
           solana: { connectors: solanaConnectors },

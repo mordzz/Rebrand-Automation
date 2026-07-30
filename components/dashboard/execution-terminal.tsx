@@ -13,6 +13,9 @@ type LogRow = {
   source: string;
   message: string;
   txSignature: string | null;
+  /** Present on per-bot feeds. Paper fills never broadcast a transaction,
+   * so the token account is the only real thing there is to open. */
+  tokenMint?: string | null;
   createdAt: string;
 };
 
@@ -45,7 +48,13 @@ function formatTime(iso: string): string {
 
 const EMPTY_ROWS: LogRow[] = [];
 
-export function ExecutionTerminal() {
+/** `endpoint` lets a deployed bot's own console reuse this terminal by
+ * pointing at its wallet-scoped feed. Defaults to the house desk. */
+export function ExecutionTerminal({
+  endpoint = "/api/logs",
+}: {
+  endpoint?: string;
+} = {}) {
   const [logsData, setLogsData] = useState<{
     configured: boolean;
     data: LogRow[];
@@ -59,7 +68,7 @@ export function ExecutionTerminal() {
     let disposed = false;
     async function load() {
       try {
-        const res = await fetch("/api/logs");
+        const res = await fetch(endpoint);
         const json = await res.json();
         if (!disposed) setLogsData(json);
       } catch {
@@ -72,7 +81,7 @@ export function ExecutionTerminal() {
       disposed = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [endpoint]);
 
   const rows = logsData?.data ?? EMPTY_ROWS;
 
@@ -145,17 +154,32 @@ export function ExecutionTerminal() {
                 </span>
                 <span className="min-w-0 flex-1 break-words text-[#d8d2c4]">
                   {row.message}
-                  {row.txSignature && row.txSignature !== "dry-run" && (
+                  {row.txSignature && row.txSignature !== "dry-run" ? (
                     <a
                       href={`https://solscan.io/tx/${row.txSignature}`}
                       target="_blank"
                       rel="noreferrer"
+                      title="View transaction"
                       className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
                     >
                       {row.txSignature.slice(0, 8)}…{row.txSignature.slice(-8)}
                       <ExternalLink className="size-3" />
                     </a>
-                  )}
+                  ) : row.tokenMint ? (
+                    /* No signature to show: a paper fill never hit the
+                       chain. The mint is real though, so link that and
+                       label it as the token, not as a transaction. */
+                    <a
+                      href={`https://solscan.io/token/${row.tokenMint}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View token on Solscan"
+                      className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
+                    >
+                      {row.tokenMint.slice(0, 4)}…{row.tokenMint.slice(-4)}
+                      <ExternalLink className="size-3" />
+                    </a>
+                  ) : null}
                 </span>
               </div>
             );

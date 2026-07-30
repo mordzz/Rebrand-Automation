@@ -11,7 +11,8 @@ const TIERS = [
   {
     number: "01",
     name: "Paper",
-    price: "$0",
+    price: "0",
+    unit: "SOL",
     cadence: "free forever",
     blurb: "The full engine in dry-run mode. Watch it trade on paper first.",
     featured: false,
@@ -27,16 +28,17 @@ const TIERS = [
   {
     number: "02",
     name: "Operator",
-    price: "$79",
+    price: "0.5",
+    unit: "SOL",
     cadence: "per month",
-    blurb: "One live agent, trading your wallet within limits you set.",
+    blurb: "One live agent trading your wallet, inside the limits you set.",
     featured: true,
     features: [
       "Everything in Paper",
       "Live execution from your wallet",
       "Hard stops & trailing exits",
       "Lessons tuned to your config",
-      "Kill switch — halt any time",
+      "One-tap kill switch",
     ],
     cta: "Deploy your agent",
   },
@@ -44,6 +46,7 @@ const TIERS = [
     number: "03",
     name: "Desk",
     price: "Custom",
+    unit: null,
     cadence: "billed annually",
     blurb: "Multiple agents in parallel for funds and serious operators.",
     featured: false,
@@ -135,10 +138,23 @@ export function PrismaPricing() {
               >
                 {tier.blurb}
               </p>
-              <p className="mt-7 flex items-baseline gap-2">
+              {/* Fixed row height so every card's divider, feature list and
+                  CTA land on the same line, whatever the price string is. */}
+              <p className="mt-7 flex h-12 items-baseline gap-2 sm:h-14">
                 <span className="text-4xl font-medium tracking-tight sm:text-5xl">
                   {tier.price}
                 </span>
+                {tier.unit && (
+                  <span
+                    className={
+                      tier.featured
+                        ? "text-lg font-medium text-black/60 sm:text-xl"
+                        : "text-lg font-medium text-gray-500 sm:text-xl"
+                    }
+                  >
+                    {tier.unit}
+                  </span>
+                )}
                 <span
                   className={
                     tier.featured ? "text-xs text-black/60" : "text-xs text-gray-500"

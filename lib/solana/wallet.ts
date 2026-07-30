@@ -33,9 +33,16 @@ const SYSTEM_PROGRAM_ADDRESS = address(
   "11111111111111111111111111111111"
 );
 
-/** Shared RPC client for read-only queries elsewhere (e.g. lib/sniper/*). */
-export function getRpc() {
-  return createSolanaRpc(RPC_URL);
+/** Shared RPC client for read-only queries elsewhere (e.g. lib/sniper/*).
+ *
+ * `overrideUrl` lets a deployed bot use its own provider for its own
+ * reads (see userBots.rpcUrl). The point is not raw speed: when the
+ * shared public endpoint rate-limits, readMintAuthorities returns null,
+ * which evaluateSafety treats as "could not verify" and refuses the
+ * token. A private endpoint removes that failure mode, so the effect is
+ * fewer refusals the operator never intended, not faster transactions. */
+export function getRpc(overrideUrl?: string | null) {
+  return createSolanaRpc(overrideUrl?.trim() || RPC_URL);
 }
 
 /**

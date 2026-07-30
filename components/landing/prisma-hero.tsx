@@ -34,7 +34,10 @@ export function PrismaHero() {
         </div>
 
         {/* ─── Bottom-aligned hero content ─── */}
-        <div className="absolute right-0 bottom-0 left-0 px-4 pb-3 sm:px-6 md:px-8 md:pb-5">
+        {/* pb clears the wordmark's descender: leading-[0.85] pulls the line
+            box tighter than the glyphs, so the tail of the "g" would other-
+            wise be clipped by the rounded frame's bottom edge. */}
+        <div className="absolute right-0 bottom-0 left-0 px-4 pb-6 sm:px-6 md:px-8 md:pb-9">
           <div className="grid grid-cols-12 items-end gap-x-4 gap-y-6">
             <div className="col-span-12 md:col-span-8">
               <WordsPullUp
@@ -44,7 +47,9 @@ export function PrismaHero() {
               />
             </div>
 
-            <div className="col-span-12 flex flex-col items-start gap-5 pb-2 md:col-span-4 md:pb-6">
+            {/* Bottom-aligned with the wordmark's baseline, not its descender,
+                so the two columns read as one line rather than stepping. */}
+            <div className="col-span-12 flex flex-col items-start gap-5 md:col-span-4 md:pb-4">
               <motion.p
                 className="text-xs leading-[1.2] text-black/70 sm:text-sm md:text-base"
                 initial={{ opacity: 0, y: 20 }}

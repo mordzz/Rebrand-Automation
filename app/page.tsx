@@ -4,14 +4,15 @@ import type { CSSProperties } from "react";
 import { PrismaAbout } from "@/components/landing/prisma-about";
 import { PrismaFeatures } from "@/components/landing/prisma-features";
 import { PrismaHero } from "@/components/landing/prisma-hero";
+import { PrismaHowItWorks } from "@/components/landing/prisma-how-it-works";
 import { PrismaPricing } from "@/components/landing/prisma-pricing";
 import { PrismaStrategies } from "@/components/landing/prisma-strategies";
 import { SiteFooter } from "@/components/site-footer";
 
 export const metadata: Metadata = {
-  title: "Noah Engine — Autonomous Meme-Coin Trading",
+  title: "Noah Engine · Autonomous Meme-Coin Trading",
   description:
-    "An autonomous AI agent that trades meme coins around the clock — sniping new mints, managing risk, and learning from every loss while you sleep.",
+    "An autonomous AI agent that trades meme coins around the clock: sniping new mints, managing risk, and learning from every loss while you sleep.",
 };
 
 export default function Home() {
@@ -27,6 +28,7 @@ export default function Home() {
       <PrismaAbout />
       <PrismaFeatures />
       <PrismaStrategies />
+      <PrismaHowItWorks />
       <PrismaPricing />
       <SiteFooter />
     </main>

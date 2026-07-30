@@ -2,6 +2,7 @@
 
 import { ArrowRight, Check } from "lucide-react";
 import { motion, useInView } from "motion/react";
+import Link from "next/link";
 import { useRef } from "react";
 
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
@@ -13,6 +14,7 @@ const FEATURE_CARDS = [
     number: "01",
     title: "Mint Sniper.",
     icon: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260405_171918_4a5edc79-d78f-4637-ac8b-53c43c220606.png&w=1280&q=85",
+    href: "/#strategies",
     items: [
       "Watches new mints from block one",
       "Filters rugs and honeypots",
@@ -24,20 +26,24 @@ const FEATURE_CARDS = [
     number: "02",
     title: "Loss Post-Mortems.",
     icon: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260405_171741_ed9845ab-f5b2-4018-8ce7-07cc01823522.png&w=1280&q=85",
+    href: "/dashboard",
     items: [
       "AI analysis of every losing trade",
       "Lessons written to agent memory",
       "Strategy tuned from evidence",
+      "You approve before anything changes",
     ],
   },
   {
     number: "03",
     title: "Guarded Autonomy.",
     icon: "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260405_171809_f56666dc-c099-4778-ad82-9ad4f209567b.png&w=1280&q=85",
+    href: "/deploy",
     items: [
       "Hard stops on every position",
       "Dry-run mode by default",
       "Bound by your risk limits",
+      "Circuit breaker halts losing streaks",
     ],
   },
 ];
@@ -74,7 +80,13 @@ export function PrismaFeatures() {
       <div className="bg-noise pointer-events-none absolute inset-0 opacity-[0.15]" />
 
       <div className="relative mx-auto max-w-7xl">
-        <h2 className="mx-auto max-w-3xl text-center text-xl font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+        {/* Eyebrow + mt-6 heading: the same header rhythm every other
+            landing section uses (about, strategies, how-it-works, pricing). */}
+        <p className="text-primary text-center text-[10px] tracking-widest uppercase sm:text-xs">
+          The engine
+        </p>
+
+        <h2 className="mx-auto mt-6 max-w-3xl text-center text-xl font-normal sm:text-2xl md:text-3xl lg:text-4xl">
           <WordsPullUpMultiStyle
             segments={[
               {
@@ -91,7 +103,7 @@ export function PrismaFeatures() {
 
         <div
           ref={gridRef}
-          className="mt-12 grid grid-cols-1 gap-3 sm:gap-2 md:mt-16 md:grid-cols-2 md:gap-1 lg:h-[480px] lg:grid-cols-4"
+          className="mt-12 grid grid-cols-1 gap-3 sm:gap-2 md:mt-16 md:grid-cols-2 md:gap-1 lg:h-[420px] lg:grid-cols-4"
         >
           {/* ─── Card 1: flickering grid canvas ─── */}
           <motion.div
@@ -157,13 +169,13 @@ export function PrismaFeatures() {
                 ))}
               </motion.ul>
 
-              <a
-                href="#"
+              <Link
+                href={card.href}
                 className="text-primary group mt-auto flex items-center gap-1.5 pt-8 text-xs sm:text-sm"
               >
                 Learn more
                 <ArrowRight className="h-4 w-4 -rotate-45 transition-transform group-hover:rotate-0" />
-              </a>
+              </Link>
             </motion.div>
           ))}
         </div>

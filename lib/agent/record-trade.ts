@@ -5,6 +5,7 @@ import {
 } from "@/lib/agent/analyze-loss";
 import { getDb } from "@/lib/db";
 import { lessons, trades, type Lesson, type Trade } from "@/lib/db/schema";
+import { llmModelId } from "@/lib/agent/llm";
 
 export type RecordTradeResult =
   | {
@@ -84,6 +85,9 @@ export async function recordClosedTrade(
         cause: analysis.cause,
         lesson: analysis.lesson,
         suggestedConfig: analysis.suggestedConfig ?? null,
+        // Recorded, not defaulted: the base model is environment-driven
+        // now, so the column default would misattribute every lesson.
+        model: llmModelId(),
       })
       .returning();
   }

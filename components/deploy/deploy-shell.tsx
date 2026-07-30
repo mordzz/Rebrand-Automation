@@ -1,19 +1,27 @@
 "use client";
 
 import {
+  AlertTriangle,
+  Check,
+  FlaskConical,
   Layers,
   Loader2,
   Pencil,
+  Play,
   Rocket,
+  Square,
   Target,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 
 import type { CharacterMood } from "@/components/dashboard/character-canvas";
+import { AgentMemory } from "@/components/dashboard/agent-memory";
 import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
+import { ExecutionTerminal } from "@/components/dashboard/execution-terminal";
 import { SniperConfigPanel } from "@/components/dashboard/sniper-config-panel";
 import {
   TradeHistoryTable,
@@ -23,7 +31,11 @@ import {
   TradePerformanceChart,
   type TradeRow,
 } from "@/components/dashboard/trade-performance-chart";
+import { AgentWalletPanel } from "@/components/deploy/agent-wallet-panel";
+import { FundingModal } from "@/components/deploy/funding-modal";
+import { GoLiveModal } from "@/components/deploy/go-live-modal";
 import { CharacterAvatar } from "@/components/deploy/character-avatar";
+import { RpcPanel } from "@/components/deploy/rpc-panel";
 import {
   CHARACTER_ROSTER,
   characterTypeForSrc,
@@ -61,6 +73,28 @@ type StatsResponse = {
   winRate30d?: number | null;
   trades30dCount?: number;
   wins30dCount?: number;
+  active?: boolean;
+  tradingMode?: "paper" | "live";
+  tradingPaused?: boolean;
+  pauseReason?: string | null;
+};
+
+type DryRunTokenResult = {
+  token: string;
+  symbol: string;
+  name: string;
+  ageSec: number;
+  passed: boolean;
+  reasons: string[];
+};
+
+type DryRunResponse = {
+  configured: boolean;
+  tokensSeen: number;
+  tokensEvaluated: number;
+  passedCount: number;
+  results: DryRunTokenResult[];
+  error?: string;
 };
 
 /** Live on-chain balance for the connected wallet — a public address
@@ -419,6 +453,173 @@ function BotDesk({
   );
   const historyRows = tradesData?.data ?? [];
 
+  // The paper daemon derives this bot's pause state fresh from its own
+  // trade history (lib/sniper/risk-limits.ts#deriveTradingPause) — a bot
+  // whose opening trades trip the loss-streak limit can never earn the win
+  // that would clear it on its own, since a paused bot can't trade. Reset
+  // clears it manually; the daemon picks the change up on its next roster
+  // refresh (well within the stat panel's own 30s poll).
+  const [resetting, setResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  async function resetBreaker() {
+    setResetting(true);
+    setResetMessage(null);
+    try {
+      const res = await fetch(`/api/my-bot/reset-breaker?${walletQuery}`, { method: "POST" });
+      setResetMessage(
+        res.ok ? "Reset — trading resumes within moments." : "Reset failed, try again.",
+      );
+    } catch {
+      setResetMessage("Reset failed, try again.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  // The operator's own on/off switch (app/api/my-bot/toggle) — a bot is
+  // configured but inactive right after deploying, so nothing trades until
+  // this is switched on. Once active, the standalone paper-daemon process
+  // is what keeps it running, not this browser tab or this web server —
+  // closing /deploy (or the whole browser) has no effect on it.
+  //
+  // statsData only refreshes every 30s (usePolledJson), so without an
+  // optimistic override the Start/Stop button would look unresponsive for
+  // up to half a minute after every click. Cleared during render (React's
+  // documented "adjust state while rendering" pattern, not an effect) the
+  // moment a poll confirms the server agrees, so statsData stays the
+  // single source of truth as soon as it catches up.
+  const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
+  const [lastSeenActive, setLastSeenActive] = useState(statsData?.active);
+  if (statsData?.active !== lastSeenActive) {
+    setLastSeenActive(statsData?.active);
+    if (statsData?.active !== undefined && statsData.active === activeOverride) {
+      setActiveOverride(null);
+    }
+  }
+  const active = activeOverride ?? statsData?.active ?? false;
+
+  const [toggling, setToggling] = useState(false);
+  async function setBotActive(next: boolean) {
+    setToggling(true);
+    setActiveOverride(next);
+    try {
+      await fetch(`/api/my-bot/toggle?${walletQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: next }),
+      });
+    } catch {
+      setActiveOverride(null);
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  /* Paper vs live. Kept apart from Start/Stop deliberately: Start says the
+     bot may trade, this says whether those trades spend real money. */
+  const tradingMode = statsData?.tradingMode ?? "paper";
+
+  /* Funding state, so a live bot that cannot afford a trade says so
+     instead of silently passing on every candidate. */
+  const walletData = usePolledJson<{
+    wallet: {
+      address: string;
+      balanceSol: number | null;
+      requiredSol: number;
+      sizeSol: number;
+      sufficient: boolean | null;
+    } | null;
+  }>(`/api/my-bot/wallet?${walletQuery}`);
+  const [fundingDismissed, setFundingDismissed] = useState(false);
+  /* Raised when a *paper* bot is refused the switch to live for lack of
+     funds. Without it the modal could only ever appear for bots already
+     live, which is the one case the mode gate already prevents. */
+  const [fundingForced, setFundingForced] = useState(false);
+  const agentWallet = walletData?.wallet ?? null;
+  const needsFunding =
+    agentWallet != null &&
+    agentWallet.sufficient === false &&
+    !fundingDismissed &&
+    (tradingMode === "live" || fundingForced);
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeError, setModeError] = useState<string | null>(null);
+  /* Going live asks first, in a modal that shows the actual balance and
+     position size. Going back to paper doesn't — it only ever reduces
+     what the agent can do. */
+  const [goLiveOpen, setGoLiveOpen] = useState(false);
+
+  function requestMode(next: "paper" | "live") {
+    if (next === "live") {
+      setModeError(null);
+      /* Already known to be underfunded: skip the confirmation and go
+         straight to the fix, rather than walking the operator through a
+         consent step the server is about to refuse anyway. */
+      if (agentWallet?.sufficient === false) {
+        setFundingForced(true);
+        setFundingDismissed(false);
+        return;
+      }
+      setGoLiveOpen(true);
+      return;
+    }
+    void setMode("paper");
+  }
+
+  async function setMode(next: "paper" | "live") {
+    setModeBusy(true);
+    setModeError(null);
+    try {
+      const res = await fetch(`/api/my-bot/mode?${walletQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setGoLiveOpen(false);
+      } else {
+        setModeError(json.error ?? "Could not switch mode.");
+        // Underfunded is the one failure with an obvious next action, so
+        // answer it with the funding modal rather than a line of red text.
+        if (json.needsFunding) {
+          // Hand off, don't stack: the funding modal replaces the
+          // confirmation rather than appearing on top of it.
+          setGoLiveOpen(false);
+          setFundingForced(true);
+          setFundingDismissed(false);
+        }
+      }
+    } catch {
+      setModeError("Could not switch mode.");
+    } finally {
+      setModeBusy(false);
+    }
+  }
+
+  // One-shot config test: listens to the real live pump.fun stream for
+  // ~15-25s and grades everything it saw against this bot's own config,
+  // using the exact same check the daemon runs — no position is ever
+  // opened, nothing is written to positions/trades. Distinct from
+  // Start/Stop: this doesn't touch `active` and doesn't need it on.
+  const [dryRunning, setDryRunning] = useState(false);
+  const [dryRunResult, setDryRunResult] = useState<DryRunResponse | null>(null);
+  const [dryRunError, setDryRunError] = useState<string | null>(null);
+  async function runDryRun() {
+    setDryRunning(true);
+    setDryRunError(null);
+    setDryRunResult(null);
+    try {
+      const res = await fetch(`/api/my-bot/dry-run?${walletQuery}`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Dry run failed");
+      setDryRunResult(json);
+    } catch {
+      setDryRunError("Dry run failed, try again.");
+    } finally {
+      setDryRunning(false);
+    }
+  }
+
   const balanceCard: { value: string; hint: string; tone: Tone } =
     balance?.balanceSol != null
       ? {
@@ -530,121 +731,361 @@ function BotDesk({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-      {/* Left — the character panel, avatar top, chat below */}
-      <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:col-span-2">
-        <div className="flex items-center justify-between px-4 py-3">
-          <p className={PANEL_LABEL}>{bot.name} · Your Bot</p>
-          <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
-            <span
-              className={cn(
-                "inline-block size-1.5 rounded-full",
-                mood === "idle" ? "bg-sol-green" : "bg-accent animate-blink",
-              )}
-            />
-            {mood}
-          </span>
-        </div>
-        <div className="relative aspect-[4/3] shrink-0">
-          <CharacterAvatar
-            kind={bot.characterType}
-            src={bot.characterSrc}
-            mood={mood}
-          />
-        </div>
-        <div className="flex h-[24rem] min-h-0 flex-col lg:h-auto lg:flex-1">
-          <ChatPanel messages={messages} onSend={send} thinking={thinking} />
-        </div>
-      </div>
-
-      {/* Right — status + private config */}
-      <div className="flex min-w-0 flex-col gap-5 lg:col-span-3">
-        {/* Wallet status bar + stat cells + performance chart in one flat
-            panel — the dashboard's desk-panel rhythm, for this account. */}
-        <div className="overflow-hidden rounded-2xl bg-card">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <Wallet className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate font-mono text-sm">
-                {shortAddress(address)}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
-                <span className="inline-block size-1.5 animate-blink rounded-full bg-accent" />
-                Paper Mode
-              </span>
-              <Button variant="ghost" size="sm" onClick={onEdit}>
-                <Pencil className="mr-1.5 size-3.5" />
-                Refit
-              </Button>
-            </div>
+    <div className="flex flex-col gap-5">
+      {/* Top: the agent on the left, how it's trading on the right.
+          items-start stops the grid stretching the left column to match
+          the right one — that stretch is what made the chat run the full
+          height of the page. Bounded and sticky, it stays in view while
+          the performance column scrolls past it instead. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:items-start">
+        {/* Left — the character panel, avatar top, chat below */}
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:sticky lg:top-24 lg:col-span-2">
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className={PANEL_LABEL}>{bot.name} · Your Bot</p>
+            <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
+              <span
+                className={cn(
+                  "inline-block size-1.5 rounded-full",
+                  mood === "idle" ? "bg-sol-green" : "bg-accent animate-blink",
+                )}
+              />
+              {mood}
+            </span>
           </div>
+          <div className="relative aspect-[4/3] shrink-0">
+            <CharacterAvatar
+              kind={bot.characterType}
+              src={bot.characterSrc}
+              mood={mood}
+            />
+          </div>
+          <div className="flex h-[22rem] min-h-0 shrink-0 flex-col">
+            <ChatPanel messages={messages} onSend={send} thinking={thinking} />
+          </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-1 p-1 pt-0 xl:grid-cols-4">
-            {stats.map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-xl bg-secondary px-4 py-4"
-              >
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <stat.icon className="size-3.5" />
-                  <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase">
-                    {stat.label}
+        {/* Right — how it's trading: status, sizing, chart, ledger, console */}
+        <div className="flex min-w-0 flex-col gap-5 lg:col-span-3">
+          {/* Wallet status bar + stat cells + performance chart in one flat
+              panel — the dashboard's desk-panel rhythm, for this account. */}
+          <div className="overflow-hidden rounded-2xl bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Wallet className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate font-mono text-sm">
+                  {shortAddress(address)}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
+                  <span className="inline-block size-1.5 rounded-full bg-accent" />
+                  Paper Mode
+                </span>
+                <Button variant="ghost" size="sm" onClick={onEdit}>
+                  <Pencil className="mr-1.5 size-3.5" />
+                  Refit
+                </Button>
+              </div>
+            </div>
+
+            {/* Start/Stop — the master switch. A freshly deployed bot is
+                inactive until this is switched on; once on, the standalone
+                paper-daemon process keeps it running independent of this
+                tab, this browser, or this web server. */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-4 py-3.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className={cn(
+                    "inline-block size-2 shrink-0 rounded-full",
+                    active ? "bg-sol-green animate-blink" : "bg-muted-foreground/40"
+                  )}
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{active ? "Running" : "Stopped"}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {active
+                      ? "Trading continuously on our servers. Closing this tab won't stop it."
+                      : "Not trading right now. Start it and it keeps running even after you leave."}
                   </p>
                 </div>
-                <p
-                  className={cn(
-                    "mt-2.5 text-2xl font-medium tabular-nums",
-                    stat.colorValue &&
-                      stat.tone === "positive" &&
-                      "text-sol-green-ink",
-                    stat.colorValue &&
-                      stat.tone === "negative" &&
-                      "text-destructive",
-                  )}
-                >
-                  {stat.value}
-                </p>
-                <p
-                  className={cn(
-                    "mt-1 text-xs",
-                    stat.tone === "positive" && "text-sol-green-ink",
-                    stat.tone === "negative" && "text-destructive",
-                    stat.tone === "muted" && "text-muted-foreground",
-                  )}
-                >
-                  {stat.hint}
-                </p>
               </div>
-            ))}
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={runDryRun}
+                  disabled={dryRunning}
+                >
+                  {dryRunning ? (
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  ) : (
+                    <FlaskConical className="mr-1.5 size-3.5" />
+                  )}
+                  {dryRunning ? "Testing…" : "Dry Run"}
+                </Button>
+                <Button
+                  variant={active ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => setBotActive(!active)}
+                  disabled={toggling}
+                >
+                  {toggling ? (
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  ) : active ? (
+                    <Square className="mr-1.5 size-3.5" />
+                  ) : (
+                    <Play className="mr-1.5 size-3.5" />
+                  )}
+                  {active ? "Stop" : "Start"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Mode. Live is a separate, deliberate switch — not a side
+              effect of Start. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {tradingMode === "live" ? "Live trading" : "Paper trading"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {tradingMode === "live"
+                  ? "Spending real SOL from the agent wallet. Trades are irreversible."
+                  : "Simulated fills. No real funds move."}
+              </p>
+              {modeError && (
+                <p className="text-destructive mt-1 text-xs">{modeError}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 rounded-full bg-secondary p-1">
+              {(["paper", "live"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={modeBusy}
+                  onClick={() => requestMode(m)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+                    tradingMode === m
+                      ? m === "live"
+                        ? "bg-destructive text-white"
+                        : "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {m === "paper" ? "Paper" : "Live"}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <TradePerformanceChart
-            trades={historyRows}
-            configured={!!tradesData?.configured}
-          />
-        </div>
+          {(dryRunning || dryRunResult || dryRunError) && (
+              <div className="border-t border-white/5 px-4 py-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[0.7rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
+                    Dry run: live config test, nothing opened
+                  </p>
+                  {dryRunResult && (
+                    <span className="text-xs text-muted-foreground">
+                      {dryRunResult.passedCount} of {dryRunResult.tokensEvaluated} would have passed
+                    </span>
+                  )}
+                </div>
 
-        {/* Trade history — same closed-trade ledger as the dashboard */}
-        <div className="overflow-hidden rounded-2xl bg-card">
-          <div className="px-4 py-3">
-            <p className={PANEL_LABEL}>Trade History</p>
-          </div>
-          <div className="overflow-x-auto">
-            <TradeHistoryTable
+                {dryRunning && (
+                  <p className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Watching the live pump.fun stream and grading what comes in: this takes about 20-30 seconds.
+                  </p>
+                )}
+
+                {dryRunError && (
+                  <p className="mt-2.5 text-xs text-destructive">{dryRunError}</p>
+                )}
+
+                {dryRunResult && dryRunResult.tokensEvaluated === 0 && (
+                  <p className="mt-2.5 text-xs text-muted-foreground">
+                    No new tokens came through during the test window — try again in a moment.
+                  </p>
+                )}
+
+                {dryRunResult && dryRunResult.results.length > 0 && (
+                  <ul className="mt-2.5 max-h-64 space-y-1 overflow-y-auto">
+                    {dryRunResult.results.map((r) => (
+                      <li
+                        key={r.token}
+                        className="flex items-start gap-2.5 rounded-lg bg-secondary px-3 py-2"
+                      >
+                        {r.passed ? (
+                          <Check className="mt-0.5 size-3.5 shrink-0 text-sol-green-ink" />
+                        ) : (
+                          <X className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">
+                            ${r.symbol || "?"}
+                            <span className="ml-2 font-normal text-muted-foreground">
+                              {r.ageSec.toFixed(0)}s old
+                            </span>
+                          </p>
+                          {!r.passed && r.reasons.length > 0 && (
+                            <p className="mt-0.5 truncate text-[0.7rem] text-muted-foreground">
+                              {r.reasons.join("; ")}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {statsData?.tradingPaused && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-4 py-2.5 text-xs text-destructive">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                  Circuit breaker tripped: {statsData.pauseReason ?? "trading paused"}
+                </span>
+                <div className="flex items-center gap-2">
+                  {resetMessage && (
+                    <span className="text-[0.7rem] text-muted-foreground">{resetMessage}</span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetBreaker}
+                    disabled={resetting}
+                    className="h-7 px-2.5 text-destructive hover:text-destructive"
+                  >
+                    {resetting ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : null}
+                    Reset breaker
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-1 p-1 pt-0 xl:grid-cols-4">
+              {stats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-xl bg-secondary px-4 py-4"
+                >
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <stat.icon className="size-3.5" />
+                    <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase">
+                      {stat.label}
+                    </p>
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2.5 text-2xl font-medium tabular-nums",
+                      stat.colorValue &&
+                        stat.tone === "positive" &&
+                        "text-sol-green-ink",
+                      stat.colorValue &&
+                        stat.tone === "negative" &&
+                        "text-destructive",
+                    )}
+                  >
+                    {stat.value}
+                  </p>
+                  <p
+                    className={cn(
+                      "mt-1 text-xs",
+                      stat.tone === "positive" && "text-sol-green-ink",
+                      stat.tone === "negative" && "text-destructive",
+                      stat.tone === "muted" && "text-muted-foreground",
+                    )}
+                  >
+                    {stat.hint}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <TradePerformanceChart
               trades={historyRows}
               configured={!!tradesData?.configured}
             />
           </div>
-        </div>
 
-        <SniperConfigPanel
-          endpoint={`/api/my-bot/config?wallet=${encodeURIComponent(address)}`}
-          title={`${bot.name} · Private Tune`}
-          description="Your bot's own rules — seeded from the default configuration, yours to adjust."
-        />
+          {/* Trade history — same closed-trade ledger as the dashboard */}
+          <div className="overflow-hidden rounded-2xl bg-card">
+            <div className="px-4 py-3">
+              <p className={PANEL_LABEL}>Trade History</p>
+            </div>
+            <div className="overflow-x-auto">
+              <TradeHistoryTable
+                trades={historyRows}
+                configured={!!tradesData?.configured}
+              />
+            </div>
+          </div>
+
+          {/* Console lives with performance rather than below: it is the
+              live half of the same story the chart and ledger tell after
+              the fact. Wallet-scoped — the dashboard's terminal reads the
+              same table unfiltered, so `?wallet=` is what keeps them apart. */}
+          <div className="overflow-hidden rounded-2xl bg-card">
+            <div className="px-4 py-3">
+              <p className={PANEL_LABEL}>Console</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Every fill, exit and guard trip, oldest first. Paper trades
+                never broadcast a transaction, so each line links to the
+                token rather than to a signature.
+              </p>
+            </div>
+            {/* Activity, not raw logs: it folds in closed trades that
+                pre-date per-bot logging, so history is visible too. */}
+            <ExecutionTerminal endpoint={`/api/my-bot/activity?${walletQuery}`} />
+          </div>
+        </div>
       </div>
+
+      {/* Full-width below: what the agent has learned, and the rules it
+          runs on. Both want the whole width — the config panel lays its
+          fields out in two columns of its own, and halving it would just
+          make it twice as tall. */}
+      <AgentMemory
+        endpoint={`/api/lessons?${walletQuery}`}
+        emptyHint="No lessons yet — the first losing trade gets a written post-mortem here."
+      />
+
+      <AgentWalletPanel walletQuery={walletQuery} ownerAddress={address} />
+
+      {goLiveOpen && (
+        <GoLiveModal
+          balanceSol={agentWallet?.balanceSol ?? null}
+          sizeSol={agentWallet?.sizeSol ?? null}
+          address={agentWallet?.address ?? null}
+          busy={modeBusy}
+          onConfirm={() => void setMode("live")}
+          onCancel={() => setGoLiveOpen(false)}
+        />
+      )}
+
+      {needsFunding && agentWallet && (
+        <FundingModal
+          address={agentWallet.address}
+          balanceSol={agentWallet.balanceSol ?? 0}
+          requiredSol={agentWallet.requiredSol}
+          onClose={() => {
+            setFundingDismissed(true);
+            setFundingForced(false);
+          }}
+        />
+      )}
+
+      <RpcPanel walletQuery={walletQuery} />
+
+      <SniperConfigPanel
+        endpoint={`/api/my-bot/config?wallet=${encodeURIComponent(address)}`}
+        title={`${bot.name} · Private Tune`}
+        description="Your bot's own rules — seeded from the default configuration, yours to adjust."
+      />
     </div>
   );
 }

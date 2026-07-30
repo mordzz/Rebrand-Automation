@@ -1,33 +1,45 @@
 import {
   boolean,
+  index,
   jsonb,
   numeric,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const trades = pgTable("trades", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  /* null = the house desk (dashboard); set = one deployed bot's own
-     ledger (deploy). Keeps each connected wallet's numbers separate
-     from the shared house desk instead of showing the same data. */
-  walletAddress: text("wallet_address"),
-  token: text("token").notNull(),
-  strategy: text("strategy").notNull(),
-  entryPrice: numeric("entry_price"),
-  exitPrice: numeric("exit_price"),
-  sizeSol: numeric("size_sol"),
-  pnlSol: numeric("pnl_sol").notNull(),
-  openedAt: timestamp("opened_at", { withTimezone: true }),
-  closedAt: timestamp("closed_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  /* Anything the strategy engine knew at close time: hold duration,
-     slippage, liquidity, stop distance, leader wallet, etc. */
-  context: jsonb("context"),
-});
+export const trades = pgTable(
+  "trades",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /* null = the house desk (dashboard); set = one deployed bot's own
+       ledger (deploy). Keeps each connected wallet's numbers separate
+       from the shared house desk instead of showing the same data. */
+    walletAddress: text("wallet_address"),
+    token: text("token").notNull(),
+    strategy: text("strategy").notNull(),
+    entryPrice: numeric("entry_price"),
+    exitPrice: numeric("exit_price"),
+    sizeSol: numeric("size_sol"),
+    pnlSol: numeric("pnl_sol").notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /* Anything the strategy engine knew at close time: hold duration,
+       slippage, liquidity, stop distance, leader wallet, etc. */
+    context: jsonb("context"),
+  },
+  (table) => [
+    // Backs the per-wallet circuit-breaker derivation (recent outcomes,
+    // rolling daily P&L, last-loss lookup) in lib/sniper/wallet-trade-stats.ts
+    // — a repeated per-wallet, time-windowed query pattern nothing indexed
+    // before per-user paper trading existed.
+    index("trades_wallet_closed_idx").on(table.walletAddress, table.closedAt),
+  ]
+);
 
 export const lessons = pgTable("lessons", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -222,22 +234,39 @@ export const modelRequests = pgTable("model_requests", {
  * dashboard's live execution terminal. Currently only the sniper daemon
  * writes here.
  */
-export const logs = pgTable("logs", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  level: text("level").notNull(), // info | buy | sell | guard | warn | error
-  source: text("source").notNull().default("sniper"),
-  message: text("message").notNull(),
-  txSignature: text("tx_signature"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const logs = pgTable(
+  "logs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /* Same null-means-house-desk convention as trades/positions. Without
+       this the dashboard's terminal — which reads the last N rows
+       unfiltered — would show every deployed bot's activity mixed into
+       the house's own feed, which is why the paper daemon wrote nothing
+       here at all before the column existed. */
+    walletAddress: text("wallet_address"),
+    level: text("level").notNull(), // info | buy | sell | guard | warn | error
+    source: text("source").notNull().default("sniper"),
+    message: text("message").notNull(),
+    txSignature: text("tx_signature"),
+    /* Mint the line is about, so the console can link to something real.
+       Paper trades have no transaction to point at — they write the
+       literal "paper" as their signature — but the token itself is a real
+       on-chain account, and that is what an operator actually wants to
+       open when reading back what their bot did. */
+    tokenMint: text("token_mint"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("logs_wallet_created_idx").on(table.walletAddress, table.createdAt)]
+);
 
 /**
  * One row per user-deployed automaton (app/deploy). Keyed by the Privy-
  * connected wallet address. `config` holds a partial SniperConfig that
  * overlays the house defaults (see app/api/my-bot/config). Paper-mode
- * only for now — no daemon executes these yet.
+ * only for now — scripts/paper-daemon.ts executes these; real (live)
+ * execution doesn't exist yet.
  */
 export const userBots = pgTable("user_bots", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -246,6 +275,59 @@ export const userBots = pgTable("user_bots", {
   characterType: text("character_type").notNull(), // 3d | image | gif
   characterSrc: text("character_src"), // null for 3d (built-in canvas)
   config: jsonb("config").notNull().default({}),
+  /* Optional private Solana RPC for this bot's own on-chain reads.
+   *
+   * Deliberately its own column rather than a key inside `config`:
+   * GET /api/my-bot/config returns the whole effective config to the
+   * browser, and provider URLs normally carry the API key in them
+   * (`?api-key=…`). Sitting in that blob it would be handed to anyone who
+   * knows a wallet address, since that endpoint trusts a client-asserted
+   * wallet. Keeping it separate means leaking it has to be a deliberate
+   * act rather than an accident — app/api/my-bot/rpc only ever returns a
+   * masked form, and nothing else selects this column. */
+  rpcUrl: text("rpc_url"),
+  /* This agent's own trading wallet, generated at deploy.
+   *
+   * Separate from walletAddress above: that one is the operator's Phantom
+   * wallet, used only to identify who owns this bot, and its keys are
+   * never requested or held. This one is a fresh keypair the agent signs
+   * with, so it can trade without the operator present. Only what the
+   * operator chooses to deposit here is ever at risk.
+   *
+   * The secret is stored AES-256-GCM encrypted under a key that lives in
+   * the environment, never in this table — a database dump on its own
+   * must not be enough to drain these wallets. See
+   * lib/solana/agent-wallet.ts. No API ever returns this column. */
+  agentPublicKey: text("agent_public_key"),
+  agentSecretEnc: text("agent_secret_enc"),
+  /* "paper" | "live". Defaults to paper and stays there until the operator
+   * turns it on deliberately — Design Principle 3 in the whitepaper: every
+   * agent begins in dry-run, and going live is a separate decision, not a
+   * side effect of pressing Start. `active` says whether the bot trades at
+   * all; this says whether those trades spend real money. */
+  tradingMode: text("trading_mode").notNull().default("paper"),
+  /* User-controlled master switch — independent of the circuit breaker
+   * below. Deploying (naming + picking a character) only configures a
+   * bot; it starts inactive until the operator explicitly starts it from
+   * /deploy. Gates new position entries only in scripts/paper-daemon.ts —
+   * an already-open position keeps being watched and exited by its own
+   * rules even after the bot is stopped, same "pause new entries, never
+   * abandon existing risk" posture the circuit breaker itself uses.
+   * Once true, the standalone paper-daemon process (not this web server,
+   * not the browser) is what keeps trading it — closing /deploy or the
+   * whole browser has no effect on it. */
+  active: boolean("active").notNull().default(false),
+  /* The per-wallet circuit breaker (lib/sniper/risk-limits.ts#deriveTradingPause)
+   * is re-derived fresh from this wallet's own trades on every check — there
+   * is no persisted `tradingPaused` flag to flip, unlike the house's
+   * sniper_state singleton. That's deliberate (self-healing, no admin
+   * surface needed) but it also means a bot whose very first trades are
+   * losses can trip the limit and then never trade again to earn the win
+   * that would clear it. This timestamp is the escape hatch: when set,
+   * pause derivation only looks at trades closed after it, so a manual
+   * reset (POST /api/my-bot/reset-breaker) unsticks the bot immediately
+   * without touching trade history or requiring a persisted pause flag. */
+  breakerResetAt: timestamp("breaker_reset_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -253,6 +335,85 @@ export const userBots = pgTable("user_bots", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * UNUSED — nothing reads or writes this table any more.
+ *
+ * It held the /atelier chat as one shared, durable thread per agent. That
+ * was the wrong shape: /atelier has no visitor login, so a single thread
+ * meant every visitor read and appended to the same transcript, each
+ * person seeing the last person's questions. The chat is now ephemeral
+ * per browser tab (app/api/atelier/chat is stateless; the modal holds the
+ * conversation in component state and discards it on close).
+ *
+ * What an agent actually remembers is unaffected and lives elsewhere: its
+ * post-mortems in `lessons` and its record in `trades`/`positions`. That
+ * is what grounds its replies and gives it an identity.
+ *
+ * Kept, not dropped, so existing rows aren't destroyed by a schema push.
+ * Safe to remove along with its rows once you no longer want them.
+ */
+export const agentChatMessages = pgTable(
+  "agent_chat_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => userBots.id, { onDelete: "cascade" }),
+    role: text("role").notNull(), // user | assistant
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("agent_chat_messages_bot_created_idx").on(table.botId, table.createdAt),
+  ]
+);
+
+/**
+ * A fresh pump.fun mint that passed the house's own Sniper entry criteria
+ * (lib/sniper/safety-checks.ts#evaluateSafety against the house base
+ * config) — populated by scripts/paper-daemon.ts, which already fetches
+ * the shared per-token safety data for its per-user evaluation loop and
+ * reuses it here rather than re-fetching. Chain-wide, not wallet-scoped —
+ * this is a discovery feed (the "Alpha" page), not a per-bot ledger.
+ */
+export const alphaCandidates = pgTable(
+  "alpha_candidates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    token: text("token").notNull().unique(), // mint address
+    symbol: text("symbol"),
+    name: text("name"),
+    /* Normalized ticker (see lib/sniper/alpha-candidates.ts#symbolKeyFor),
+       UNIQUE so the first mint to claim a ticker keeps it and every later
+       copy is rejected by the database rather than by application logic.
+       pump.fun tickers are permissionless and duplicate launches are the
+       dominant spam pattern here: measured live, 756 recorded candidates
+       collapsed to 258 distinct tickers, and campaigns re-used one ticker
+       under several different names to evade a name-based filter. Nullable
+       on purpose — Postgres allows many NULLs under a unique index, so
+       tokens with no ticker never collide with each other. */
+    symbolKey: text("symbol_key"),
+    ageSec: numeric("age_sec").notNull(), // age at the moment it was evaluated
+    creatorBuyPct: numeric("creator_buy_pct"),
+    mintAuthorityRenounced: boolean("mint_authority_renounced"),
+    freezeAuthorityRenounced: boolean("freeze_authority_renounced"),
+    hasSocialLink: boolean("has_social_link"),
+    /** Full SafetyCheckResult (lib/sniper/safety-checks.ts) — metadata,
+     * reasons, alpha-wallet fields — kept as-is for the UI to render
+     * without duplicating columns for every field. */
+    safety: jsonb("safety").notNull(),
+    detectedAt: timestamp("detected_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("alpha_candidates_detected_idx").on(table.detectedAt),
+    uniqueIndex("alpha_candidates_symbol_key_idx").on(table.symbolKey),
+  ]
+);
 
 export type Trade = typeof trades.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
@@ -263,3 +424,5 @@ export type SniperConfigHistory = typeof sniperConfigHistory.$inferSelect;
 export type ModelRequest = typeof modelRequests.$inferSelect;
 export type LogEntry = typeof logs.$inferSelect;
 export type UserBot = typeof userBots.$inferSelect;
+export type AlphaCandidate = typeof alphaCandidates.$inferSelect;
+export type AgentChatMessageRow = typeof agentChatMessages.$inferSelect;

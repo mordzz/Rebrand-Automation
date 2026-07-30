@@ -16,10 +16,16 @@ export function ChatPanel({
   messages,
   onSend,
   thinking,
+  title = "The Concierge",
+  subtitle = "Ask about your balance, positions, or strategies.",
+  placeholder = "Ask the concierge…",
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
   thinking: boolean;
+  title?: string;
+  subtitle?: string;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,11 +48,9 @@ export function ChatPanel({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-4 py-3">
         <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-          The Concierge
+          {title}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Ask about your balance, positions, or strategies.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -84,7 +88,7 @@ export function ChatPanel({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Ask the concierge…"
+          placeholder={placeholder}
           className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
         />
         <Button

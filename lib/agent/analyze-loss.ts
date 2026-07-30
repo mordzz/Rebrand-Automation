@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { llmJson } from "@/lib/agent/llm";
 
 /**
  * The only SniperConfig keys a post-mortem is allowed to propose changing —
@@ -104,15 +104,16 @@ Be specific and quantitative where the data allows it (use the actual hold time,
 Additionally, if this loss's specific cause maps cleanly onto one of the config fields you're given, propose the exact change as suggestedConfig — a human reviews and approves every suggestion before it's applied, so err toward proposing a change whenever you have real evidence for one rather than leaving it null out of caution. Only return null when the loss was genuinely not addressable by these knobs (e.g. an instant rug that no timing or stop distance could have caught).`;
 
 /**
- * Ask Claude to diagnose a losing trade and produce a reusable rule.
- * Throws if the API is not configured or the call fails; callers decide
- * how to degrade.
+ * Ask the configured base model (see lib/agent/llm.ts — OpenRouter unless
+ * the environment says otherwise) to diagnose a losing trade and produce a
+ * reusable rule. Throws if no provider is configured, the call fails, or
+ * the reply contains no usable JSON; callers decide how to degrade. A
+ * thrown error must never become a fabricated lesson — a wrong post-mortem
+ * would teach the fleet the wrong rule.
  */
 export async function analyzeLoss(
   trade: ClosedTradeInput
 ): Promise<LossAnalysis> {
-  const client = new Anthropic();
-
   const holdMinutes =
     trade.openedAt && trade.closedAt
       ? Math.round(
@@ -135,33 +136,11 @@ export async function analyzeLoss(
     additional_context: trade.context ?? null,
   };
 
-  const response = await client.messages.create({
-    model: "claude-opus-4-8",
-    max_tokens: 4000,
-    thinking: { type: "adaptive" },
+  return llmJson<LossAnalysis>({
     system: SYSTEM_PROMPT,
-    output_config: {
-      format: {
-        type: "json_schema",
-        schema: ANALYSIS_SCHEMA,
-      },
-    },
-    messages: [
-      {
-        role: "user",
-        content: `Post-mortem this losing trade:\n\n${JSON.stringify(record, null, 2)}`,
-      },
-    ],
+    user: `Post-mortem this losing trade:\n\n${JSON.stringify(record, null, 2)}`,
+    schema: ANALYSIS_SCHEMA,
+    schemaName: "loss_analysis",
+    maxTokens: 4000,
   });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error("Analysis was refused by the model");
-  }
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No analysis text in model response");
-  }
-
-  return JSON.parse(textBlock.text) as LossAnalysis;
 }

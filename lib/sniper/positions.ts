@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
@@ -14,6 +14,9 @@ export type OpenPositionInput = {
   stopLossPct: number;
   entryTxSignature: string;
   context?: Record<string, unknown>;
+  /** null (default) = the house desk; set = one deployed bot's own ledger.
+   * Same convention as trades.walletAddress (see app/api/positions/route.ts). */
+  walletAddress?: string | null;
 };
 
 /**
@@ -41,6 +44,7 @@ export async function openPosition(
       stopLossPct: String(input.stopLossPct),
       entryTxSignature: input.entryTxSignature,
       context: input.context ?? null,
+      walletAddress: input.walletAddress ?? null,
     })
     .returning();
   return row;
@@ -55,10 +59,27 @@ export async function markPositionClosed(id: string): Promise<void> {
   await db.update(positions).set({ status: "closed" }).where(eq(positions.id, id));
 }
 
-export async function getOpenPositions(): Promise<Position[]> {
+/** `walletAddress` null (default) scopes to the house desk; set scopes to
+ * one deployed bot's own open positions — same null-means-house convention
+ * as app/api/positions/route.ts. Callers must always pass the same wallet
+ * scope they intend to manage: mixing house and per-user positions in one
+ * loop would let one daemon close another's positions out from under it. */
+export async function getOpenPositions(
+  walletAddress: string | null = null
+): Promise<Position[]> {
   const db = getDb();
   if (!db) return [];
-  return db.select().from(positions).where(eq(positions.status, "open"));
+  return db
+    .select()
+    .from(positions)
+    .where(
+      and(
+        eq(positions.status, "open"),
+        walletAddress
+          ? eq(positions.walletAddress, walletAddress)
+          : isNull(positions.walletAddress)
+      )
+    );
 }
 
 /** Bookkeeping only — used by the exit loop between TP/SL evaluations.
@@ -105,22 +126,25 @@ export async function recordPartialExit(
   const db = getDb();
   if (!db) return;
 
-  await recordClosedTrade({
-    token: position.symbol ?? position.token,
-    strategy: position.strategy,
-    entryPrice: Number(position.entryPrice),
-    exitPrice: exit.exitPrice,
-    sizeSol: exit.soldSol,
-    pnlSol: exit.pnlSol,
-    openedAt: position.openedAt.toISOString(),
-    closedAt: new Date().toISOString(),
-    context: {
-      ...((position.context as Record<string, unknown>) ?? {}),
-      mint: position.token,
-      exitTxSignature: exit.exitTxSignature,
-      exitReason: `tiered-take-profit-tier-${exit.tierIndex}`,
+  await recordClosedTrade(
+    {
+      token: position.symbol ?? position.token,
+      strategy: position.strategy,
+      entryPrice: Number(position.entryPrice),
+      exitPrice: exit.exitPrice,
+      sizeSol: exit.soldSol,
+      pnlSol: exit.pnlSol,
+      openedAt: position.openedAt.toISOString(),
+      closedAt: new Date().toISOString(),
+      context: {
+        ...((position.context as Record<string, unknown>) ?? {}),
+        mint: position.token,
+        exitTxSignature: exit.exitTxSignature,
+        exitReason: `tiered-take-profit-tier-${exit.tierIndex}`,
+      },
     },
-  });
+    position.walletAddress
+  );
 
   const context = (position.context as Record<string, unknown>) ?? {};
   const triggeredTiers = Array.isArray(context.triggeredTiers)
@@ -154,24 +178,27 @@ export async function closePosition(
   const db = getDb();
   if (!db) return;
 
-  await recordClosedTrade({
-    // Prefer the human-readable ticker over the raw mint address — trades
-    // is the table the dashboard's History tab reads from directly.
-    token: position.symbol ?? position.token,
-    strategy: position.strategy,
-    entryPrice: Number(position.entryPrice),
-    exitPrice: exit.exitPrice,
-    sizeSol: Number(position.sizeSol),
-    pnlSol: exit.pnlSol,
-    openedAt: position.openedAt.toISOString(),
-    closedAt: new Date().toISOString(),
-    context: {
-      ...((position.context as Record<string, unknown>) ?? {}),
-      mint: position.token,
-      exitTxSignature: exit.exitTxSignature,
-      exitReason: exit.reason,
+  await recordClosedTrade(
+    {
+      // Prefer the human-readable ticker over the raw mint address — trades
+      // is the table the dashboard's History tab reads from directly.
+      token: position.symbol ?? position.token,
+      strategy: position.strategy,
+      entryPrice: Number(position.entryPrice),
+      exitPrice: exit.exitPrice,
+      sizeSol: Number(position.sizeSol),
+      pnlSol: exit.pnlSol,
+      openedAt: position.openedAt.toISOString(),
+      closedAt: new Date().toISOString(),
+      context: {
+        ...((position.context as Record<string, unknown>) ?? {}),
+        mint: position.token,
+        exitTxSignature: exit.exitTxSignature,
+        exitReason: exit.reason,
+      },
     },
-  });
+    position.walletAddress
+  );
 
   await db
     .update(positions)

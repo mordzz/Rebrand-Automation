@@ -2,7 +2,10 @@ import { and, eq, gte, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { positions, trades } from "@/lib/db/schema";
+import { positions, trades, userBots } from "@/lib/db/schema";
+import { getEffectiveConfig } from "@/lib/sniper/effective-config";
+import { deriveTradingPause } from "@/lib/sniper/risk-limits";
+import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 
 // Stats are derived from live position/trade rows — never cache this route.
 export const dynamic = "force-dynamic";
@@ -29,7 +32,7 @@ export async function GET(request: NextRequest) {
   const since24h = new Date(Date.now() - DAY_MS);
   const since30d = new Date(Date.now() - 30 * DAY_MS);
 
-  const [openPositions, trades24h, trades30d] = await Promise.all([
+  const [openPositions, trades24h, trades30d, bot] = await Promise.all([
     db
       .select()
       .from(positions)
@@ -42,7 +45,26 @@ export async function GET(request: NextRequest) {
       .select()
       .from(trades)
       .where(and(gte(trades.closedAt, since30d), tradesWalletFilter)),
+    wallet
+      ? db.select().from(userBots).where(eq(userBots.walletAddress, wallet)).limit(1).then((r) => r[0] ?? null)
+      : Promise.resolve(null),
   ]);
+
+  // Per-wallet circuit breaker — re-derived fresh, not persisted, so a
+  // deployed bot's /deploy page can show *why* it stopped trading rather
+  // than just going quiet. House-desk requests (no `wallet`) skip this;
+  // that status is shown separately via the dashboard's own sniper_state.
+  let breaker: { tradingPaused: boolean; pauseReason: string | null } | null = null;
+  if (wallet && bot) {
+    const config = await getEffectiveConfig(bot);
+    const [recentOutcomes, dailyPnlSol, lastLossAt] = await Promise.all([
+      getRecentOutcomes(wallet, 50, bot.breakerResetAt),
+      getDailyPnlSol(wallet, bot.breakerResetAt),
+      getLastLossAt(wallet, bot.breakerResetAt),
+    ]);
+    const derived = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+    breaker = { tradingPaused: derived.tradingPaused, pauseReason: derived.pauseReason };
+  }
 
   const openPositionsInProfit = openPositions.filter((p) => {
     if (p.lastPrice == null) return false;
@@ -63,5 +85,12 @@ export async function GET(request: NextRequest) {
     winRate30d,
     trades30dCount: trades30d.length,
     wins30dCount: wins30d,
+    // The operator's own on/off switch (app/api/my-bot/toggle), separate
+    // from tradingPaused below (the safety circuit breaker) — house-desk
+    // requests (no `wallet`) have no such switch, so this is always true.
+    active: wallet ? (bot?.active ?? false) : true,
+    tradingMode: wallet ? (bot?.tradingMode ?? "paper") : "live",
+    tradingPaused: breaker?.tradingPaused ?? false,
+    pauseReason: breaker?.pauseReason ?? null,
   });
 }
