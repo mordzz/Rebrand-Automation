@@ -5,46 +5,46 @@ import { useRef } from "react";
 
 import { WordsPullUpMultiStyle } from "./words-pull-up";
 
-const STRATEGIES = [
+/** Whitepaper §10. Three instincts, not four: the confirmation-based second
+ * entry ("The Wake") was removed rather than deferred, and the note below
+ * the grid says so instead of quietly dropping it from the list. */
+const INSTINCTS = [
   {
     number: "01",
     name: "The Raven",
-    ships: "Ships dry-run",
-    tagline: "First-block entries on fresh mints.",
+    role: "Generates",
+    tagline: "The only instinct that opens a position.",
     description:
-      "Watches the pump.fun mint stream from block one and filters hard on creator history, liquidity shape, and holder spread before committing a lamport. Sized entries in milliseconds, tiered targets, and a hard stop set before the trade exists.",
+      "Acts on Tier 0 and Tier 1 verdicts, because nothing slower completes inside the window a fresh mint gives you. It cannot size itself: what it may risk is decided elsewhere, and it has no authority to argue.",
   },
   {
     number: "02",
-    name: "The Wake",
-    ships: "Ships dry-run",
-    tagline: "Follows confirmed momentum, never the rumor.",
+    name: "The Ark",
+    role: "Constrains",
+    tagline: "Guards every position the fleet holds.",
     description:
-      "Ignores the frantic first minutes and stalks tokens that survive them. Enters behind accelerating volume and holder growth, rides with a trailing stop that only ever tightens, giving up the bottom tick to avoid catching knives.",
+      "Opens nothing. Arms breakeven once a position is meaningfully green, tightens exits as momentum decays, and exits on stall, drawdown, or crash. Exits are rule-based and best-effort, because there are no stop orders on an AMM.",
   },
   {
     number: "03",
-    name: "The Ark",
-    ships: "Always on",
-    tagline: "Guards every position the engine holds.",
-    description:
-      "Never opens a trade; it watches all of them. Arms breakeven once a position is meaningfully green, tightens exits when momentum decays, and cuts without ceremony on stall or drawdown. Every other strategy answers to it.",
-  },
-  {
-    number: "04",
     name: "The Tide",
-    ships: "Always on",
-    tagline: "Discipline on a schedule, not a mood.",
+    role: "Constrains",
+    tagline: "Session authority. When it calls the day, the day is over.",
     description:
-      "Runs the engine's rhythm: position sizing against the risk budget, daily loss limits that halt the session, and the cadence that turns loss post-mortems into applied config changes. When it calls the day, the day is over.",
+      "Sizing against the risk budget, enforcement of every operator limit, the daily loss limit that ends a session, and the cadence that turns post-mortems into configuration changes you review before they apply.",
   },
 ];
 
-const RULES = [
-  "Every position carries a hard stop.",
-  "Ships in dry-run; going live is your call.",
-  "Every loss gets a written post-mortem.",
-  "Your keys stay yours, always.",
+/** Whitepaper §5, verbatim in intent. Each one is a claim the rest of the
+ * document has to keep, which is why they are stated as rules and not as
+ * benefits. */
+const PRINCIPLES = [
+  "Refuse by default.",
+  "Rules before positions.",
+  "Paper first.",
+  "Operator limits are hard limits.",
+  "Rank survival, never profit.",
+  "No model in the trade path.",
 ];
 
 const CARD_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -60,18 +60,18 @@ export function PrismaStrategies() {
     >
       <div className="mx-auto max-w-7xl">
         <p className="text-primary text-center text-[10px] tracking-widest uppercase sm:text-xs">
-          The playbook
+          The instincts
         </p>
 
         <h2 className="mx-auto mt-6 max-w-3xl text-center text-xl font-normal sm:text-2xl md:text-3xl lg:text-4xl">
           <WordsPullUpMultiStyle
             segments={[
               {
-                text: "Four strategies, one discipline.",
+                text: "One generates. Two constrain.",
                 className: "text-primary",
               },
               {
-                text: "Risk-guarded. Post-mortem-driven. Always learning.",
+                text: "In every conflict, the constraining instincts win by pipeline ordering, not by policy.",
                 className: "text-gray-500",
               },
             ]}
@@ -80,11 +80,11 @@ export function PrismaStrategies() {
 
         <div
           ref={gridRef}
-          className="mt-12 grid grid-cols-1 gap-3 sm:gap-2 md:mt-16 md:grid-cols-2 md:gap-1 lg:grid-cols-4"
+          className="mt-12 grid grid-cols-1 gap-3 sm:gap-2 md:mt-16 md:grid-cols-3 md:gap-1"
         >
-          {STRATEGIES.map((strategy, i) => (
+          {INSTINCTS.map((instinct, i) => (
             <motion.div
-              key={strategy.number}
+              key={instinct.number}
               className="flex flex-col rounded-2xl bg-[#212121] p-6"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={
@@ -93,36 +93,60 @@ export function PrismaStrategies() {
               transition={{ delay: i * 0.15, duration: 0.7, ease: CARD_EASE }}
             >
               <div className="flex items-baseline justify-between gap-3">
-                <span className="font-instrument text-2xl italic text-primary/50">
-                  {strategy.number}
+                <span className="font-instrument text-primary/50 text-2xl italic">
+                  {instinct.number}
                 </span>
                 <span className="text-[9px] tracking-widest text-gray-500 uppercase">
-                  {strategy.ships}
+                  {instinct.role}
                 </span>
               </div>
 
               <h3 className="text-primary mt-4 text-lg font-medium">
-                {strategy.name}
+                {instinct.name}
                 <span className="text-gray-500">.</span>
               </h3>
               <p className="font-instrument mt-1 text-sm italic text-gray-400">
-                {strategy.tagline}
+                {instinct.tagline}
               </p>
 
               <p className="mt-4 text-xs leading-relaxed text-gray-400 sm:text-sm">
-                {strategy.description}
+                {instinct.description}
               </p>
             </motion.div>
           ))}
         </div>
 
-        <div className="mx-auto mt-10 flex max-w-4xl flex-wrap items-start justify-center gap-x-8 gap-y-3">
-          {RULES.map((rule, i) => (
-            <p key={rule} className="flex items-baseline gap-2 text-xs text-gray-500">
+        <motion.div
+          className="mx-auto mt-3 max-w-4xl rounded-2xl bg-[#141414] p-6 ring-1 ring-white/5"
+          initial={{ opacity: 0 }}
+          animate={inView ? { opacity: 1 } : { opacity: 0 }}
+          transition={{ delay: 0.5, duration: 0.7, ease: CARD_EASE }}
+        >
+          <p className="text-[10px] tracking-widest text-gray-500 uppercase">
+            On the instinct that used to be here
+          </p>
+          <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
+            Earlier versions listed a fourth instinct: a slower,
+            confirmation-based entry allowed a larger position because it acted
+            on more complete information. It has been removed rather than
+            deferred. It depended on Tier 2 arriving before entry, which the
+            latency budget does not allow. A second way to buy also doubles the
+            surface to validate while the first one still has no live track
+            record. A platform whose thesis is restraint should not ship two
+            entries before it can show one works.
+          </p>
+        </motion.div>
+
+        <div className="mx-auto mt-10 flex max-w-5xl flex-wrap items-start justify-center gap-x-8 gap-y-3">
+          {PRINCIPLES.map((principle, i) => (
+            <p
+              key={principle}
+              className="flex items-baseline gap-2 text-xs text-gray-500"
+            >
               <span className="font-instrument text-primary/60 italic">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              {rule}
+              {principle}
             </p>
           ))}
         </div>

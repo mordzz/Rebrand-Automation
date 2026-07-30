@@ -1,0 +1,31 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Noah Engine</title>
+  <!-- The same mark as components/logo.tsx, kept geometrically identical so
+       the tab icon, the navbar pill, the footer and the hero lockup are one
+       logo. Cream on black rather than currentColor: a favicon has no
+       inherited colour, and browser chrome is light as often as it is dark.
+       The mark is inset to 0.82 so its arms do not touch the tile edge at
+       16px. -->
+  <rect width="64" height="64" rx="14" fill="#000000" />
+  <g transform="translate(32 32) scale(0.82) translate(-32 -32)" fill="#DEDBC8">
+    <circle cx="32" cy="32" r="5" />
+    <rect x="28.5" y="6" width="7" height="19.5" rx="3.5" />
+    <rect x="28.5" y="6" width="7" height="19.5" rx="3.5" transform="rotate(120 32 32)" />
+    <rect x="28.5" y="6" width="7" height="19.5" rx="3.5" transform="rotate(240 32 32)" />
+    <g transform="rotate(60 32 32)">
+      <rect x="30" y="6" width="4" height="4" rx="1" />
+      <rect x="29.25" y="11.5" width="5.5" height="5.5" rx="1.5" />
+      <rect x="28.5" y="18.5" width="7" height="7" rx="2" />
+    </g>
+    <g transform="rotate(180 32 32)">
+      <rect x="30" y="6" width="4" height="4" rx="1" />
+      <rect x="29.25" y="11.5" width="5.5" height="5.5" rx="1.5" />
+      <rect x="28.5" y="18.5" width="7" height="7" rx="2" />
+    </g>
+    <g transform="rotate(300 32 32)">
+      <rect x="30" y="6" width="4" height="4" rx="1" />
+      <rect x="29.25" y="11.5" width="5.5" height="5.5" rx="1.5" />
+      <rect x="28.5" y="18.5" width="7" height="7" rx="2" />
+    </g>
+  </g>
+</svg>

@@ -15,8 +15,8 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 type NavLink = { href: string; label: string; icon?: LucideIcon };
 
 const NAV_LINKS: NavLink[] = [
-  { href: "/#about", label: "Our story" },
-  { href: "/#strategies", label: "Autonomous" },
+  { href: "/#about", label: "Why Noah" },
+  { href: "/#manifest", label: "The Manifest" },
   { href: "/alpha", label: "Alpha" },
   { href: "/whitepaper", label: "Whitepaper" },
   { href: "/#pricing", label: "Pricing" },
@@ -30,7 +30,7 @@ const AGENT_LINKS: NavLink[] = [
 
 const MOBILE_LINKS = [NAV_LINKS[0], ...AGENT_LINKS, ...NAV_LINKS.slice(1)];
 
-/** The one navbar — the same black pill everywhere, hero included, so
+/** The one navbar: the same black pill everywhere, hero included, so
  * every page reads identically. Keep all nav changes here so every page
  * stays in step.
  *

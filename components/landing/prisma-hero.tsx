@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 
+import { Logo } from "@/components/logo";
 import { NavPill } from "@/components/nav-pill";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
@@ -40,6 +41,21 @@ export function PrismaHero() {
         <div className="absolute right-0 bottom-0 left-0 px-4 pb-6 sm:px-6 md:px-8 md:pb-9">
           <div className="grid grid-cols-12 items-end gap-x-4 gap-y-6">
             <div className="col-span-12 md:col-span-8">
+              {/* The same mark the navbar and footer carry, so the brand
+                  reads as one lockup rather than two treatments. The pill
+                  above shows mark + wordmark inside this very frame. Sized
+                  in vw off the wordmark's own scale so the pair stays
+                  proportional at every breakpoint, and it rises with the
+                  wordmark rather than ahead of it. */}
+              <motion.div
+                className="mb-3 md:mb-5"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.7, ease: EASE }}
+              >
+                <Logo className="w-[11vw] text-black sm:w-[10vw] md:w-[8vw] lg:w-[7.5vw] xl:w-[7vw]" />
+              </motion.div>
+
               <WordsPullUp
                 text="Noah Engine"
                 showAsterisk
@@ -50,30 +66,57 @@ export function PrismaHero() {
             {/* Bottom-aligned with the wordmark's baseline, not its descender,
                 so the two columns read as one line rather than stepping. */}
             <div className="col-span-12 flex flex-col items-start gap-5 md:col-span-4 md:pb-4">
+              {/* Copy tracks the whitepaper §1 abstract. It deliberately
+                  does not say "never makes the same mistake twice"; see
+                  Appendix D.17; losses are analysed, and recurring causes
+                  become changes the operator reviews. */}
               <motion.p
                 className="text-xs leading-[1.2] text-black/70 sm:text-sm md:text-base"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.8, ease: EASE }}
               >
-                Noah Engine is an autonomous AI agent that trades meme coins
-                around the clock, reading live on-chain signals, sniping new
-                mints, managing risk, and learning from every loss so it
-                never makes the same mistake twice.
+                A public fleet of autonomous trading agents on Solana. Each
+                one reads the mint stream, refuses almost everything it sees,
+                sizes the few survivors against a fixed risk budget, and
+                writes down why when it loses.
               </motion.p>
 
-              <MotionLink
-                href="/deploy"
-                className="group flex items-center gap-2 rounded-full bg-black py-1.5 pr-1.5 pl-5 text-sm font-medium text-[#E1E0CC] transition-all hover:gap-3 sm:text-base"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7, duration: 0.8, ease: EASE }}
+              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                <MotionLink
+                  href="/deploy"
+                  className="group flex items-center gap-2 rounded-full bg-black py-1.5 pr-1.5 pl-5 text-sm font-medium text-[#E1E0CC] transition-all hover:gap-3 sm:text-base"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7, duration: 0.8, ease: EASE }}
+                >
+                  Deploy Agent
+                  <span className="bg-primary flex h-9 w-9 items-center justify-center rounded-full text-black transition-transform group-hover:scale-110 sm:h-10 sm:w-10">
+                    <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </span>
+                </MotionLink>
+
+                <MotionLink
+                  href="/whitepaper"
+                  className="text-sm text-black/60 underline decoration-black/25 underline-offset-4 transition-colors hover:text-black"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8, duration: 0.8, ease: EASE }}
+                >
+                  Read the whitepaper
+                </MotionLink>
+              </div>
+
+              <motion.p
+                className="text-[10px] leading-[1.4] text-black/45 sm:text-[11px]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1, duration: 0.8, ease: EASE }}
               >
-                Start the engine
-                <span className="bg-primary flex h-9 w-9 items-center justify-center rounded-full text-black transition-transform group-hover:scale-110 sm:h-10 sm:w-10">
-                  <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                </span>
-              </MotionLink>
+                Every agent ships in paper mode. No performance claims, no
+                leaderboard, no token. Memecoin trading can lose everything
+                you put in.
+              </motion.p>
             </div>
           </div>
         </div>

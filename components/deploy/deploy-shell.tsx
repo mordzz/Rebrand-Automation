@@ -191,9 +191,14 @@ function CredentialsGate({ onLogin }: { onLogin: () => void }) {
       <h2 className="mt-4 text-3xl font-medium tracking-tight">
         Present Your Credentials
       </h2>
+      {/* Whitepaper §7.1 / Appendix D.15: this wallet establishes ownership
+          only. The agent trades from a generated wallet of its own, whose key
+          the platform does hold, so "we only ever see your public address"
+          would be false the moment that agent is funded. */}
       <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-        Connect a Solana wallet to get started. Your keys stay in your wallet —
-        we only ever see your public address.
+        Connect a Solana wallet to get started. It establishes who owns the
+        agent, and nothing more. Your keys and seed phrase are never requested,
+        held, or delegated.
       </p>
       <Button size="lg" onClick={onLogin} className="mt-8 h-11 px-8">
         <Wallet className="mr-2 size-4" />

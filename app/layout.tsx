@@ -17,10 +17,14 @@ const bodyFont = Almarai({
   subsets: ["latin"],
 });
 
+// Site-wide fallback for any route that does not set its own. Kept in step
+// with the whitepaper §1 abstract and with the · separator every other page
+// title uses; the old copy here claimed an agent that "never makes the same
+// mistake twice", which Appendix D.17 requires correcting.
 export const metadata: Metadata = {
-  title: "Noah Engine — Autonomous Meme-Coin Trading",
+  title: "Noah Engine · A Public Fleet of Autonomous Trading Agents on Solana",
   description:
-    "An autonomous AI agent that trades meme coins around the clock — sniping new mints, managing risk, and learning from every loss while you sleep.",
+    "Deploy an autonomous trading agent onto Solana memecoin markets. It refuses almost everything it sees, sizes the survivors against a fixed risk budget, and writes down why when it loses.",
 };
 
 export default function RootLayout({
@@ -30,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     // Dark-only: the `dark` class is stamped server-side, no toggle, no
-    // theme script — every page shares the one cream-on-black palette.
+    // theme script. Every page shares the one cream-on-black palette.
     <html
       lang="en"
       className={`${displayFont.variable} ${bodyFont.variable} dark h-full antialiased`}

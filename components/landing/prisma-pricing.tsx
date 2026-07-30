@@ -7,38 +7,44 @@ import { useRef } from "react";
 
 import { WordsPullUpMultiStyle } from "./words-pull-up";
 
+/** Whitepaper §19. Denominated in SOL, and charged once at deploy rather
+ * than monthly. A weaker recurring-revenue structure, chosen anyway
+ * because a monthly charge against a small trading balance is a drag the
+ * operator pays whether or not the agent is working (§16.2). */
 const TIERS = [
   {
     number: "01",
     name: "Paper",
     price: "0",
     unit: "SOL",
-    cadence: "free forever",
-    blurb: "The full engine in dry-run mode. Watch it trade on paper first.",
+    cadence: "free, no wallet needed",
+    blurb:
+      "The complete decision pipeline with simulated fills. The right arena to prove a configuration before paying anything.",
     featured: false,
     features: [
-      "Every strategy, in dry-run mode",
-      "Paper positions & simulated P&L",
-      "Live mint feed access",
+      "Every instinct, in dry-run",
+      "The full Manifest gate and refusal feed",
       "Loss post-mortems included",
-      "No wallet required",
+      "Public in the fleet by default",
+      "No capital at risk",
     ],
     cta: "Start on paper",
   },
   {
     number: "02",
-    name: "Operator",
+    name: "Live",
     price: "0.5",
     unit: "SOL",
-    cadence: "per month",
-    blurb: "One live agent trading your wallet, inside the limits you set.",
+    cadence: "once, per deployed agent",
+    blurb:
+      "One agent trading a wallet of its own, funded by your deposit, inside the limits you set.",
     featured: true,
     features: [
       "Everything in Paper",
-      "Live execution from your wallet",
-      "Hard stops & trailing exits",
-      "Lessons tuned to your config",
-      "One-tap kill switch",
+      "A dedicated agent wallet, key exportable",
+      "Rule-based automatic exits, best-effort",
+      "Circuit breaker on losing streaks",
+      "Stop it any time; open positions still exit by their rules",
     ],
     cta: "Deploy your agent",
   },
@@ -47,18 +53,31 @@ const TIERS = [
     name: "Desk",
     price: "Custom",
     unit: null,
-    cadence: "billed annually",
-    blurb: "Multiple agents in parallel for funds and serious operators.",
+    cadence: "multiple agents",
+    blurb:
+      "Several agents in parallel, for operators running this as more than one position.",
     featured: false,
     features: [
-      "Everything in Operator, per agent",
-      "Custom strategy parameters",
+      "Everything in Live, per agent",
+      "Custom parameters across the group",
       "Private model connections",
-      "Priority execution infra",
-      "A dedicated desk engineer",
+      "Priority execution infrastructure",
+      "A direct line to the people who built it",
     ],
     cta: "Talk to the desk",
   },
+];
+
+/** §16.2. Illustrative arithmetic, not measured results: 2% position size,
+ * a 35% stop, an average win of 120% of position, 4% round-trip cost, 100
+ * trades/month, 0.5 SOL deployed once. Published because a serious reader
+ * computes it in two minutes anyway. */
+const BREAK_EVEN = [
+  ["20 SOL", "2.5%", "26.4%"],
+  ["10 SOL", "5.0%", "27.7%"],
+  ["5 SOL", "10.0%", "30.3%"],
+  ["2 SOL", "25.0%", "37.7%"],
+  ["1 SOL", "50.0%", "50.2%"],
 ];
 
 const CARD_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -81,11 +100,11 @@ export function PrismaPricing() {
           <WordsPullUpMultiStyle
             segments={[
               {
-                text: "Pay for the engine, not the promises.",
+                text: "One fee, once, in SOL.",
                 className: "text-primary",
               },
               {
-                text: "Paper-trade free. Go live when you trust it.",
+                text: "Not a subscription, and not a token. Paper is free for as long as you want it.",
                 className: "text-gray-500",
               },
             ]}
@@ -213,9 +232,103 @@ export function PrismaPricing() {
           ))}
         </div>
 
-        <p className="mt-8 text-center text-xs text-gray-500 sm:text-sm">
-          No lock-in · Halt the agent whenever you please.
-        </p>
+        {/* Most products in this category never publish this. A serious
+            reader computes it in two minutes regardless (§16), so it is
+            better computed here, with the assumptions on the label. */}
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:gap-2 md:grid-cols-2 md:gap-1">
+          <motion.div
+            className="rounded-2xl bg-[#141414] p-6 ring-1 ring-white/5 sm:p-8"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={
+              inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }
+            }
+            transition={{ delay: 0.45, duration: 0.7, ease: CARD_EASE }}
+          >
+            <p className="text-[10px] tracking-widest text-gray-500 uppercase">
+              What the fee costs you, arithmetically
+            </p>
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[20rem] border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] tracking-widest text-gray-600 uppercase">
+                    <th className="pb-2 font-normal">Deposit</th>
+                    <th className="pb-2 font-normal">Fee share</th>
+                    <th className="pb-2 text-right font-normal">
+                      Break-even, month 1
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {BREAK_EVEN.map(([deposit, share, breakEven]) => (
+                    <tr key={deposit} className="border-t border-white/5">
+                      <td className="py-2 text-gray-400">{deposit}</td>
+                      <td className="py-2 font-mono text-[11px] text-gray-500 sm:text-xs">
+                        {share}
+                      </td>
+                      <td className="text-primary/90 py-2 text-right font-mono text-[11px] sm:text-xs">
+                        {breakEven}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-white/10">
+                    <td className="py-2 text-gray-500" colSpan={2}>
+                      Steady state, once amortised
+                    </td>
+                    <td className="text-primary/90 py-2 text-right font-mono text-[11px] sm:text-xs">
+                      25.2%
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-5 text-xs leading-relaxed text-gray-500">
+              Illustrative only, not measured: 2% position size, a 35% stop, an
+              average win of 120% of position, 4% round-trip cost, 100 trades a
+              month. Because the fee is one-time it stops mattering once an
+              agent has run long enough to amortise it. The first month is where
+              a small balance is punished: at 1 SOL deposited, half the balance
+              is the fee and the arithmetic is close to hopeless before the
+              agent has placed a trade.
+            </p>
+          </motion.div>
+
+          <motion.div
+            className="flex flex-col rounded-2xl bg-[#141414] p-6 ring-1 ring-white/5 sm:p-8"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={
+              inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }
+            }
+            transition={{ delay: 0.57, duration: 0.7, ease: CARD_EASE }}
+          >
+            <p className="text-[10px] tracking-widest text-gray-500 uppercase">
+              Two things worth saying out loud
+            </p>
+            <h3 className="text-primary mt-4 text-base font-medium sm:text-lg">
+              There is no token, and there will be no presale or airdrop.
+            </h3>
+            <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
+              Anything claiming association with Noah Engine is fraudulent. A
+              token would introduce pressure to prioritise its price over
+              operator outcomes, and answers no question the fee does not.
+            </p>
+            <h3 className="text-primary mt-6 text-base font-medium sm:text-lg">
+              A one-time fee is a weaker alignment claim.
+            </h3>
+            <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
+              A subscription ties our revenue to you continuing to survive; a
+              one-time fee is collected before the agent has traded at all. What
+              remains is reputational: a fleet with public refusals and public
+              post-mortems, carrying weight that recurring revenue would
+              otherwise carry. You are entitled to read that as the softer
+              guarantee it is.
+            </p>
+            <p className="mt-auto pt-6 text-xs leading-relaxed text-gray-500">
+              Stop an agent whenever you like. Its wallet balance is
+              withdrawable to any address, its key is exportable, and its memory
+              is exportable, independently of any fee.
+            </p>
+          </motion.div>
+        </div>
       </div>
     </section>
   );

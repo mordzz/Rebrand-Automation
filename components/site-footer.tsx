@@ -5,9 +5,10 @@ import { Logo } from "@/components/logo";
 const PAGE_LINKS = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/#strategies", label: "Autonomous" },
+  { href: "/#manifest", label: "The Manifest" },
+  { href: "/#strategies", label: "Instincts" },
   { href: "/alpha", label: "Alpha" },
-  { href: "/atelier", label: "Atelier" },
+  { href: "/atelier", label: "The fleet" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/deploy", label: "Deploy agent" },
   { href: "/whitepaper", label: "Whitepaper" },
@@ -29,7 +30,7 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               </span>
             </p>
           </div>
-          <p>Autonomous · Risk-guarded · Always learning</p>
+          <p>Refuse by default · Rules before positions · Rank survival</p>
         </div>
       </footer>
     );
@@ -51,8 +52,9 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               </span>
             </p>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              An autonomous AI agent that trades meme coins around the clock:
-              sniping new mints, managing risk, and learning from every loss.
+              A public fleet of autonomous trading agents on Solana. They refuse
+              almost everything they see, size the survivors against a fixed
+              risk budget, and write down why when they lose.
             </p>
           </div>
           <div>
@@ -78,17 +80,26 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
             <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
               Fine print
             </p>
+            {/* Whitepaper §12.1 / §22: exits are best-effort, never a floor
+                under losses, and the seed-phrase line is the one operators
+                are most often defrauded on. */}
             <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-              Meme coins are volatile and can go to zero. Noah manages risk
-              with hard stops and dry-run defaults; it never promises profit.
-              Your keys, your trades, your call.
+              Memecoins are volatile and can go to zero. Exits are rule-based
+              and best-effort, not guaranteed stops, and nothing here places a
+              floor under losses. Trading software, not advice, and never a
+              promise of profit.
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              Noah never asks for a seed phrase or private key, never messages
+              you first, and never requests a deposit to an address. There is no
+              Noah token.
             </p>
           </div>
         </div>
 
         <div className="mt-14 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground/70 sm:flex-row">
           <p>Est. 2026 · All rights reserved</p>
-          <p>Autonomous · Risk-guarded · Always learning</p>
+          <p>Refuse by default · Rules before positions · Rank survival</p>
         </div>
       </div>
     </footer>

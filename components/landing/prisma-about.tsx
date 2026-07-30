@@ -10,8 +10,11 @@ import { useRef } from "react";
 
 import { WordsPullUpMultiStyle } from "./words-pull-up";
 
+/** Whitepaper §3. Deliberately makes no claim about sessions run or
+ * results achieved: the document publishes methodology, never projections
+ * or observed performance (Design Principle 8). */
 const BODY_TEXT =
-  "Over thousands of live sessions, I have watched new mints from the very first block, separated conviction from noise, and written a post-mortem for every loss I have ever taken. Each lesson sharpens my entries, tightens my exits, and hardens my discipline.";
+  "Solana produces a flood of new tokens every day. The overwhelming majority are worthless, and a meaningful share are built to take your money. Finding tokens was never the problem. The problem is that almost everything has to be turned away. An agent that buys enthusiastically is trivial to write; an agent that refuses correctly, thousands of times a day, is the hard part, and it is the part that decides whether a wallet survives.";
 
 function AnimatedLetter({
   char,
@@ -46,19 +49,19 @@ export function PrismaAbout() {
     <section id="about" className="bg-black px-4 py-16 sm:px-6 md:px-8 md:py-24">
       <div className="mx-auto max-w-7xl rounded-2xl bg-[#101010] px-6 py-16 text-center sm:px-10 sm:py-20 md:rounded-[2rem] md:py-28">
         <p className="text-primary text-[10px] tracking-widest uppercase sm:text-xs">
-          Autonomous trading
+          Why Noah
         </p>
 
         <h2 className="mx-auto mt-8 max-w-3xl text-3xl leading-[0.95] sm:text-4xl sm:leading-[0.9] md:text-5xl lg:text-6xl xl:text-7xl">
           <WordsPullUpMultiStyle
             segments={[
-              { text: "I am Noah,", className: "font-normal" },
+              { text: "Named for the discipline of the ark:", className: "font-normal" },
               {
-                text: "an autonomous trading agent.",
+                text: "build the hull first, fix the admission criteria before the water rises,",
                 className: "font-instrument italic",
               },
               {
-                text: "I hunt fresh mints, manage risk, and learn from every single loss.",
+                text: "let almost nothing aboard.",
                 className: "font-normal",
               },
             ]}
@@ -78,6 +81,11 @@ export function PrismaAbout() {
               progress={scrollYProgress}
             />
           ))}
+        </p>
+
+        <p className="font-instrument mx-auto mt-10 max-w-xl text-base italic text-gray-400 sm:text-lg md:text-xl">
+          An ark is not judged by how much it collected, but by whether it was
+          still afloat when the water went down.
         </p>
       </div>
     </section>
