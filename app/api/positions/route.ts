@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { positions } from "@/lib/db/schema";
+import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
 // Position state changes continuously while the sniper daemon runs —
 // never cache this route.
@@ -27,5 +28,15 @@ export async function GET(request: NextRequest) {
     )
     .orderBy(desc(positions.openedAt))
     .limit(50);
-  return NextResponse.json({ configured: true, data: rows });
+  /* Market cap alongside the raw price. A per-token figure on a memecoin
+     is e-8 scale and unreadable; cap is the unit a trader compares in. */
+  const caps = await marketCapsForPositions(rows);
+  return NextResponse.json({
+    configured: true,
+    data: rows.map((r) => ({
+      ...r,
+      entryMarketCapUsd: caps.get(r.token)?.entryUsd ?? null,
+      currentMarketCapUsd: caps.get(r.token)?.currentUsd ?? null,
+    })),
+  });
 }

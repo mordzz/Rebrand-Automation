@@ -122,7 +122,7 @@ export async function setPaused(paused: boolean, reason?: string): Promise<void>
 export type DerivedTradeStats = {
   /** Closed trades for one wallet, most recent first (see
    * lib/sniper/wallet-trade-stats.ts#getRecentOutcomes). */
-  recentOutcomes: Pick<Trade, "pnlSol">[];
+  recentOutcomes: Pick<Trade, "pnlSol" | "closedAt">[];
   dailyPnlSol: number;
   lastLossAt: Date | null;
 };
@@ -138,19 +138,53 @@ export type DerivedTradeStats = {
  * drawdown) the house's recordTradeOutcome does, but self-heals the moment
  * the underlying trades no longer breach them.
  */
+/** How long a quiet period must be before a losing streak stops counting,
+ * and how long a consecutive-loss pause lasts. Chosen to outlast the market
+ * condition that caused the streak without costing the agent a whole day;
+ * it is deliberately much longer than the 300s position hold cap. */
+export const STREAK_RESET_MS = 30 * 60 * 1000;
+
 export function deriveTradingPause(
   stats: DerivedTradeStats,
   config: Pick<SniperConfig, "maxConsecutiveLosses" | "maxDailyDrawdownSol">
 ): Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> {
-  // Strict < 0, matching recordTradeOutcome's own strict inequality — a
-  // pnlSol === 0 trade resets the streak, same as a win.
+  /* A streak is broken by a win, by a break-even trade, or by time.
+   *
+   * The time clause is what makes this breaker self-healing, and it is not
+   * cosmetic. Without it a pause that expires only re-arms: the streak is
+   * still in history, so the very next loss puts the agent straight back
+   * over the limit and it pauses after every single trade from then on.
+   * Treating a quiet gap as the end of a streak means the pause genuinely
+   * ends, and it needs no stored flag and no manual reset.
+   *
+   * The deeper reason this breaker has to be forgiving: this strategy is
+   * designed around a low win rate with asymmetric payoff (§16.2), so
+   * losing runs are the normal state, not evidence of a fault. Measured on
+   * live paper data at a 22% win rate, a limit of 2 tripped once every 3.1
+   * trades, which left agents paused essentially always. Capital harm is
+   * bounded by the daily drawdown limit below, which measures what actually
+   * matters; this counter only exists to catch a pathological run. */
   let consecutiveLosses = 0;
+  let previousClosedAt: Date | null = null;
   for (const trade of stats.recentOutcomes) {
-    if (Number(trade.pnlSol) < 0) consecutiveLosses++;
-    else break;
+    if (Number(trade.pnlSol) >= 0) break;
+    if (
+      previousClosedAt != null &&
+      previousClosedAt.getTime() - trade.closedAt.getTime() > STREAK_RESET_MS
+    ) {
+      break;
+    }
+    consecutiveLosses++;
+    previousClosedAt = trade.closedAt;
   }
 
-  if (consecutiveLosses >= config.maxConsecutiveLosses) {
+  /* The pause itself also expires: once nothing has been lost for the
+     cooldown, the agent resumes on its own. */
+  const streakIsCurrent =
+    stats.lastLossAt != null &&
+    Date.now() - stats.lastLossAt.getTime() <= STREAK_RESET_MS;
+
+  if (consecutiveLosses >= config.maxConsecutiveLosses && streakIsCurrent) {
     return {
       tradingPaused: true,
       pauseReason: `${consecutiveLosses} consecutive losses (limit ${config.maxConsecutiveLosses})`,

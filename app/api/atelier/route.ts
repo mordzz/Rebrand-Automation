@@ -8,6 +8,7 @@ import { getOpenPositions } from "@/lib/sniper/positions";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 import { redactPauseReason } from "@/lib/agent/agent-chat";
+import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,8 @@ export async function GET() {
           getLastLossAt(wallet, bot.breakerResetAt),
         ]);
 
+
+      const capsByMint = await marketCapsForPositions(openPositions);
       const pnl24hSol = trades24h.reduce((sum, t) => sum + Number(t.pnlSol), 0);
       const wins30d = trades30d.filter((t) => Number(t.pnlSol) > 0).length;
       const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
@@ -73,16 +76,24 @@ export async function GET() {
         pnl24hSol,
         winRate30d,
         trades30dCount: trades30d.length,
-        openPositions: openPositions.map((p) => ({
-          id: p.id,
-          token: p.token,
-          symbol: p.symbol,
-          strategy: p.strategy,
-          entryPrice: p.entryPrice,
-          sizeSol: p.sizeSol,
-          lastPrice: p.lastPrice,
-          openedAt: p.openedAt,
-        })),
+        openPositions: openPositions.map((p) => {
+          /* Market cap alongside the raw price: a per-token figure like
+             5.76e-8 SOL says nothing about whether an entry was early or
+             late, and cap is the unit this market is actually read in. */
+          const caps = capsByMint.get(p.token);
+          return {
+            id: p.id,
+            token: p.token,
+            symbol: p.symbol,
+            strategy: p.strategy,
+            entryPrice: p.entryPrice,
+            sizeSol: p.sizeSol,
+            lastPrice: p.lastPrice,
+            openedAt: p.openedAt,
+            entryMarketCapUsd: caps?.entryUsd ?? null,
+            currentMarketCapUsd: caps?.currentUsd ?? null,
+          };
+        }),
       };
     })
   );

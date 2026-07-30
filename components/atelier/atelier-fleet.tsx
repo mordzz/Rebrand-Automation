@@ -8,6 +8,7 @@ import { formatSignedSol } from "@/components/dashboard/trade-history-table";
 import { cn } from "@/lib/utils";
 
 import { AgentDetailModal } from "./agent-detail-modal";
+import { formatMarketCap } from "@/lib/sniper/market-cap";
 
 export type OpenPositionDto = {
   id: string;
@@ -18,6 +19,10 @@ export type OpenPositionDto = {
   sizeSol: string;
   lastPrice: string | null;
   openedAt: string;
+  /** USD market cap at entry and now. Null when supply or the SOL price
+   *  could not be read; the display shows a dash rather than a guess. */
+  entryMarketCapUsd: number | null;
+  currentMarketCapUsd: number | null;
 };
 
 export type AgentDto = {
@@ -110,7 +115,8 @@ function PositionRow({ position }: { position: OpenPositionDto }) {
           </span>
         </p>
         <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-          {Number(position.sizeSol).toFixed(3)} SOL @ {entry.toExponential(2)}
+          {Number(position.sizeSol).toFixed(3)} SOL in at{" "}
+          {formatMarketCap(position.entryMarketCapUsd)}
         </p>
       </div>
       <span

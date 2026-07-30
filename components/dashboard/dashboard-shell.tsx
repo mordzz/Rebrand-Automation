@@ -20,6 +20,7 @@ import {
 } from "@/components/dashboard/trade-performance-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { formatMarketCap } from "@/lib/sniper/market-cap";
 
 const CharacterCanvas = dynamic(
   () =>
@@ -51,12 +52,6 @@ function shortAddress(addr: string) {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
 
-/** Memecoin prices are often e-6/e-8 — plain toFixed(2) would just show 0.00. */
-function formatPrice(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  return Math.abs(n) > 0 && Math.abs(n) < 0.0001 ? n.toExponential(2) : n.toFixed(6);
-}
-
 type StatsResponse = {
   configured: boolean;
   openPositionsCount?: number;
@@ -76,6 +71,8 @@ type PositionRow = {
   entryPrice: string;
   sizeSol: string;
   lastPrice: string | null;
+  entryMarketCapUsd: number | null;
+  currentMarketCapUsd: number | null;
 };
 
 /** Polls a JSON API on a 30s interval; keeps the last good value on a transient fetch failure rather than blanking the UI. */
@@ -457,8 +454,8 @@ export function DashboardShell() {
                   <tr className="border-b border-white/5 text-left text-muted-foreground">
                     <th className={TABLE_HEAD}>Token</th>
                     <th className={TABLE_HEAD}>Strategy</th>
-                    <th className={TABLE_HEAD}>Entry</th>
-                    <th className={TABLE_HEAD}>Mark</th>
+                    <th className={TABLE_HEAD}>In at</th>
+                    <th className={TABLE_HEAD}>Now</th>
                     <th className={TABLE_HEAD}>Size</th>
                     <th className={cn(TABLE_HEAD, "text-right")}>PnL</th>
                   </tr>
@@ -498,11 +495,14 @@ export function DashboardShell() {
                           <td className="px-4 py-3 text-muted-foreground">
                             {p.strategy}
                           </td>
+                          {/* Market cap, not the e-8 per-token price: the
+                              raw figure is unreadable and not comparable
+                              between tokens with different supplies. */}
                           <td className="px-4 py-3 font-mono text-[0.8rem]">
-                            {formatPrice(entry)}
+                            {formatMarketCap(p.entryMarketCapUsd)}
                           </td>
                           <td className="px-4 py-3 font-mono text-[0.8rem]">
-                            {mark != null ? formatPrice(mark) : "—"}
+                            {formatMarketCap(p.currentMarketCapUsd)}
                           </td>
                           <td className="px-4 py-3 font-mono text-[0.8rem]">
                             {Number(p.sizeSol).toFixed(3)} SOL

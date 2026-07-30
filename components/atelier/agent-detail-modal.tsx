@@ -11,6 +11,7 @@ import { formatSignedSol } from "@/components/dashboard/trade-history-table";
 import { cn } from "@/lib/utils";
 
 import type { AgentDto } from "./atelier-fleet";
+import { formatMarketCap } from "@/lib/sniper/market-cap";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -269,8 +270,17 @@ export function AgentDetailModal({
                             {p.strategy}
                           </span>
                         </p>
+                        {/* Market cap, not a per-token price: 5.76e-8 SOL
+                            tells a reader nothing about how early the entry
+                            was, and cap is comparable across tokens. */}
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {Number(p.sizeSol).toFixed(3)} SOL @ {entry.toExponential(2)}
+                          {Number(p.sizeSol).toFixed(3)} SOL in at{" "}
+                          <span className="text-foreground/80">
+                            {formatMarketCap(p.entryMarketCapUsd)}
+                          </span>
+                          {p.currentMarketCapUsd != null && (
+                            <> · now {formatMarketCap(p.currentMarketCapUsd)}</>
+                          )}
                         </p>
                       </div>
                       <span

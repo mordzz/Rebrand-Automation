@@ -146,7 +146,14 @@ function envSeededDefaults(): SniperConfig {
     crashDropPct: envNumber("SNIPER_CRASH_DROP_PCT", 15),
     exitCheckIntervalMs: envNumber("SNIPER_EXIT_CHECK_INTERVAL_MS", 4000),
 
-    maxConsecutiveLosses: envNumber("SNIPER_MAX_CONSECUTIVE_LOSSES", 3),
+    /* Deliberately loose. This strategy targets a low win rate with an
+       asymmetric payoff, so losing runs are its normal state rather than a
+       fault signal. Measured on live paper data at a 22% win rate, a limit
+       of 2 tripped once every 3.1 trades and a limit of 3 once every 6.6,
+       which left agents paused essentially always. Capital harm is bounded
+       by maxDailyDrawdownSol, which measures what actually matters; this
+       counter exists only to catch a pathological run. */
+    maxConsecutiveLosses: envNumber("SNIPER_MAX_CONSECUTIVE_LOSSES", 8),
     maxDailyDrawdownSol: envNumber("SNIPER_MAX_DAILY_DRAWDOWN_SOL", 0.1),
     cooldownAfterLossSec: 0,
 
