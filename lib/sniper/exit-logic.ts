@@ -45,6 +45,9 @@ export type FullExitDecision =
       reason: string;
       pnlSol: number;
       exitLevel: LogLevel;
+      /** The price this exit is modelled as filling at, which for a
+       *  threshold exit is the trigger rather than the observed price. */
+      fillPrice: number;
     };
 
 /**
@@ -125,12 +128,47 @@ export function evaluateFullExit(
             : "stop-loss"
           : "take-profit";
 
-  const pnlSol = sizeSol * (changePct / 100);
+  /* The price this exit is modelled as filling at, which is not always the
+     price observed.
+
+     A threshold exit cannot be credited with a gap that carried price past
+     its own trigger. Observed live: an agent configured to take profit at
+     +30% recorded a fill at 8.59x, because the price crossed the threshold
+     and kept going inside one check interval, and the fill was booked at
+     whatever was then on screen. That single trade turned a losing cohort
+     into an apparently profitable one. A real order would have gone out at
+     the trigger and been filled with impact, never at the top of the move.
+
+     The asymmetry is deliberate and matches how a gap actually resolves:
+
+       take-profit / tiers  capped at the trigger, no gap upside
+       trailing stop        capped at the trailing level
+       stop-loss            filled where price is, so gap downside is kept
+       crash / time exit    filled where price is, no threshold to cap to
+
+     Applied to paper and live alike, because it is a model of a fill rather
+     than a simulation artefact. On a live exit the executed price replaces
+     this figure entirely; here it only ever makes the paper record more
+     pessimistic, which is the only safe direction for a number an operator
+     uses to decide whether to risk real money (§15). */
+  const takeProfitPrice = entryPrice * (1 + config.takeProfitPct / 100);
+  // shouldTrailingExit already implies a peak was recorded; this keeps that
+  // guarantee visible to the type checker rather than asserting it.
+  const trailingPrice =
+    peakPrice != null ? peakPrice * (1 - config.trailingStopPct / 100) : null;
+  const fillPrice = shouldFixedTakeProfit
+    ? Math.min(currentPrice, takeProfitPrice)
+    : shouldTrailingExit && trailingPrice != null
+      ? Math.min(currentPrice, trailingPrice)
+      : currentPrice;
+
+  const fillChangePct = ((fillPrice - entryPrice) / entryPrice) * 100;
+  const pnlSol = sizeSol * (fillChangePct / 100);
   // guard = took profit on purpose; warn = a fast-out crash exit (urgent);
   // sell = realized at or below cost.
   const exitLevel: LogLevel = shouldCrashExit ? "warn" : pnlSol >= 0 ? "guard" : "sell";
 
-  return { peakPrice, exit: true, reason, pnlSol, exitLevel };
+  return { peakPrice, exit: true, reason, pnlSol, exitLevel, fillPrice };
 }
 
 export type TieredExitInput = {
@@ -150,6 +188,9 @@ export type TieredExitResult = {
    * `sizeSol * sellPortionPct / 100`. */
   soldSol: number;
   pnlSol: number;
+  /** Modelled fill price for this rung: its own trigger, not the observed
+   *  price, so a multi-tier gap cannot book every rung at the top. */
+  fillPrice: number;
 };
 
 /**
@@ -188,8 +229,19 @@ export function evaluateTieredExits(
     if (remainingSizeSol <= DUST_THRESHOLD_SOL) break;
 
     const soldSol = remainingSizeSol * (tier.sellPortionPct / 100);
-    const pnlSol = soldSol * (changePct / 100);
-    results.push({ tierIndex: tier.index, sellPortionPct: tier.sellPortionPct, soldSol, pnlSol });
+    /* At the tier's own trigger, not wherever price reached. A ladder is a
+       sequence of thresholds, so the same reasoning as the full-exit cap
+       applies to each rung: a gap that clears three tiers at once must book
+       three fills at three trigger prices, not three fills at the top. */
+    const fillChangePct = Math.min(changePct, tier.atPct);
+    const pnlSol = soldSol * (fillChangePct / 100);
+    results.push({
+      tierIndex: tier.index,
+      sellPortionPct: tier.sellPortionPct,
+      soldSol,
+      pnlSol,
+      fillPrice: input.entryPrice * (1 + fillChangePct / 100),
+    });
     remainingSizeSol -= soldSol;
   }
 

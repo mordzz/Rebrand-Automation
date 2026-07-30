@@ -34,6 +34,11 @@ import { positions, userBots, type SniperState, type UserBot } from "@/lib/db/sc
 import { isGmgnConfigured } from "@/lib/gmgn/client";
 import { deriveEntryPriceSol, discoverTokens, type DiscoveredToken } from "@/lib/gmgn/discovery";
 import { evaluateGmgnSafety } from "@/lib/gmgn/safety";
+import {
+  checkRoundTrip,
+  roundTripRefusalReasons,
+  type RoundTripResult,
+} from "@/lib/jupiter/round-trip";
 import { getSolUsdPrice } from "@/lib/sniper/sol-price";
 import {
   executeSwap,
@@ -183,6 +188,31 @@ type EntryCandidate = {
   launchpad?: string | null;
 };
 
+/* Sell simulation is the most expensive gate (two router quotes), so it runs
+   last, only for a candidate that already cleared everything cheaper, and is
+   memoised per mint: five bots liking the same token costs one round trip,
+   not five. Short TTL because pool depth on a minutes-old mint is exactly
+   the thing that moves. */
+const MAX_ROUND_TRIP_LOSS_PCT = 25;
+const ROUND_TRIP_TTL_MS = 20_000;
+const roundTripCache = new Map<string, { at: number; result: Promise<RoundTripResult> }>();
+
+function roundTripFor(mint: string, sizeSol: number, slippageBps: number): Promise<RoundTripResult> {
+  const hit = roundTripCache.get(mint);
+  if (hit && Date.now() - hit.at < ROUND_TRIP_TTL_MS) return hit.result;
+  const result = checkRoundTrip({ mint, sizeSol, slippageBps }).catch(
+    // A router outage must not read as "unsellable" and refuse everything.
+    (): RoundTripResult => ({ kind: "no-route-either-way" })
+  );
+  roundTripCache.set(mint, { at: Date.now(), result });
+  if (roundTripCache.size > 500) {
+    for (const [k, v] of roundTripCache) {
+      if (Date.now() - v.at > ROUND_TRIP_TTL_MS) roundTripCache.delete(k);
+    }
+  }
+  return result;
+}
+
 async function openPaperPosition(
   bot: UserBot,
   config: SniperConfig,
@@ -198,6 +228,29 @@ async function openPaperPosition(
     if (!risk.allowed) return;
 
     const sizeSol = sizeForSnipe(config);
+
+    /* Sell simulation at this bot's own size (§9.6). Placed after the risk
+       gate so it only costs quotes for a candidate that would otherwise be
+       bought. Refuses a mint that can be bought but not sold, and one whose
+       round trip already costs more than the trade could plausibly make. */
+    const roundTrip = await roundTripFor(
+      candidate.mint,
+      sizeSol,
+      Math.round(config.stopLossPct * 100)
+    );
+    const sellReasons = roundTripRefusalReasons(roundTrip, MAX_ROUND_TRIP_LOSS_PCT);
+    if (sellReasons.length > 0) {
+      log(`REFUSED ${candidate.symbol} for ${bot.name}: ${sellReasons[0]}`);
+      void writeLog({
+        level: "guard",
+        source: "manifest",
+        walletAddress: bot.walletAddress,
+        tokenMint: candidate.mint,
+        message: `Refused $${candidate.symbol ?? "?"}: ${sellReasons[0]}`,
+      });
+      return;
+    }
+
     const via = candidate.source === "gmgn"
       ? ` via ${candidate.launchpad ?? "gmgn"}`
       : "";
@@ -735,7 +788,10 @@ async function checkAllExits(): Promise<void> {
       const { reason } = decision;
       let { pnlSol } = decision;
       let exitTxSignature = "paper";
-      let exitPrice = currentPrice;
+      /* The modelled fill, not the observed mark: a threshold exit is
+         credited at its trigger (see evaluateFullExit). A live sell
+         overwrites this with the executed price below. */
+      let exitPrice = decision.fillPrice;
 
       if (liveBot) {
         const sold = await executeRealSell(liveBot, position, reason);
@@ -774,7 +830,7 @@ async function checkAllExits(): Promise<void> {
     let remainingSizeSol = sizeSol;
     for (const tier of tieredResults) {
       let tierExitSignature = "paper";
-      let tierExitPrice = currentPrice;
+      let tierExitPrice = tier.fillPrice;
       let tierPnlSol = tier.pnlSol;
 
       if (liveBot) {
@@ -955,6 +1011,101 @@ async function scheduleRosterRefresh(): Promise<void> {
   rosterTimer = setTimeout(() => void scheduleRosterRefresh(), ROSTER_REFRESH_INTERVAL_MS);
 }
 
+/**
+ * State reconciliation on start (§11.4).
+ *
+ * The ledger and the chain can disagree across a restart, and the dangerous
+ * direction is a *live* position the wallet no longer holds: the exit loop
+ * would then try to sell nothing on every tick, forever, and the operator
+ * would see a position they do not own. Causes include a buy whose
+ * confirmation was never observed, a manual sale from the exported key, or a
+ * rug that burned the balance.
+ *
+ * Only positions this process could act on are examined, and only live ones:
+ * a paper position has no chain state to disagree with. A read failure is
+ * left alone rather than closed, because "could not check" must never
+ * become "assumed gone".
+ */
+async function reconcileOnStart(): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+
+  const open = await db
+    .select()
+    .from(positions)
+    .where(and(eq(positions.status, "open"), isNotNull(positions.walletAddress)));
+  if (open.length === 0) return;
+
+  const botByWallet = new Map(roster.map((r) => [r.bot.walletAddress, r.bot] as const));
+  let checked = 0;
+  let phantom = 0;
+  let orphaned = 0;
+
+  for (const position of open) {
+    const wallet = position.walletAddress;
+    if (!wallet) continue;
+    const bot = botByWallet.get(wallet);
+    if (!bot) {
+      // The bot was deleted while holding a position. Nothing can exit it.
+      orphaned++;
+      log(
+        `RECONCILE orphan — ${position.symbol ?? position.token.slice(0, 8)} belongs to wallet ${short(wallet)}, which has no deployed bot`
+      );
+      continue;
+    }
+
+    const context = (position.context ?? {}) as Record<string, unknown>;
+    if (context.engine !== "live" || !bot.agentPublicKey) continue;
+
+    checked++;
+    const held = await heldTokenAmount(bot, position.token);
+    if (held == null) continue; // could not read; leave it open
+    if (held > BigInt(0)) continue; // ledger and chain agree
+
+    phantom++;
+    log(
+      `RECONCILE phantom — ${position.symbol ?? position.token.slice(0, 8)} marked open but the agent wallet holds none; closing as reconciled`
+    );
+    void writeLog({
+      level: "warn",
+      source: "live",
+      walletAddress: wallet,
+      tokenMint: position.token,
+      message: `Reconciled on restart: $${position.symbol ?? "?"} was open in the ledger but the agent wallet holds none. Closed without a sale.`,
+    });
+    await markPositionClosed(position.id);
+  }
+
+  log(
+    `Reconciled ${open.length} open position(s): ${checked} live checked, ${phantom} phantom closed, ${orphaned} orphaned.`
+  );
+}
+
+/** Token units the agent wallet currently holds, or null if unreadable. */
+async function heldTokenAmount(bot: UserBot, mint: string): Promise<bigint | null> {
+  try {
+    const rpc = getRpc(bot.rpcUrl);
+    const { value: accounts } = await rpc
+      .getTokenAccountsByOwner(
+        address(bot.agentPublicKey!),
+        { mint: address(mint) },
+        { encoding: "jsonParsed" }
+      )
+      .send();
+    let held = BigInt(0);
+    for (const acc of accounts) {
+      const parsed = acc.account.data as unknown as {
+        parsed?: { info?: { tokenAmount?: { amount?: string } } };
+      };
+      const amount = parsed?.parsed?.info?.tokenAmount?.amount;
+      if (amount) held += BigInt(amount);
+    }
+    return held;
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   if (!getDb()) {
     log("DATABASE_URL not configured — exiting, nothing to trade against.");
@@ -965,6 +1116,7 @@ async function main(): Promise<void> {
 
   await refreshRoster();
   log(`Roster: ${roster.length} deployed bot(s).`);
+  await reconcileOnStart().catch((error) => log("reconcile error", error));
   void scheduleRosterRefresh();
   void scheduleExitCheck();
   void scheduleQueueDrain();

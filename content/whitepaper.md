@@ -43,7 +43,7 @@ This document specifies the mechanisms rather than the intentions: the tiered sa
 
 **Operator.** The human who owns an agent and its capital.
 
-**Afloat / sunk.** An agent's survival state (§14.2).
+**Stopped.** An agent whose operator has switched it off, or whose circuit breaker has tripped. It opens nothing; existing positions are still watched and exited by their own rules.
 
 ---
 
@@ -307,17 +307,17 @@ The feed is continuous, cannot be convincingly fabricated, and demonstrates the 
 
 ## 10. Instincts
 
-An operator deploys one agent. The agent has four instincts, and the tier structure is what gives two of them genuinely different risk profiles.
+An operator deploys one agent with three instincts: one that generates, two that constrain.
 
-**The Raven: early entry, bounded exposure.** Acts on Tier 0–1 verdicts only, because Tier 2 cannot complete in the available window. Since Raven trades on incomplete information, **its maximum position size is capped below the agent's configured maximum** at ⟦FILL: Raven size multiplier⟧. This is not a preference; it is the price of speed, and the cap is enforced by The Tide rather than by Raven itself.
+**The Raven: early entry.** The only instinct that opens a position. Acts on Tier 0 and Tier 1 verdicts, because nothing slower completes inside the window a fresh mint gives you.
 
-**The Wake: confirmed entry, full size.** Waits for the complete gate including Tier 2, then stalks tokens that survived their opening minutes. Enters behind accelerating volume and holder growth, trailing an exit that only ever tightens. Permitted full configured size because it acts on complete information.
+**The Ark: position guardian.** Opens nothing. Arms breakeven once a position is meaningfully green, tightens exits as momentum decays, and exits on stall, drawdown, or crash.
 
-**The Ark: position guardian.** Opens nothing. Consumes continuous re-verification (§9.5), arms breakeven once a position is meaningfully green, tightens exits as momentum decays, and exits without delay on stall, drawdown, or any re-verification failure.
+**The Tide: session authority.** Sizing against the risk budget, enforcement of every operator limit, the daily loss limit that ends a session, and the cadence that turns post-mortems into reviewable configuration changes.
 
-**The Tide: session authority.** Sizing against the risk budget, enforcement of every operator limit, daily loss limits that end the session, and the cadence that turns post-mortems into reviewable configuration changes.
+**The Raven generates. Ark and Tide constrain. In every conflict, the constraining instincts win.** An entry signal cannot override a risk limit, not as a toggle but as a property of pipeline ordering. An operator's configuration governs how aggressively Raven may act; it cannot disable Ark or Tide.
 
-**Raven and Wake generate. Ark and Tide constrain. In every conflict, the constraining instincts win.** An entry signal cannot override a risk limit, not as a toggle, but as a property of pipeline ordering. An operator's configuration governs how aggressively Raven and Wake may act; it cannot disable Ark or Tide.
+**On a second entry instinct.** Earlier drafts described a slower, confirmation-based entry alongside the Raven, permitted a larger position because it acted on more complete information. It has been removed rather than deferred. Two reasons, and the second is the real one. It depended on a Tier 2 verdict arriving before entry, which the latency budget does not allow (§8.3). And a second entry strategy doubles the surface that has to be validated while the first one still has no live track record at all. A platform whose thesis is restraint should not ship a second way to buy before it can show the first one works.
 
 ---
 
@@ -328,7 +328,7 @@ An operator deploys one agent. The agent has four instincts, and the tier struct
 - **Routing** via Jupiter's swap API. A quote is taken first, and the position is recorded only after the swap confirms, using the transaction signature as the position's identity, so a failed submission can never leave a ledger entry for a fill that did not happen. A candidate with no route is skipped, not forced.
 - **Slippage bounds** are hard limits; a fill outside tolerance is abandoned, never chased. Today the tolerance passed to the router is derived from the agent's configured stop distance, on the reasoning that a fill worse than the stop is a fill not worth having.
 - **Priority fees** derived from recent slot congestion, capped by operator configuration
-- **MEV posture:** ⟦FILL: specify, e.g. Jito bundle submission and tip policy, and state precisely what it does and does not prevent⟧
+- **MEV posture: none, deliberately.** No bundle submission and no tips. A tip large enough to matter is a meaningful share of a position this size, so buying priority would cost more than the sandwiching it avoids. This is a consequence of small absolute position sizes and would have to be revisited if those grew.
 - **Compute budget** tuned per instruction type to reduce failed-transaction waste
 
 Failed transactions consume SOL. Each agent maintains a reserved fee balance and halts rather than draining it.
@@ -390,7 +390,6 @@ Accordingly:
 
 - Trigger price is derived from ⟦FILL: pool reserve-weighted price over N slots⟧, not a single tick
 - Non-emergency exits require confirmation across ⟦FILL: N⟧ consecutive slots
-- Exit timing carries bounded per-agent jitter so the fleet does not exit in lockstep
 - **Emergency exits (§9.5) bypass confirmation entirely**: when sell simulation begins failing, delay is the larger risk
 
 ---
@@ -437,35 +436,26 @@ Public: the refusal feed; each agent's name, face, and age; survival metrics; po
 
 Not public: operator identity, wallet balances, and **exact configuration parameters** (§14.4).
 
-### 14.2 Ranked by survival, with eligibility thresholds
+### 14.2 No leaderboard of any kind
 
 **Noah has no profit leaderboard.** A profit ranking rewards whoever took the largest position on the luckiest day; every rational operator responds by maximizing risk, and the agents at the top become the most reckless in the fleet, precisely the behavior newcomers would then copy.
 
-| Metric | Definition |
+Earlier drafts answered this with a survival ranking: days afloat, refusal rate, stop discipline, capital retained, deepest drawdown, gated behind eligibility thresholds so that an agent which never trades could not top the fleet by doing nothing. That ranking has been removed, and this section now commits to the stronger position instead: **the fleet is a directory, not a competition.**
+
+The reasoning is the one that made the eligibility thresholds necessary in the first place. Any ranking of a small population is mostly noise, and dressing noise in five metrics does not make it signal. The thresholds were an attempt to stop the ranking being gamed, which is an admission that the ranking creates a reason to game it. Removing the ranking removes the incentive at its source, and costs nothing a reader actually needs: an agent's own record is published in full, and a reader comparing two agents can do so directly.
+
+What each agent publishes about itself:
+
+| Shown | Why |
 |---|---|
-| **Days Afloat** | Consecutive days above the waterline |
-| **Refusal Rate** | Share of candidates rejected by the Manifest |
-| **Stop Discipline** | Share of positions exited by rule rather than by breach |
-| **Capital Retained** | Current capital as a share of capital deposited |
-| **Deepest Drawdown** | Worst peak-to-trough decline survived |
+| Age since deploy | Whether a record is long enough to mean anything |
+| Positions taken, and closed | The denominator for everything else |
+| Realized result, paper or live, labelled | Never a ranking, and never comparable across different deposit sizes |
+| Refusals, with reasons | The behavior the platform is actually claiming |
+| Post-mortems where the operator permits | Whether it learns |
+| Open positions | What it is exposed to now |
 
-**Eligibility thresholds: without these, the ranking is trivially gamed.** An agent that never trades has a perfect refusal rate, perfect capital retention, perfect stop discipline, and unbounded Days Afloat. It would top the fleet permanently while doing nothing.
-
-An agent is therefore ranked only if it has:
-
-- taken at least ⟦FILL: N⟧ positions, and
-- been deployed at least ⟦FILL: N⟧ days, and
-- deployed at least ⟦FILL: %⟧ of its capital at some point during the period
-
-Capital Retained is additionally normalized by positions taken, so that inactivity cannot masquerade as discipline.
-
-**The waterline.** An agent is *afloat* while retained capital exceeds its operator-set waterline and it has not repeatedly breached its daily loss limit. Below that it is marked **sunk**, and its record remains in the fleet permanently.
-
-**Sunk agents are never hidden.** A fleet showing only survivors is survivorship bias with a user interface: the same distortion the profit leaderboards it replaces produce. The honest headline is the ratio:
-
-> ⟦FILL: N⟧ arks launched. ⟦FILL: N⟧ still afloat.
-
-Capital Retained is a survival measure displayed as a share of deposited capital. It is never presented as a return, a projection, or a ranking of gains (§22).
+**A number without its denominator is not published.** A win rate over four trades is not a win rate, and an agent with too short a record shows its counts rather than a percentage.
 
 ### 14.3 No coordination: a permanent commitment
 
@@ -482,23 +472,28 @@ Agents share a **record**, not a strategy. What one agent learns is visible as a
 
 ### 14.4 Crowding and capacity
 
-Because the fleet shares one stream and one verdict cache (§8.2), crowding is structural. It is addressed by mechanism:
+Because the fleet shares one stream and one verdict cache (§8.2), crowding is structural: as the live population grows, agents increasingly compete for the same fills.
+
+Earlier drafts proposed to engineer around this with per-candidate participation limits, enforced parameter randomization within each operator's configured ranges, deliberate exit jitter, and a cap on live seats. **All of it is removed.** Each one improves an aggregate by quietly making an individual operator's agent worse than what they configured, and none of them is honest about doing so:
+
+- A participation limit denies an agent an entry it qualified for, so that a different customer's agent can take it.
+- Enforced randomization overrides the parameters an operator chose. An operator who sets a 20% stop and receives something else was not given a fleet feature, they were given a bug they cannot diagnose.
+- Exit jitter deliberately delays an exit past its trigger. On an asset that can halve in a minute, that is not decorrelation, it is a worse fill charged to the operator.
+
+The mechanisms that remain are the ones that cost the operator nothing:
 
 - **Parameter opacity.** The fleet displays outcomes and behavior, never the raw configuration that produced them.
-- **Per-candidate participation limits.** A cap on how many agents may act on the same candidate within a window, with tie-breaking that is not first-come (⟦FILL: allocation method⟧).
-- **Enforced parameter diversity.** Live agents receive bounded randomization within their configured ranges rather than identical values.
-- **Exit jitter** (§12.2) so exits do not cluster.
-- **Capacity disclosure.** Fill quality by fleet size, published as the live population grows: ⟦FILL: current measurements⟧.
-- **A cap on live seats** if the data justifies one.
+- **Capacity disclosure.** Fill quality by fleet size, published as the live population grows rather than estimated in advance: ⟦FILL: current measurements⟧.
+
+If crowding turns out to be material, the answer is to say so and let operators decide, not to silently degrade their agents to flatten a curve. At the present population this is a forward-looking problem and is documented as such rather than pre-solved.
 
 ### 14.5 Why agents diverge
 
 A fleet of identical agents is not a fleet. Divergence arises from four mechanisms, in increasing strength:
 
-1. Operator configuration within preset ranges
-2. Enforced parameter diversity (§14.4)
-3. Accumulated memory: agents that lost different trades receive different accepted lessons
-4. Participation allocation: agents do not all receive the same candidates
+1. Operator configuration, which is the operator's own and is never altered by the platform (§14.4)
+2. Accumulated memory: agents that lost different trades receive different accepted lessons
+3. Arrival timing: an agent is only offered what the stream surfaced while it had room to act
 
 Mechanism 3 alone is weak, since proposals may be declined. Mechanisms 2 and 4 are what make divergence structural rather than aspirational.
 
@@ -605,7 +600,7 @@ Recommended minimum trading balance: ⟦FILL: figure, derived from §16.2 with m
 | Chain congestion | Exits fail when most needed | Fee escalation | **Not solvable** |
 | Single-block liquidity removal | Total position loss | None available | **Not solvable** |
 | Duplicate fill on retry | Size limit breached | Idempotency protocol (§11.2) | Low |
-| Stop-hunting | Fleet-wide bad exits | Multi-slot confirmation, jitter (§12.2) | Partial |
+| Stop-hunting | Fleet-wide bad exits | Multi-slot confirmation (§12.2) | Partial |
 | Post-mortem overfitting | Strategy decay | Thresholds, operator review | Unproven efficacy |
 | Fleet crowding | Degraded fills fleet-wide | §14.4 | Grows with population |
 | Metric gaming | Misleading ranking | Eligibility thresholds (§14.2) | Ongoing adversarial |
@@ -730,7 +725,6 @@ Retained as design intent. An agent does not enforce any of these today, and no 
 | Max top-10 concentration | 25% | Available only on GMGN-sourced candidates, at a fixed threshold |
 | Max deployer holdings | 5% | Superseded by max creator initial buy in A.1 |
 | Raven size cap | ⟦FILL⟧ × max | Instinct-specific sizing not implemented (§10) |
-| Waterline | 50% of deposited capital | Not implemented |
 | Re-verification interval | ⟦FILL⟧ | §9.5 |
 | Exit confirmation slots | ⟦FILL⟧ | §12.2 |
 | Presets (Conservative / Balanced / Aggressive) | | Not implemented; raw parameters are exposed directly |
@@ -740,6 +734,8 @@ Retained as design intent. An agent does not enforce any of these today, and no 
 The crash guard is defined as a drop **within one exit check**, so its sensitivity is a function of the exit check interval, not of the percentage alone. The same 15% guard is a far tighter stop at a 3000ms interval than at 30000ms. For this reason each agent is evaluated on its own interval rather than the fleet's shortest, so one operator's choice cannot change another's effective stop.
 
 ## Appendix B: Latency Budget
+
+**Nothing in this appendix is measured.** It is the budget the pipeline was designed against, retained because the shape of the budget drives the tier structure (§9), not because these numbers have been observed. Treat every figure as a target.
 
 | Stage | Budget | Network cost |
 |---|---|---|
@@ -765,7 +761,7 @@ The crash guard is defined as a drop **within one exit check**, so its sensitivi
 **MEV / sandwich**: an adversary orders transactions around yours, buying before and selling after.
 **Token-2022 extensions**: newer Solana token features; several can trap or seize holdings.
 **Idempotency**: the property that repeating an operation cannot duplicate its effect.
-**Waterline**: the capital threshold below which an agent is marked sunk.
+**Circuit breaker**: the per-agent limit that stops new entries after a losing streak or a daily loss, re-derived from that agent's own trades rather than stored as a flag.
 
 ## Appendix D: Open Items Before Publication
 

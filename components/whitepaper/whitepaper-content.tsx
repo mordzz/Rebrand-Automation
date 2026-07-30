@@ -25,6 +25,14 @@ function flattenText(node: React.ReactNode): string {
  * the site's dark theme — this document is read start-to-finish and cross-
  * references itself constantly, so headings get stable ids (matching
  * lib/whitepaper.ts#slugForHeading) and §-references become real jumps. */
+/* Running text is capped at a reading measure rather than the column
+   width. At the previous full-bleed width a line ran past 110 characters,
+   roughly half again the length at which the eye reliably finds the next
+   line, which is the single biggest thing that made this document hard to
+   read. Tables, code blocks and the pipeline diagrams deliberately keep
+   the whole column: they are scanned, not read line by line. */
+const MEASURE = "max-w-[68ch]";
+
 const components: Components = {
   h1: ({ children }) => (
     <h1 className="mt-0 text-3xl font-medium tracking-tight text-primary sm:text-4xl">
@@ -36,7 +44,7 @@ const components: Components = {
     return (
       <h2
         id={slugForHeading(text)}
-        className="mt-14 scroll-mt-28 border-t border-white/10 pt-10 text-2xl font-medium tracking-tight text-primary first:mt-0 first:border-t-0 first:pt-0"
+        className="mt-16 scroll-mt-28 border-t border-white/10 pt-7 text-2xl font-medium tracking-tight text-primary first:mt-0 first:border-t-0 first:pt-0 sm:text-[1.75rem]"
       >
         {children}
       </h2>
@@ -47,33 +55,38 @@ const components: Components = {
     return (
       <h3
         id={slugForHeading(text)}
-        className="mt-8 scroll-mt-28 text-lg font-medium text-primary"
+        className="mt-9 scroll-mt-28 text-lg font-medium text-primary"
       >
         {children}
       </h3>
     );
   },
   p: ({ children }) => (
-    <p className="mt-4 text-sm leading-relaxed text-foreground/80 sm:text-base">{children}</p>
+    <p className={cn(MEASURE, "mt-4 text-sm leading-[1.75] text-foreground/80 sm:text-[0.9375rem]")}>
+      {children}
+    </p>
   ),
   strong: ({ children }) => <strong className="font-semibold text-primary">{children}</strong>,
   em: ({ children }) => (
     <em className="font-instrument not-italic italic text-primary/80">{children}</em>
   ),
   ul: ({ children }) => (
-    <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-foreground/80 sm:text-base">
+    <ul className={cn(MEASURE, "mt-4 list-disc space-y-2 pl-5 text-sm leading-[1.75] text-foreground/80 sm:text-[0.9375rem]")}>
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-foreground/80 sm:text-base">
+    <ol className={cn(MEASURE, "mt-4 list-decimal space-y-2 pl-5 text-sm leading-[1.75] text-foreground/80 sm:text-[0.9375rem]")}>
       {children}
     </ol>
   ),
   li: ({ children }) => <li className="pl-1">{children}</li>,
-  hr: () => <hr className="my-10 border-white/10" />,
+  /* Spacing only. Every `---` in the source sits immediately before an
+     `##`, which draws its own rule, so rendering this as a line produced
+     a doubled separator with a band of dead space between the two. */
+  hr: () => <hr className="my-0 border-0" aria-hidden />,
   blockquote: ({ children }) => (
-    <blockquote className="mt-6 rounded-xl border border-accent/30 bg-accent/[0.06] px-5 py-4 text-sm leading-relaxed text-foreground/90 sm:text-base">
+    <blockquote className={cn(MEASURE, "mt-6 rounded-xl border border-accent/30 bg-accent/[0.06] px-5 py-4 text-sm leading-[1.7] text-foreground/90 sm:text-[0.9375rem]")}>
       {children}
     </blockquote>
   ),
@@ -91,16 +104,21 @@ const components: Components = {
     return <code className={className}>{children}</code>;
   },
   pre: ({ children }) => (
-    <pre className="mt-5 overflow-x-auto rounded-xl border border-white/10 bg-black/40 p-4 font-mono text-[0.7rem] leading-relaxed text-foreground/80 sm:text-xs">
+    <pre className="mt-5 overflow-x-auto rounded-xl border border-white/10 bg-black/40 p-4 font-mono text-[0.7rem] leading-relaxed text-foreground/80 sm:-mx-4 sm:text-xs">
       {children}
     </pre>
   ),
   table: ({ children }) => (
-    <div className="mt-5 overflow-x-auto rounded-xl border border-white/10">
+    <div className="mt-5 overflow-x-auto overscroll-x-contain rounded-xl border border-white/10 [scrollbar-color:theme(colors.white/20)_transparent] [scrollbar-width:thin] sm:-mx-4">
       <table className="w-full min-w-[480px] text-left text-xs sm:text-sm">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
+  thead: ({ children }) => {
+    // GFM requires a header row, so key/value tables declare an empty one.
+    // Rendering it left a bare grey band above the first real row.
+    if (flattenText(children).trim() === "") return null;
+    return <thead className="bg-white/5">{children}</thead>;
+  },
   th: ({ children }) => (
     <th className="border-b border-white/10 px-4 py-2.5 text-[0.65rem] font-semibold tracking-[0.1em] text-muted-foreground uppercase sm:text-[0.7rem]">
       {children}

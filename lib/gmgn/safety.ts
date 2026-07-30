@@ -3,6 +3,11 @@ import type { SafetyCheckResult } from "@/lib/sniper/safety-checks";
 
 import type { DiscoveredToken } from "./discovery";
 import { checkAlphaWalletBuy } from "@/lib/sniper/alpha-wallets";
+import {
+  MAX_TRANSFER_FEE_BPS,
+  readMintExtensions,
+} from "@/lib/sniper/safety-checks";
+import { extensionRefusalReasons } from "@/lib/sniper/token-extensions";
 
 /**
  * Entry gate for tokens discovered through GMGN (lib/gmgn/discovery.ts),
@@ -144,6 +149,17 @@ export async function evaluateGmgnSafety(
   }
   if (token.isWashTrading === true) {
     reasons.push("wash trading detected");
+  }
+
+  /* Same Token-2022 extension gate the pump.fun path enforces (§9.1). GMGN's
+     payload carries no extension data, so this costs one RPC read per
+     candidate that has already survived every cheaper check. Fail-closed:
+     an unreadable mint is refused, not assumed clean. */
+  const extensions = await readMintExtensions(token.mint);
+  if (extensions === null) {
+    reasons.push("could not read mint account to check token extensions");
+  } else {
+    reasons.push(...extensionRefusalReasons(extensions, MAX_TRANSFER_FEE_BPS));
   }
 
   /* Same alpha-wallet gate the pump.fun path enforces. It reads holders of

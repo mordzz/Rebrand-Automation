@@ -4,6 +4,11 @@ import { getRpc } from "@/lib/solana/wallet";
 import type { PumpPortalNewTokenEvent } from "@/lib/solana/pumpportal";
 import { checkAlphaWalletBuy } from "./alpha-wallets";
 import type { SniperConfig } from "./config";
+import {
+  extensionRefusalReasons,
+  parseMintExtensions,
+  type MintExtensionFacts,
+} from "@/lib/sniper/token-extensions";
 
 export type TokenMetadata = {
   name?: string;
@@ -40,16 +45,24 @@ export type SafetyCheckResult = {
 async function readMintAuthorities(
   mint: string,
   rpcUrl?: string | null
-): Promise<{ mintRenounced: boolean | null; freezeRenounced: boolean | null }> {
+): Promise<{
+  mintRenounced: boolean | null;
+  freezeRenounced: boolean | null;
+  /** null when the account could not be read at all, which the caller
+   *  must treat as a refusal rather than as "no extensions". */
+  extensions: MintExtensionFacts | null;
+}> {
   try {
     const rpc = getRpc(rpcUrl);
     const { value } = await rpc
       .getAccountInfo(address(mint), { encoding: "base64" })
       .send();
-    if (!value) return { mintRenounced: null, freezeRenounced: null };
+    if (!value) return { mintRenounced: null, freezeRenounced: null, extensions: null };
 
     const bytes = Buffer.from(value.data[0], "base64");
-    if (bytes.length < 82) return { mintRenounced: null, freezeRenounced: null };
+    if (bytes.length < 82) {
+      return { mintRenounced: null, freezeRenounced: null, extensions: null };
+    }
 
     const mintAuthorityOption = bytes.readUInt32LE(0);
     const freezeAuthorityOption = bytes.readUInt32LE(46);
@@ -57,9 +70,12 @@ async function readMintAuthorities(
     return {
       mintRenounced: mintAuthorityOption === 0,
       freezeRenounced: freezeAuthorityOption === 0,
+      // Same account read, no extra RPC: the extension trailer is in the
+      // bytes we already have (§8.3 keeps Tier 0 at zero additional RPC).
+      extensions: parseMintExtensions(bytes, String(value.owner)),
     };
   } catch {
-    return { mintRenounced: null, freezeRenounced: null };
+    return { mintRenounced: null, freezeRenounced: null, extensions: null };
   }
 }
 
@@ -166,6 +182,9 @@ export type TokenSafetyData = {
   mintAuthorityRenounced: boolean | null;
   freezeAuthorityRenounced: boolean | null;
   metadata: TokenMetadata | null;
+  /** null when the mint account could not be read; see evaluateSafety,
+   *  which refuses rather than assuming a clean mint. */
+  extensions: MintExtensionFacts | null;
 };
 
 /**
@@ -184,7 +203,7 @@ export async function fetchTokenSafetyData(
    * uses the shared endpoint, which is what the house path always does. */
   rpcUrl?: string | null
 ): Promise<TokenSafetyData> {
-  const [{ mintRenounced, freezeRenounced }, metadata] = await Promise.all([
+  const [{ mintRenounced, freezeRenounced, extensions }, metadata] = await Promise.all([
     readMintAuthorities(event.mint, rpcUrl),
     fetchTokenMetadata(event.uri, metadataFetchTimeoutMs),
   ]);
@@ -192,6 +211,7 @@ export async function fetchTokenSafetyData(
     mintAuthorityRenounced: mintRenounced,
     freezeAuthorityRenounced: freezeRenounced,
     metadata,
+    extensions,
   };
 }
 
@@ -202,6 +222,25 @@ export async function fetchTokenSafetyData(
  * (different configs track different wallets) and off by default, so most
  * callers pay nothing extra here.
  */
+export { MAX_TRANSFER_FEE_BPS };
+
+/** Reads a mint's extension trailer on its own, for entry paths that do not
+ * go through fetchTokenSafetyData (see lib/gmgn/safety.ts). Returns null when
+ * the account could not be read, which callers must treat as a refusal. */
+export async function readMintExtensions(
+  mint: string,
+  rpcUrl?: string | null
+): Promise<MintExtensionFacts | null> {
+  return (await readMintAuthorities(mint, rpcUrl)).extensions;
+}
+
+/** Platform floor for a Token-2022 transfer fee, in basis points. Fixed
+ * rather than configurable: a 5% round-trip tax already dominates most
+ * memecoin theses, and an operator raising it is not expressing risk
+ * appetite so much as agreeing to be taxed. */
+const MAX_TRANSFER_FEE_BPS = 500;
+
+
 export async function evaluateSafety(
   event: PumpPortalNewTokenEvent,
   tokenData: TokenSafetyData,
@@ -262,6 +301,23 @@ export async function evaluateSafety(
         reasons.push("freeze authority not renounced");
       }
     }
+  }
+
+  /* Token-2022 extension gate (§9.1). Unconditional, not behind a config
+     flag: these are not risk preferences but conditions under which an exit
+     may be impossible, and the fee-authority case is the one the whitepaper
+     bolds because reading the current fee is not enough when the authority
+     can raise it after entry.
+
+     Fail-closed (§9.4): a mint we could not read is refused, never assumed
+     clean. That is stricter than the authority check above, which only
+     objects when the operator asked for those authorities to be renounced. */
+  if (tokenData.extensions === null) {
+    reasons.push("could not read mint account to check token extensions");
+  } else {
+    reasons.push(
+      ...extensionRefusalReasons(tokenData.extensions, MAX_TRANSFER_FEE_BPS)
+    );
   }
 
   const creatorPct = creatorBuyPercent(event);
