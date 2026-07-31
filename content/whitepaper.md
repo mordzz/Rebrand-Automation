@@ -156,9 +156,11 @@ Under Model C, an attacker who defeats all of the above can still only route fun
 
 ### 8.1 Pipeline
 
-The Flood is two sources, not one. A push stream carries pump.fun mints within milliseconds of creation, and a polled feed covers every other indexed launchpad (bags, believe, letsbonk, boop, heaven, moonshot, meteora and others) at a few seconds' latency. Both empty into the same Manifest, and a candidate carries which source found it.
+The Flood is two sources, not one. A push stream carries pump.fun mints within milliseconds of creation, and a polled feed covers the indexed launchpads (bags, believe, letsbonk, boop, heaven, moonshot, meteora and others) at a few seconds' latency. The two overlap rather than partition the venue: the polled feed indexes pump.fun as well, so it is slower to the same tokens rather than blind to them. Both empty into the same Manifest, and a candidate carries which source found it.
 
-They are not interchangeable, and the difference is a constraint rather than a detail. The polled feed arrives with market data already attached, so it can answer questions the push stream cannot, including holder concentration and honeypot signals. The push stream arrives sooner. An agent's entry filters are applied identically to both: a requirement an operator sets is enforced regardless of which source surfaced the token, including checks the feed itself does not provide, which are then performed directly against the chain.
+They are not interchangeable, and the difference is a constraint rather than a detail. The polled feed arrives with market data already attached, so it can answer questions the push stream cannot, including holder concentration, deployer rug history, bundling, and honeypot signals. The push stream arrives sooner and carries none of it. An agent's entry filters are applied identically to both: a requirement an operator sets is enforced regardless of which source surfaced the token, including checks the feed itself does not provide, which are then performed directly against the chain.
+
+**Which source may open a position is an operator setting, and it defaults to the polled feed alone.** The push stream is fast enough to matter and, on its own, close to blind: pump.fun revokes mint and freeze authority on every launch, so the two checks that look most protective pass for essentially the entire venue, leaving keywords, socials and creator share as the only filters with any teeth. Since the polled feed reaches the same tokens a few seconds later carrying the signals that actually separate a launch from a trap, the default trades latency for evidence. An operator who wants the earlier entry can enable the push stream and is choosing a thinner gate when they do.
 
 ```
                     THE FLOOD: Solana mint & pool stream
@@ -692,6 +694,8 @@ What a newly deployed agent actually runs, before the operator changes anything.
 
 | Parameter | Default | Rationale |
 |---|---|---|
+| Entry sources | Polled feed only | The push stream carries no risk data, and pump.fun revokes both authorities on every launch, so the checks available against it pass for essentially the whole venue (§8.1) |
+| Minimum pool liquidity | 20 SOL | A thin pool is the cheapest thing in this market to pull. Refused when liquidity is unknown, not assumed adequate |
 | Max SOL per entry | 0.05 SOL | Absolute, so a large deposit does not silently scale up risk |
 | Max concurrent positions | 3 | Caps correlated exposure in a market-wide dump |
 | Max total deployed | 0.15 SOL | Bounds the whole book, not just each entry |
@@ -717,12 +721,11 @@ What a newly deployed agent actually runs, before the operator changes anything.
 
 ### A.2 Target values, not yet implemented
 
-Retained as design intent. An agent does not enforce any of these today, and no interface exposes them.
+Retained as design intent. No interface exposes these, and except where a status below says otherwise an agent does not enforce them.
 
 | Parameter | Target | Status |
 |---|---|---|
-| Minimum pool liquidity | 20 SOL | Not enforced |
-| Max top-10 concentration | 25% | Available only on GMGN-sourced candidates, at a fixed threshold |
+| Max top-10 concentration | 25% | Enforced on polled-feed candidates at a fixed 35%, not at the 25% target and not as an operator knob |
 | Max deployer holdings | 5% | Superseded by max creator initial buy in A.1 |
 | Raven size cap | ⟦FILL⟧ × max | Instinct-specific sizing not implemented (§10) |
 | Re-verification interval | ⟦FILL⟧ | §9.5 |
@@ -805,3 +808,4 @@ The crash guard is defined as a drop **within one exit check**, so its sensitivi
 - **v0.4**: Fleet introduced as the organizing frame; survival ranking established.
 - **v1.0-rc**: Tiered Manifest with latency budget; shared verdict model; continuous re-verification; idempotency protocol; restart recovery; honest exit semantics; stop-hunt resistance; LLM boundary; fleet eligibility thresholds; economics; threat model; entity and data-ownership sections.
 - **v1.1**: Aligned the document with the implementation rather than the design intent. Custody rewritten around the model that actually ships: a generated per-agent wallet funded by deposit, with its key encrypted at rest under an environment-held key, replacing an unresolved choice between two models and a claim of KMS or HSM isolation that does not exist yet (§7). Routing named as Jupiter, with the quote-then-record ordering that prevents a ledger entry for a fill that did not happen (§11.1). The Flood documented as two discovery sources with different latency and different available signals (§8.1). Default configuration split into what ships and what remains target, because publishing the latter as though it were the former was the document's largest inaccuracy (Appendix A). Economics re-denominated from a monthly fiat subscription to a one-time SOL deploy fee, which changes the small-balance conclusion (§16.2). The paper fidelity gap replaced with observations from the first cohort, including an unreachable fill that accounted for its entire apparent profit (§15). Added the agent conversation surface, with two parameter-opacity leaks found while building it: one closed, one disclosed as unresolved (§14.8).
+- **v1.2**: Recorded three entry-path changes made after live trading began, each prompted by measured behaviour rather than by design review. Discovery sources became an operator setting defaulting to the polled feed alone, because the push stream's only distinguishing checks are the two authorities pump.fun revokes on every launch, and the first live cohort concentrated its losses there (§8.1, Appendix A.1). The 20 SOL liquidity floor moved from target to shipped default, refusing rather than assuming when liquidity cannot be read; it had sat in A.2 marked "not enforced" while the engine bought into pools holding nothing. Refusals are now written with their reason, which §9.7 describes as public but which the entry paths had been discarding, leaving no way to tell a working filter from a decorative one. Appendix A.2's top-10 concentration row corrected: it is enforced, at a fixed 35% rather than the 25% target.
