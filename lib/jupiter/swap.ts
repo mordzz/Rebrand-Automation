@@ -4,14 +4,14 @@ import {
   assertIsTransactionWithinSizeLimit,
   createKeyPairSignerFromBytes,
   createSolanaRpc,
-  createSolanaRpcSubscriptions,
-  getSignatureFromTransaction,
+  getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
-  sendAndConfirmTransactionFactory,
+  getTransactionLifetimeConstraintFromCompiledTransactionMessage,
   signTransaction,
 } from "@solana/kit";
 
 import { decryptSecret } from "@/lib/solana/agent-wallet";
+import { sendAndConfirmOverHttp } from "@/lib/solana/confirm";
 
 /**
  * Swap execution via Jupiter.
@@ -96,6 +96,39 @@ export async function getSwapQuote(params: {
   }
 }
 
+/**
+ * Jupiter simulated the transaction while building it, and the simulation
+ * failed. Distinct from an execution fault because it is a *refusal*, not a
+ * crash: submitting anyway lands a transaction that reverts, and a reverted
+ * transaction still pays its fee (§11.1) out of the reserve that exists so
+ * an entry can always afford its own exit (§16.3).
+ *
+ * Verified before relying on it: `simulationError` comes back null for
+ * viable swaps from funded wallets, and non-null for ones that cannot pay.
+ * It is a real signal rather than a field that is always populated.
+ */
+export class SwapSimulationFailure extends Error {
+  readonly simulationError: unknown;
+  constructor(detail: string, simulationError: unknown) {
+    super(detail);
+    this.name = "SwapSimulationFailure";
+    this.simulationError = simulationError;
+  }
+}
+
+/** Jupiter reports `{ errorCode, error }`; neither field is guaranteed. */
+function describeSimulationError(raw: unknown): string {
+  if (raw && typeof raw === "object") {
+    const { error, errorCode } = raw as { error?: unknown; errorCode?: unknown };
+    const message = typeof error === "string" ? error : null;
+    const code = typeof errorCode === "string" ? errorCode : null;
+    if (message && code) return `${message} (${code})`;
+    if (message) return message;
+    if (code) return code;
+  }
+  return "simulation failed";
+}
+
 export type SwapResult = {
   signature: string;
   /** Smallest units actually quoted; the fill is bounded by the quote's
@@ -124,7 +157,14 @@ export async function executeSwap(params: {
     decryptSecret(params.agentSecretEnc)
   );
 
-  const built = await postJson<{ swapTransaction?: string }>(SWAP_URL, {
+  const built = await postJson<{
+    swapTransaction?: string;
+    /** Jupiter's own deadline for the blockhash it built with. JSON number,
+     * so it must be widened to bigint before any kit API sees it. */
+    lastValidBlockHeight?: number;
+    /** Null when the build simulated cleanly. */
+    simulationError?: unknown;
+  }>(SWAP_URL, {
     quoteResponse: params.quote.raw,
     userPublicKey: signer.address,
     // Wrapping is required to spend native SOL through an AMM, and
@@ -138,27 +178,87 @@ export async function executeSwap(params: {
     throw new Error("Jupiter did not return a transaction");
   }
 
+  /* Refuse before signing. This is the same posture as skipping a candidate
+     with no route (§11.1): a transaction already known to revert cannot
+     produce a position, so submitting it only burns the fee. Deliberately
+     not retried — §11.2. */
+  if (built.simulationError != null) {
+    throw new SwapSimulationFailure(
+      describeSimulationError(built.simulationError),
+      built.simulationError
+    );
+  }
+
   const unsigned = Uint8Array.from(Buffer.from(built.swapTransaction, "base64"));
   const transaction = getTransactionDecoder().decode(unsigned);
   const signed = await signTransaction([signer.keyPair], transaction);
-  assertIsTransactionWithBlockhashLifetime(signed);
-  assertIsTransactionWithinSizeLimit(signed);
 
   const endpoint =
     params.rpcUrl?.trim() ||
     process.env.SOLANA_RPC_URL ||
     "https://api.mainnet-beta.solana.com";
+  /* One endpoint, HTTP only. Confirmation polls rather than subscribing, so
+     whatever URL the operator saved for this bot is the only one needed —
+     see lib/solana/confirm.ts for why guessing a websocket URL from it was
+     the wrong shape for a field an operator just pastes in. */
   const rpc = createSolanaRpc(endpoint);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(
-    endpoint.replace(/^http/, "ws")
-  );
 
-  await sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions })(signed, {
-    commitment: "confirmed",
-  });
+  /* The lifetime has to describe the transaction we are actually sending.
+     A decoded transaction carries only `messageBytes` and `signatures`, so
+     the constraint has to be read back out of the compiled message rather
+     than invented: the blockhash below is the one Jupiter built with and
+     the one the signature covers. Pasting a freshly fetched blockhash over
+     it, as this did before, left the confirmation strategy watching the
+     expiry of a blockhash the transaction never referenced. */
+  const compiledMessage = getCompiledTransactionMessageDecoder().decode(
+    signed.messageBytes
+  );
+  const lifetime =
+    await getTransactionLifetimeConstraintFromCompiledTransactionMessage(
+      compiledMessage
+    );
+  if (!("blockhash" in lifetime)) {
+    throw new Error("Jupiter returned a durable-nonce transaction, unsupported");
+  }
+
+  /* Deadline for that blockhash. Jupiter publishes it alongside the
+     transaction, which is the authoritative value; the chain is only asked
+     when it is missing. Both arrive as JSON numbers and must be widened,
+     because the blockhash-lifetime predicate requires bigint and rejects a
+     number silently — which surfaced as an undecipherable
+     SOLANA_ERROR__TRANSACTION__EXPECTED_BLOCKHASH_LIFETIME (#5663002)
+     rather than as anything an operator could act on. */
+  let lastValidBlockHeight: bigint;
+  if (
+    typeof built.lastValidBlockHeight === "number" &&
+    Number.isSafeInteger(built.lastValidBlockHeight)
+  ) {
+    lastValidBlockHeight = BigInt(built.lastValidBlockHeight);
+  } else {
+    const height = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
+    if (typeof height !== "bigint") {
+      throw new Error(
+        `RPC returned no usable block height (got ${typeof height}); cannot bound this swap's lifetime`
+      );
+    }
+    // A blockhash is accepted for roughly 150 further blocks. Written as a
+    // constructor call rather than a 150n literal: this project targets
+    // ES2017, where bigint literals are a compile error.
+    lastValidBlockHeight = height + BigInt(150);
+  }
+
+  const signedWithLifetime = {
+    ...signed,
+    lifetimeConstraint: { blockhash: lifetime.blockhash, lastValidBlockHeight },
+  };
+
+  assertIsTransactionWithBlockhashLifetime(signedWithLifetime);
+  assertIsTransactionWithinSizeLimit(signedWithLifetime);
+
+  const signature = await sendAndConfirmOverHttp(rpc, signedWithLifetime);
 
   return {
-    signature: getSignatureFromTransaction(signed),
+    signature,
     inAmount: params.quote.inAmount,
     outAmount: params.quote.outAmount,
   };

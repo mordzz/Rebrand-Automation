@@ -31,11 +31,15 @@ export type AgentChatContext = {
   /** 3d | image | gif — the form this agent wears on its profile. */
   characterType: string;
   deployedAt: string;
+  tradingMode: "paper" | "live";
   tradingPaused: boolean;
   pauseReason: string | null;
   pnl24hSol: number;
   winRate30d: number | null;
   trades30dCount: number;
+  /** The agent’s own trading wallet balance in SOL, or null if it
+   * couldn’t be read. */
+  agentBalanceSol: number | null;
   openPositions: {
     symbol: string | null;
     token: string;
@@ -48,7 +52,7 @@ export type AgentChatContext = {
    * see selectNotableTrades. This is what lets the same context stay
    * cheap and informative whether the agent has closed 3 trades or 3,000. */
   notableTrades: NotableTrade[];
-  /** Most recent first, already bounded by the caller's query. */
+  /** Most recent first, already bounded by the caller’s query. */
   memory: AgentMemory[];
 };
 
@@ -161,6 +165,8 @@ Speak in first person: confident, a little wry, grounded strictly in the data be
 function formatContext(ctx: AgentChatContext): string {
   const lines: string[] = [
     `Deployed since: ${ctx.deployedAt}`,
+    `Trading mode: ${ctx.tradingMode === "live" ? "LIVE (spending real SOL from my agent wallet)" : "paper (simulated, no real funds move)"}`,
+    `Agent wallet balance: ${ctx.agentBalanceSol != null ? `${ctx.agentBalanceSol.toFixed(4)} SOL` : "unknown (could not read)"}`,
     `Status: ${ctx.tradingPaused ? `paused (${ctx.pauseReason ?? "circuit breaker"})` : "actively trading"}`,
     `P&L, last 24h: ${ctx.pnl24hSol.toFixed(4)} SOL`,
     `Win rate, last 30d: ${ctx.winRate30d != null ? `${ctx.winRate30d.toFixed(0)}%` : "no trades yet"} (${ctx.trades30dCount} trades)`,

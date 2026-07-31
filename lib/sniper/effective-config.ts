@@ -1,4 +1,8 @@
-import { getSniperConfig, type SniperConfig } from "@/lib/sniper/config";
+import {
+  getSniperConfig,
+  type EntrySource,
+  type SniperConfig,
+} from "@/lib/sniper/config";
 
 const BOOLEAN_KEYS: (keyof SniperConfig)[] = [
   "requireMintAuthorityRenounced",
@@ -8,6 +12,7 @@ const BOOLEAN_KEYS: (keyof SniperConfig)[] = [
 ];
 
 const NUMBER_KEYS: (keyof SniperConfig)[] = [
+  "minLiquiditySol",
   "maxCreatorBuyPct",
   "minTokenAgeSec",
   "maxSolPerSnipe",
@@ -46,6 +51,15 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
       out[key] = raw[key];
   }
   if (raw.exitMode === "fixed" || raw.exitMode === "tiered") out.exitMode = raw.exitMode;
+  /* An empty list would mean "no feed may open a position", which is a
+     stopped bot expressed as a config value and almost certainly a mistake
+     rather than an intent. Ignored, leaving the house default in place. */
+  if (Array.isArray(raw.entrySources)) {
+    const sources = raw.entrySources.filter(
+      (s): s is EntrySource => s === "gmgn" || s === "pump"
+    );
+    if (sources.length > 0) out.entrySources = [...new Set(sources)];
+  }
   if (Array.isArray(raw.blockedKeywords)) {
     out.blockedKeywords = raw.blockedKeywords
       .filter((k): k is string => typeof k === "string")

@@ -625,19 +625,28 @@ function BotDesk({
     }
   }
 
+  /* The balance that matters on the deploy page is always the agent
+     wallet's — it's the bot's own trading wallet, whether paper or live.
+     The operator's Phantom wallet is only used for identity; its balance
+     is irrelevant here. Fall back to the operator wallet only when no
+     agent wallet has been generated yet (pre-deploy state). */
+  const agentBal = agentWallet?.balanceSol;
+  const hasAgentWallet = agentWallet != null;
+  const effectiveSol = hasAgentWallet ? agentBal : balance?.balanceSol;
+  const effectiveUsd = hasAgentWallet ? null : balance?.balanceUsd;
+  const effectiveError = hasAgentWallet ? null : balance?.error;
+
   const balanceCard: { value: string; hint: string; tone: Tone } =
-    balance?.balanceSol != null
+    effectiveSol != null
       ? {
-          value: `${balance.balanceSol.toFixed(3)} SOL`,
+          value: `${effectiveSol.toFixed(3)} SOL`,
           hint:
-            balance.balanceUsd != null
-              ? `≈ $${balance.balanceUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
-              : "Live balance",
-          // A freshly connected wallet legitimately has 0 SOL — that's
-          // not a "positive" figure, just a fact, so it stays neutral.
-          tone: balance.balanceSol > 0 ? "positive" : "muted",
+            effectiveUsd != null
+              ? `≈ $${effectiveUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+              : "Agent wallet",
+          tone: effectiveSol > 0 ? "positive" : "muted",
         }
-      : balance?.error
+      : effectiveError
         ? {
             value: "—",
             hint: "RPC unavailable — try again shortly",
@@ -692,7 +701,7 @@ function BotDesk({
     tone: Tone;
     colorValue?: boolean;
   }[] = [
-    { icon: Wallet, label: "SOL balance", ...balanceCard },
+    { icon: Wallet, label: "Agent balance", ...balanceCard },
     { icon: Layers, label: "Open positions", ...openPositionsCard },
     { icon: TrendingUp, label: "PnL · 24h", colorValue: true, ...pnl24hCard },
     { icon: Target, label: "Win rate · 30d", colorValue: true, ...winRateCard },
@@ -703,19 +712,28 @@ function BotDesk({
     setThinking(true);
     setMood("thinking");
 
+    /* Build the message window for the per-agent chat route (stateless —
+       it needs the conversation each time, same as the atelier modal). */
+    const outgoing = [
+      ...messages
+        .filter((m) => m.id !== 0) // drop the static greeting
+        .map((m) => ({ role: m.role, text: m.text })),
+      { role: "user" as const, text },
+    ];
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90_000);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/api/atelier/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ botId: bot.id, messages: outgoing }),
         signal: controller.signal,
       });
       const json = await res.json();
       setMessages((m) => [
         ...m,
-        { id: idRef.current++, role: "assistant", text: json.reply },
+        { id: idRef.current++, role: "assistant", text: json.reply ?? "…" },
       ]);
       setMood("talking");
       setTimeout(() => setMood("idle"), 2200);

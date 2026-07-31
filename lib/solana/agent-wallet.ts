@@ -10,23 +10,21 @@ import {
   assertIsTransactionWithinSizeLimit,
   createKeyPairSignerFromBytes,
   createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
-  getSignatureFromTransaction,
   pipe,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
   type Instruction,
 } from "@solana/kit";
 
+import { sendAndConfirmOverHttp } from "@/lib/solana/confirm";
+
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const SYSTEM_PROGRAM_ADDRESS = address("11111111111111111111111111111111");
 
 const RPC_URL =
   process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
-const RPC_WS_URL = RPC_URL.replace(/^http/, "ws");
 
 /* ── Encryption at rest ──────────────────────────────────────────────────
  *
@@ -197,7 +195,6 @@ export async function withdrawFromAgentWallet(
   };
 
   const rpc = createSolanaRpc(RPC_URL);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(RPC_WS_URL);
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
 
   const message = pipe(
@@ -211,13 +208,7 @@ export async function withdrawFromAgentWallet(
   assertIsTransactionWithBlockhashLifetime(signed);
   assertIsTransactionWithinSizeLimit(signed);
 
-  await sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions })(signed, {
-    commitment: "confirmed",
-  });
+  const signature = await sendAndConfirmOverHttp(rpc, signed);
 
-  return {
-    signature: getSignatureFromTransaction(signed),
-    destination,
-    amountSol,
-  };
+  return { signature, destination, amountSol };
 }

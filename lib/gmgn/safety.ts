@@ -50,6 +50,7 @@ export async function evaluateGmgnSafety(
   token: DiscoveredToken,
   config: Pick<
     SniperConfig,
+    | "minLiquiditySol"
     | "requireMintAuthorityRenounced"
     | "requireFreezeAuthorityRenounced"
     | "requireSocialLink"
@@ -60,7 +61,10 @@ export async function evaluateGmgnSafety(
     | "minTokenAgeSec"
     | "maxTokenAgeSec"
   >,
-  ageSec: number
+  ageSec: number,
+  /** For the liquidity floor: GMGN reports liquidity in USD, the knob is
+   * in SOL. Null means the rate was unavailable, which refuses. */
+  solUsd: number | null
 ): Promise<SafetyCheckResult> {
   const reasons: string[] = [];
 
@@ -149,6 +153,30 @@ export async function evaluateGmgnSafety(
   }
   if (token.isWashTrading === true) {
     reasons.push("wash trading detected");
+  }
+
+  /* Pool liquidity floor. GMGN reports `liquidity` in USD, in the same unit
+     as `usd_market_cap` — verified against live rows, where the two track
+     each other at roughly a third rather than differing by orders of
+     magnitude. The operator's knob is denominated in SOL like the rest of
+     the config, so the comparison converts rather than assuming.
+
+     Fail-closed both ways: an unknown liquidity and an unknown SOL price
+     are both refusals, because a thin pool is the cheapest thing in this
+     market to pull and "could not check" is not a pass. */
+  if (config.minLiquiditySol > 0) {
+    if (token.liquidity == null) {
+      reasons.push("pool liquidity unknown");
+    } else if (!(solUsd != null && solUsd > 0)) {
+      reasons.push("could not price liquidity in SOL (no SOL/USD rate)");
+    } else {
+      const liquiditySol = token.liquidity / solUsd;
+      if (liquiditySol < config.minLiquiditySol) {
+        reasons.push(
+          `pool liquidity ${liquiditySol.toFixed(1)} SOL below the ${config.minLiquiditySol} SOL floor`
+        );
+      }
+    }
   }
 
   /* Same Token-2022 extension gate the pump.fun path enforces (§9.1). GMGN's

@@ -126,8 +126,16 @@ export async function POST(request: Request) {
     })
     .onConflictDoUpdate({
       target: userBots.walletAddress,
-      // Deliberately not touching the agent wallet columns here.
-      set: { name, characterType, characterSrc, updatedAt: new Date() },
+      set: {
+        name,
+        characterType,
+        characterSrc,
+        updatedAt: new Date(),
+        // If the existing bot had no wallet, save the newly generated one
+        ...(agentPublicKey && !existing?.agentPublicKey
+          ? { agentPublicKey, agentSecretEnc }
+          : {}),
+      },
     })
     .returning();
 

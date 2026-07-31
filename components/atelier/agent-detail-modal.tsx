@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { ShieldAlert, X } from "lucide-react";
+import { ShieldAlert, Wallet, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { CharacterAvatar } from "@/components/deploy/character-avatar";
@@ -195,6 +195,11 @@ export function AgentDetailModal({
                   <ShieldAlert className="size-3" />
                   Paused
                 </span>
+              ) : agent.tradingMode === "live" ? (
+                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-sol-green-ink/10 px-2.5 py-1 text-[0.65rem] font-medium tracking-[0.1em] text-sol-green-ink uppercase">
+                  <span className="inline-block size-1.5 animate-blink rounded-full bg-sol-green-ink" />
+                  Live
+                </span>
               ) : (
                 <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[0.65rem] font-medium tracking-[0.1em] text-muted-foreground uppercase">
                   <span className="inline-block size-1.5 animate-blink rounded-full bg-accent" />
@@ -209,7 +214,20 @@ export function AgentDetailModal({
               </p>
             )}
 
-            <div className="grid grid-cols-3 gap-1 border-t border-white/5 p-1">
+            <div className={cn("grid gap-1 border-t border-white/5 p-1", agent.tradingMode === "live" ? "grid-cols-4" : "grid-cols-3")}>
+              {agent.tradingMode === "live" && (
+                <div className="rounded-xl bg-secondary px-3 py-3 sm:px-4 sm:py-4">
+                  <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
+                    <Wallet className="mr-1 inline size-3" />
+                    Balance
+                  </p>
+                  <p className="mt-2 text-lg font-medium tabular-nums sm:text-xl">
+                    {agent.agentBalanceSol != null
+                      ? `${agent.agentBalanceSol.toFixed(3)} SOL`
+                      : "—"}
+                  </p>
+                </div>
+              )}
               <div className="rounded-xl bg-secondary px-3 py-3 sm:px-4 sm:py-4">
                 <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
                   PnL · 24h

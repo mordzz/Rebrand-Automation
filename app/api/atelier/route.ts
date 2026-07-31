@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { trades, userBots } from "@/lib/db/schema";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
+import { getAddressBalance } from "@/lib/solana/wallet";
 import { getOpenPositions } from "@/lib/sniper/positions";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
@@ -61,6 +62,14 @@ export async function GET() {
       const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
       const breaker = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
 
+      // Read the agent wallet balance for live bots so the fleet view
+      // can show it instead of a paper-only stat set.
+      let agentBalanceSol: number | null = null;
+      if (bot.tradingMode === "live" && bot.agentPublicKey) {
+        const bal = await getAddressBalance(bot.agentPublicKey);
+        agentBalanceSol = bal.balanceSol ?? null;
+      }
+
       return {
         id: bot.id,
         name: bot.name,
@@ -69,6 +78,7 @@ export async function GET() {
         walletShort: shortAddress(wallet),
         deployedAt: bot.createdAt,
         active: bot.active,
+        tradingMode: bot.tradingMode as "paper" | "live",
         tradingPaused: breaker.tradingPaused,
         // Category only — the raw reason embeds a configured
         // threshold, and this payload is public. See redactPauseReason.
@@ -76,6 +86,7 @@ export async function GET() {
         pnl24hSol,
         winRate30d,
         trades30dCount: trades30d.length,
+        agentBalanceSol,
         openPositions: openPositions.map((p) => {
           /* Market cap alongside the raw price: a per-token figure like
              5.76e-8 SOL says nothing about whether an entry was early or

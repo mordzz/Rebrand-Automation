@@ -11,7 +11,31 @@ export type TakeProfitTier = { atPct: number; sellPortionPct: number };
  * calls getSniperConfig() fresh every cycle, so a change here takes effect
  * without a restart, the same way sniper_state.tradingPaused already does.
  */
+/** Which discovery feed is allowed to trigger an entry.
+ *
+ * They are not interchangeable. "pump" is PumpPortal's push stream: it
+ * arrives in milliseconds but carries nothing except the create event, so
+ * the only checks that can run against it are authorities, extensions,
+ * keywords and socials — and pump.fun revokes both authorities on every
+ * launch, so those two pass for essentially the whole venue. "gmgn" is
+ * polled and a few seconds slower, but arrives with deployer rug history,
+ * bundling, insider and top-10 concentration, honeypot and tax signals
+ * already attached, which is what §9.3's Tier 2 actually needs.
+ *
+ * GMGN also indexes pump.fun, so preferring it costs coverage of the venue
+ * nothing; it costs latency. */
+export type EntrySource = "gmgn" | "pump";
+
 export type SniperConfig = {
+  /** Feeds permitted to open a position. Defaults to GMGN only: refuse by
+   * default (Design Principle 1) applies to where a candidate came from as
+   * much as to the candidate itself. */
+  entrySources: EntrySource[];
+  /** Floor on pool liquidity, in SOL. Whitepaper Appendix A.2 carried this
+   * as a 20 SOL target marked "not enforced"; a thin pool is the cheapest
+   * thing in this market to pull. */
+  minLiquiditySol: number;
+
   // Entry filters (lib/sniper/safety-checks.ts)
   requireMintAuthorityRenounced: boolean;
   requireFreezeAuthorityRenounced: boolean;
@@ -80,8 +104,24 @@ export function loadSniperRuntimeFlags(): SniperRuntimeFlags {
 const num = (v: string | null): number => Number(v);
 const numOrNull = (v: string | null): number | null => (v == null ? null : Number(v));
 
+/** Not a sniper_config column: these are defaults the per-agent overlay
+ * (lib/sniper/effective-config.ts) is expected to override, so they are
+ * seeded from the environment rather than requiring a schema migration. */
+function defaultEntrySources(): EntrySource[] {
+  const raw = process.env.SNIPER_ENTRY_SOURCES?.trim();
+  if (!raw) return ["gmgn"];
+  const parsed = raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s): s is EntrySource => s === "gmgn" || s === "pump");
+  return parsed.length > 0 ? parsed : ["gmgn"];
+}
+
 function rowToConfig(row: SniperConfigRow): SniperConfig {
   return {
+    entrySources: defaultEntrySources(),
+    minLiquiditySol: envNumber("SNIPER_MIN_LIQUIDITY_SOL", 20),
+
     requireMintAuthorityRenounced: row.requireMintAuthorityRenounced,
     requireFreezeAuthorityRenounced: row.requireFreezeAuthorityRenounced,
     requireSocialLink: row.requireSocialLink,
@@ -120,6 +160,9 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
  * daemon still runs in detect-only mode in that case (see main()). */
 function envSeededDefaults(): SniperConfig {
   return {
+    entrySources: defaultEntrySources(),
+    minLiquiditySol: envNumber("SNIPER_MIN_LIQUIDITY_SOL", 20),
+
     requireMintAuthorityRenounced: true,
     requireFreezeAuthorityRenounced: true,
     requireSocialLink: true,

@@ -45,10 +45,12 @@ import {
   getSwapQuote,
   SOL_MINT,
   solToLamports,
+  SwapSimulationFailure,
 } from "@/lib/jupiter/swap";
 import { getAddressBalance, getRpc } from "@/lib/solana/wallet";
 import { address } from "@solana/kit";
 import { recordAlphaCandidate } from "@/lib/sniper/alpha-candidates";
+import { getMintSupply } from "@/lib/sniper/market-cap";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
 import { getCurrentPrice } from "@/lib/sniper/exit-price";
@@ -271,6 +273,24 @@ async function openPaperPosition(
         // missed trade.
         return;
       } catch (error) {
+        /* A failed pre-trade simulation is a refusal, not a fault: nothing
+           was signed and nothing was sent. It is logged at `guard` so it
+           reads as one more thing the agent turned away, alongside the
+           Manifest's refusals, rather than as an execution error. That also
+           makes it measurable: if this ever starts refusing candidates that
+           would have filled, it is visible in the feed with its reason. */
+        if (error instanceof SwapSimulationFailure) {
+          log(`REFUSED ${candidate.symbol} for ${bot.name}: ${error.message}`);
+          void writeLog({
+            level: "guard",
+            source: "live",
+            walletAddress: bot.walletAddress,
+            tokenMint: candidate.mint,
+            message: `Refused $${candidate.symbol ?? "?"}: swap would revert (${error.message})`,
+          });
+          return;
+        }
+
         log(`LIVE buy failed for ${bot.name}:`, error);
         void writeLog({
           level: "error",
@@ -359,6 +379,41 @@ async function liveExecutionState(
  * see executeSwap's note on why resubmitting is how one signal turns into
  * two positions.
  */
+const LAMPORTS_PER_SOL = 1_000_000_000;
+
+/**
+ * SOL per **whole** token, from an executed fill.
+ *
+ * The two legs of a swap are denominated in different bases: SOL amounts
+ * are lamports (9 decimals), token amounts are that mint's own smallest
+ * unit. Dividing them raw does not cancel to a price, it leaves a factor
+ * of 10^(9 − tokenDecimals) behind. At the 6 decimals a pump.fun mint
+ * uses that is 1000x.
+ *
+ * That mattered because exits are decided against DexScreener's
+ * `priceNative`, which is SOL per whole token: an entry recorded 1000x too
+ * high made every live position read as roughly −99.9% on its first exit
+ * check, so the stop fired immediately and the trade closed for the
+ * round-trip cost before the configured rules ever applied.
+ *
+ * Returns null rather than guessing when the mint's decimals cannot be
+ * read. A hardcoded exponent here would be the same bug with a different
+ * constant, and Token-2022 mints do not all use 6.
+ */
+async function fillPriceSol(
+  mint: string,
+  lamports: number,
+  tokenSmallestUnits: number,
+  rpcUrl?: string | null
+): Promise<number | null> {
+  if (!(lamports > 0) || !(tokenSmallestUnits > 0)) return null;
+  const supply = await getMintSupply(mint, rpcUrl);
+  if (!supply) return null;
+  const wholeTokens = tokenSmallestUnits / 10 ** supply.decimals;
+  if (!(wholeTokens > 0)) return null;
+  return lamports / LAMPORTS_PER_SOL / wholeTokens;
+}
+
 async function executeRealBuy(
   bot: UserBot,
   config: SniperConfig,
@@ -382,12 +437,32 @@ async function executeRealBuy(
     rpcUrl: bot.rpcUrl,
   });
 
-  /* Entry price from the fill actually quoted, not the pre-trade estimate:
-     SOL spent over tokens received, both in their smallest units, which
-     cancel to SOL per token — the same unit exits are priced in. */
-  const tokensOut = Number(result.outAmount);
-  const entryPrice =
-    tokensOut > 0 ? Number(result.inAmount) / tokensOut : candidate.entryPrice;
+  /* Entry price from the fill actually executed, not the pre-trade
+     estimate, converted to SOL per whole token so it is in the same unit
+     the exit logic prices against. Falls back to the discovery price when
+     the mint's decimals cannot be read, which is already in that unit. */
+  const filled = await fillPriceSol(
+    candidate.mint,
+    Number(result.inAmount),
+    Number(result.outAmount),
+    bot.rpcUrl
+  );
+  const entryPrice = filled ?? candidate.entryPrice;
+
+  /* Cheap tripwire for exactly the class of bug this replaced. The
+     executed price should sit within slippage and impact of the price
+     discovery quoted moments earlier; an order-of-magnitude gap means the
+     two are not in the same unit, and every exit decision that follows
+     would be nonsense. Logged rather than acted on: the buy has already
+     landed by this point, so there is nothing left to refuse. */
+  if (filled != null && candidate.entryPrice > 0) {
+    const ratio = filled / candidate.entryPrice;
+    if (ratio > 10 || ratio < 0.1) {
+      log(
+        `WARNING ${candidate.symbol}: executed entry ${filled.toExponential(3)} is ${ratio.toFixed(1)}x the discovery price ${candidate.entryPrice.toExponential(3)} — exits for this position will be priced against a mismatched unit`
+      );
+    }
+  }
 
   log(
     `LIVE buy — ${bot.name} (${short(bot.walletAddress)}): ${sizeSol} SOL of ${candidate.symbol} @ ${entryPrice.toExponential(3)} · ${result.signature}`
@@ -422,6 +497,31 @@ async function executeRealBuy(
   return true;
 }
 
+/** Every refusal, with its reason, written where the operator can see it.
+ *
+ * Both entry paths used to drop a failed verdict on the floor with a bare
+ * `return`, so the only visible evidence a gate had done anything was the
+ * absence of a trade. That makes tuning a filter guesswork, and it is the
+ * feed §9.7 promises to publish. Only the first reason is stored: the
+ * refusal is what matters, and a token failing six checks is not six times
+ * more interesting than one failing a single check. */
+function logRefusal(
+  bot: UserBot,
+  mint: string,
+  symbol: string | undefined,
+  source: string,
+  reasons: string[]
+): void {
+  const reason = reasons[0] ?? "failed entry criteria";
+  void writeLog({
+    level: "guard",
+    source: "manifest",
+    walletAddress: bot.walletAddress,
+    tokenMint: mint,
+    message: `Refused $${symbol ?? "?"} (${source}): ${reason}`,
+  });
+}
+
 async function tryOpenPaperPosition(
   bot: UserBot,
   config: SniperConfig,
@@ -429,8 +529,17 @@ async function tryOpenPaperPosition(
   tokenData: TokenSafetyData,
   ageSec: number
 ): Promise<void> {
+  /* Source gate. The push stream carries no risk data, so an operator who
+     has not opted into it should never take an entry from it — see
+     EntrySource in lib/sniper/config.ts. Checked before the safety work so
+     a disabled source costs nothing. */
+  if (!config.entrySources.includes("pump")) return;
+
   const safety = await evaluateSafety(event, tokenData, config, ageSec);
-  if (!safety.passed) return;
+  if (!safety.passed) {
+    logRefusal(bot, event.mint, event.symbol, "pump", safety.reasons);
+    return;
+  }
 
   await openPaperPosition(bot, config, {
     mint: event.mint,
@@ -481,12 +590,42 @@ async function tryRecordAlphaCandidate(
  * `basisSol` is the SOL this slice was bought with, so P&L is measured
  * against what was actually risked on it rather than the whole entry.
  */
+/**
+ * Three outcomes, not two.
+ *
+ * "Could not sell" and "there is nothing left to sell" used to collapse
+ * into the same `null`, and the caller treated both as retry-next-tick.
+ * That is right for the first and permanently wrong for the second: a
+ * position whose tokens have already left the wallet can never be sold
+ * again, so it stayed open forever, holding a concurrency slot and showing
+ * on the dashboard as exposure that does not exist.
+ */
+type SellOutcome =
+  | { kind: "sold"; signature: string; exitPrice: number; pnlSol: number }
+  /** Wallet holds none of this mint: it exited outside this process. */
+  | { kind: "already-exited" }
+  /** Genuine failure; the tokens are still held and this is worth retrying. */
+  | { kind: "failed" };
+
+/** A freshly confirmed buy can briefly read as a zero balance on an RPC
+ * node that has not caught up. Inside this window an empty wallet is
+ * treated as lag and retried; past it, as a real exit. */
+const RECONCILE_GRACE_MS = 60_000;
+
 async function executeRealSell(
   bot: UserBot,
-  position: { id: string; token: string; symbol: string | null; sizeSol: string; entryPrice: string; context: unknown },
+  position: {
+    id: string;
+    token: string;
+    symbol: string | null;
+    sizeSol: string;
+    entryPrice: string;
+    context: unknown;
+    openedAt: Date;
+  },
   reason: string,
   portion?: { sellPortionPct: number; basisSol: number }
-): Promise<{ signature: string; exitPrice: number; pnlSol: number } | null> {
+): Promise<SellOutcome> {
   try {
     const rpc = getRpc(bot.rpcUrl);
     const { value: accounts } = await rpc
@@ -507,8 +646,13 @@ async function executeRealSell(
     }
 
     if (held <= BigInt(0)) {
-      log(`LIVE sell — ${position.symbol}: agent wallet holds none, skipping`);
-      return null;
+      const age = Date.now() - position.openedAt.getTime();
+      if (age < RECONCILE_GRACE_MS) {
+        log(`LIVE sell — ${position.symbol}: wallet reads empty ${Math.round(age / 1000)}s after entry, treating as RPC lag`);
+        return { kind: "failed" };
+      }
+      log(`LIVE sell — ${position.symbol}: wallet holds none, position already exited`);
+      return { kind: "already-exited" };
     }
 
     /* Portion is taken off the balance actually held, not off the original
@@ -520,7 +664,7 @@ async function executeRealSell(
         : (held * BigInt(Math.round(portion.sellPortionPct))) / BigInt(100);
     if (sellAmount <= BigInt(0)) {
       log(`LIVE sell — ${position.symbol}: portion rounds to zero, skipping`);
-      return null;
+      return { kind: "failed" };
     }
 
     const config = configByWalletFor(bot.walletAddress);
@@ -532,7 +676,7 @@ async function executeRealSell(
     });
     if (!quote) {
       log(`LIVE sell — no route for ${position.symbol} (${position.token})`);
-      return null;
+      return { kind: "failed" };
     }
 
     const result = await executeSwap({
@@ -544,8 +688,18 @@ async function executeRealSell(
     const solOut = Number(result.outAmount) / 1_000_000_000;
     const basisSol = portion?.basisSol ?? Number(position.sizeSol);
     const pnlSol = solOut - basisSol;
+    /* Same unit as the entry above: SOL per whole token. If the decimals
+       cannot be read, derive it from the realised ratio instead of
+       recording a raw quotient in the wrong base — solOut/basisSol is the
+       move this exit actually achieved, whatever unit the entry is in. */
     const exitPrice =
-      Number(sellAmount) > 0 ? Number(result.outAmount) / Number(sellAmount) : 0;
+      (await fillPriceSol(
+        position.token,
+        Number(result.outAmount),
+        Number(sellAmount),
+        bot.rpcUrl
+      )) ??
+      (basisSol > 0 ? Number(position.entryPrice) * (solOut / basisSol) : 0);
 
     log(
       `LIVE ${reason} — ${position.symbol} sold for ${solOut.toFixed(5)} SOL, pnl ${pnlSol.toFixed(5)} · ${result.signature}`
@@ -559,7 +713,7 @@ async function executeRealSell(
       message: `LIVE ${reason} on $${position.symbol ?? "?"}: ${pnlSol >= 0 ? "+" : ""}${pnlSol.toFixed(5)} SOL`,
     });
 
-    return { signature: result.signature, exitPrice, pnlSol };
+    return { kind: "sold", signature: result.signature, exitPrice, pnlSol };
   } catch (error) {
     log(`LIVE sell failed for ${position.symbol}:`, error);
     void writeLog({
@@ -571,7 +725,7 @@ async function executeRealSell(
         error instanceof Error ? error.message : "unknown error"
       }`,
     });
-    return null;
+    return { kind: "failed" };
   }
 }
 
@@ -795,10 +949,38 @@ async function checkAllExits(): Promise<void> {
 
       if (liveBot) {
         const sold = await executeRealSell(liveBot, position, reason);
-        if (!sold) {
+        if (sold.kind === "failed") {
           // Could not sell — leave the position open and try again next
           // tick. Recording a close we did not perform would tell the
           // operator they are flat while they still hold the token.
+          continue;
+        }
+        if (sold.kind === "already-exited") {
+          /* The tokens are gone but this row never got closed: the exit
+             landed and the process stopped before the write. Retrying can
+             never resolve it, because there is nothing left to sell, so the
+             row is squared against the chain here instead.
+
+             The price and P&L recorded are the engine's own modelled exit,
+             not an observed fill — the real one happened outside this
+             process and its number is not recoverable from here. Both the
+             reason and the signature field say so, so this trade is never
+             mistaken for a measured one. */
+          log(`RECONCILED ${position.symbol} for ${liveBot.name}: wallet already flat, closing stale row`);
+          void writeLog({
+            level: "guard",
+            source: "live",
+            walletAddress,
+            tokenMint: position.token,
+            message: `Reconciled $${position.symbol ?? "?"}: exit landed outside the engine, position closed against the chain`,
+          });
+          await closePosition(position, {
+            exitPrice,
+            exitTxSignature: "reconciled",
+            pnlSol,
+            reason: `${reason} (reconciled against chain; P&L modelled, not an observed fill)`,
+          });
+          invalidateBreakerCache(walletAddress);
           continue;
         }
         exitTxSignature = sold.signature;
@@ -844,7 +1026,16 @@ async function checkAllExits(): Promise<void> {
            happened — the tier stays untriggered and is retried next tick.
            Booking it would shrink the ledger's position while the wallet
            still held every token, and every later figure would be wrong. */
-        if (!sold) break;
+        if (sold.kind === "failed") break;
+        if (sold.kind === "already-exited") {
+          /* Nothing left to trim: the whole position left the wallet. A
+             partial exit would be meaningless, so close the row outright
+             and stop the ladder. */
+          log(`RECONCILED ${position.symbol} for ${liveBot.name}: wallet flat mid-ladder, closing stale row`);
+          await markPositionClosed(position.id);
+          invalidateBreakerCache(walletAddress);
+          break;
+        }
         tierExitSignature = sold.signature;
         tierExitPrice = sold.exitPrice;
         tierPnlSol = sold.pnlSol;
@@ -969,8 +1160,18 @@ async function processGmgnCandidates(): Promise<void> {
 
     for (const { bot, config } of eligible) {
       try {
-        const safety = await evaluateGmgnSafety(item.token, config, ageSec);
-        if (!safety.passed) continue;
+        if (!config.entrySources.includes("gmgn")) continue;
+        const safety = await evaluateGmgnSafety(item.token, config, ageSec, solUsd);
+        if (!safety.passed) {
+          logRefusal(
+            bot,
+            item.token.mint,
+            item.token.symbol ?? undefined,
+            item.token.launchpad ?? "gmgn",
+            safety.reasons
+          );
+          continue;
+        }
         await openPaperPosition(bot, config, {
           mint: item.token.mint,
           symbol: item.token.symbol ?? undefined,

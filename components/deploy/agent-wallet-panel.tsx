@@ -108,6 +108,29 @@ export function AgentWalletPanel({
     }
   }
 
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  async function generateWallet() {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const res = await fetch(`/api/my-bot/generate-wallet?${walletQuery}`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setGenError(json.error ?? "Failed to generate agent wallet.");
+        return;
+      }
+      setRefreshTick((t) => t + 1);
+    } catch {
+      setGenError("Failed to generate agent wallet.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   const wallet = data?.wallet ?? null;
   const balance = wallet?.balanceSol ?? null;
 
@@ -128,11 +151,34 @@ export function AgentWalletPanel({
       </div>
 
       {data && !wallet ? (
-        <p className="border-t border-white/5 px-4 py-8 text-center text-sm text-muted-foreground">
-          {data.reason === "encryption_key_missing"
-            ? "Set AGENT_WALLET_ENCRYPTION_KEY to enable agent wallets — a secret key is never stored unencrypted."
-            : "No wallet yet. Refit this agent once to generate one."}
-        </p>
+        <div className="flex flex-col items-center justify-center border-t border-white/5 px-6 py-8 text-center">
+          {data.reason === "encryption_key_missing" ? (
+            <p className="max-w-md text-sm text-muted-foreground">
+              Set <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs text-amber-300">AGENT_WALLET_ENCRYPTION_KEY</code> in server environment variables to enable agent wallets. A secret key is never stored unencrypted.
+            </p>
+          ) : (
+            <div className="flex max-w-md flex-col items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                This agent does not have a dedicated wallet yet. Generate a wallet for this agent to enable deposits and live trading.
+              </p>
+              <Button
+                onClick={generateWallet}
+                disabled={generating}
+                className="mt-1"
+              >
+                {generating ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Wallet className="mr-2 size-4" />
+                )}
+                Generate Agent Wallet
+              </Button>
+              {genError && (
+                <p className="mt-1 text-xs text-destructive">{genError}</p>
+              )}
+            </div>
+          )}
+        </div>
       ) : !wallet ? (
         <p className="border-t border-white/5 px-4 py-8 text-center text-sm text-muted-foreground">
           Loading…

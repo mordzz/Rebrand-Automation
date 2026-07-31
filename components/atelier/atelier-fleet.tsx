@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Layers, Rocket, ShieldAlert, Target, TrendingUp } from "lucide-react";
+import { Bot, Layers, Rocket, ShieldAlert, Target, TrendingUp, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -36,11 +36,17 @@ export type AgentDto = {
    * (the safety circuit breaker) below. Stopped means the operator chose
    * to stop it; paused means it wants to trade but tripped a loss limit. */
   active: boolean;
+  /** "paper" | "live". Paper means simulated fills; live means the agent
+   * wallet is spending real SOL. */
+  tradingMode: "paper" | "live";
   tradingPaused: boolean;
   pauseReason: string | null;
   pnl24hSol: number;
   winRate30d: number | null;
   trades30dCount: number;
+  /** The agent wallet balance in SOL — only populated for live bots,
+   * null for paper (no wallet to read). */
+  agentBalanceSol: number | null;
   openPositions: OpenPositionDto[];
 };
 
@@ -170,6 +176,11 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
             <ShieldAlert className="size-3" />
             Paused
           </span>
+        ) : agent.tradingMode === "live" ? (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-sol-green-ink/10 px-2.5 py-1 text-[0.65rem] font-medium tracking-[0.1em] text-sol-green-ink uppercase">
+            <span className="inline-block size-1.5 animate-blink rounded-full bg-sol-green-ink" />
+            Live
+          </span>
         ) : (
           <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[0.65rem] font-medium tracking-[0.1em] text-muted-foreground uppercase">
             <span className="inline-block size-1.5 animate-blink rounded-full bg-accent" />
@@ -184,7 +195,22 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-1 border-t border-white/5 p-1">
+      <div className={cn("grid gap-1 border-t border-white/5 p-1", agent.tradingMode === "live" ? "grid-cols-4" : "grid-cols-3")}>
+        {agent.tradingMode === "live" && (
+          <div className="rounded-xl bg-secondary px-3 py-3">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Wallet className="size-3" />
+              <p className="text-[0.6rem] font-semibold tracking-[0.1em] uppercase">
+                Balance
+              </p>
+            </div>
+            <p className="mt-1.5 text-base font-medium tabular-nums">
+              {agent.agentBalanceSol != null
+                ? `${agent.agentBalanceSol.toFixed(3)}`
+                : "—"}
+            </p>
+          </div>
+        )}
         <div className="rounded-xl bg-secondary px-3 py-3">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <TrendingUp className="size-3" />

@@ -7,7 +7,7 @@
 |---|---|
 | **Status** | Release candidate, pending legal review and the open items in Appendix D |
 | **Date** | ⟦FILL: publication date⟧ |
-| **Site** | noah-engine.fly.dev |
+| **Site** | noahengine.xyz |
 | **Source** | ⟦FILL: repository URL, or state that source is closed⟧ |
 | **Contact** | ⟦FILL: official contact⟧ |
 

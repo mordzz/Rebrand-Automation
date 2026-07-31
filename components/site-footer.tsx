@@ -49,7 +49,17 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               <XIcon size={13} />
             </a>
           </div>
-          <p>Refuse by default · Rules before positions · Rank survival</p>
+          <div className="flex items-center gap-4">
+            <Link href="/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </Link>
+            <Link href="/privacy" className="transition-colors hover:text-foreground">
+              Privacy
+            </Link>
+            <span className="hidden sm:inline">
+              Refuse by default · Rules before positions · Rank survival
+            </span>
+          </div>
         </div>
       </footer>
     );
@@ -127,8 +137,25 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
           </div>
         </div>
 
-        <div className="mt-14 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground/70 sm:flex-row">
-          <p>Est. 2026 · All rights reserved</p>
+        {/* Legal sits on the bottom rule rather than in the Pages column:
+            it belongs with the copyright line, and mixing it into the
+            product navigation buries it. */}
+        <div className="mt-14 flex flex-col gap-4 border-t border-border pt-6 text-xs text-muted-foreground/70 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <p>Est. 2026 · All rights reserved</p>
+            <Link
+              href="/terms"
+              className="transition-colors hover:text-foreground"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              href="/privacy"
+              className="transition-colors hover:text-foreground"
+            >
+              Privacy Policy
+            </Link>
+          </div>
           <p>Refuse by default · Rules before positions · Rank survival</p>
         </div>
       </div>

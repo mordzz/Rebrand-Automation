@@ -9,13 +9,12 @@ import {
   assertIsTransactionWithinSizeLimit,
   createKeyPairSignerFromBytes,
   createSolanaRpc,
-  createSolanaRpcSubscriptions,
   createTransactionMessage,
   getBase58Encoder,
-  getSignatureFromTransaction,
+  getCompiledTransactionMessageDecoder,
   getTransactionDecoder,
+  getTransactionLifetimeConstraintFromCompiledTransactionMessage,
   pipe,
-  sendAndConfirmTransactionFactory,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransaction,
@@ -23,11 +22,12 @@ import {
   type Instruction,
 } from "@solana/kit";
 
+import { sendAndConfirmOverHttp } from "@/lib/solana/confirm";
+
 const LAMPORTS_PER_SOL = 1_000_000_000;
 
 const RPC_URL =
   process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
-const RPC_WS_URL = RPC_URL.replace(/^http/, "ws");
 
 const SYSTEM_PROGRAM_ADDRESS = address(
   "11111111111111111111111111111111"
@@ -214,7 +214,6 @@ export async function sendSolTransfer(
   };
 
   const rpc = createSolanaRpc(RPC_URL);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(RPC_WS_URL);
   const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
 
   const message = pipe(
@@ -227,17 +226,10 @@ export async function sendSolTransfer(
   const signed = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(signed);
   assertIsTransactionWithinSizeLimit(signed);
-  const sendAndConfirm = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
-  });
-  await sendAndConfirm(signed, { commitment: "confirmed" });
 
-  return {
-    signature: getSignatureFromTransaction(signed),
-    destination,
-    amountSol,
-  };
+  const signature = await sendAndConfirmOverHttp(rpc, signed);
+
+  return { signature, destination, amountSol };
 }
 
 /**
@@ -258,16 +250,46 @@ export async function signAndSendRawTransaction(
   const signer = await createKeyPairSignerFromBytes(decodeSecretKey(raw));
   const transaction = getTransactionDecoder().decode(unsignedTxBytes);
   const signed = await signTransaction([signer.keyPair], transaction);
-  assertIsTransactionWithBlockhashLifetime(signed);
-  assertIsTransactionWithinSizeLimit(signed);
 
   const rpc = createSolanaRpc(RPC_URL);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(RPC_WS_URL);
-  const sendAndConfirm = sendAndConfirmTransactionFactory({
-    rpc,
-    rpcSubscriptions,
-  });
-  await sendAndConfirm(signed, { commitment: "confirmed" });
 
-  return getSignatureFromTransaction(signed);
+  /* Same rule as lib/jupiter/swap.ts: the lifetime must describe the bytes
+     we are sending. A decoded transaction exposes only `messageBytes` and
+     `signatures`, so the blockhash is read back out of the compiled
+     message rather than replaced with a freshly fetched one the signature
+     does not cover. */
+  const compiledMessage = getCompiledTransactionMessageDecoder().decode(
+    signed.messageBytes
+  );
+  const lifetime =
+    await getTransactionLifetimeConstraintFromCompiledTransactionMessage(
+      compiledMessage
+    );
+  if (!("blockhash" in lifetime)) {
+    throw new Error("Builder returned a durable-nonce transaction, unsupported");
+  }
+
+  // Widened explicitly: the blockhash-lifetime predicate demands bigint and
+  // rejects anything else as "no blockhash lifetime" (#5663002).
+  const blockHeight = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
+  if (typeof blockHeight !== "bigint") {
+    throw new Error(
+      `RPC returned no usable block height (got ${typeof blockHeight})`
+    );
+  }
+
+  const signedWithLifetime = {
+    ...signed,
+    lifetimeConstraint: {
+      blockhash: lifetime.blockhash,
+      // A blockhash is accepted for roughly 150 further blocks. BigInt(150)
+      // rather than 150n: this project targets ES2017.
+      lastValidBlockHeight: blockHeight + BigInt(150),
+    },
+  };
+
+  assertIsTransactionWithBlockhashLifetime(signedWithLifetime);
+  assertIsTransactionWithinSizeLimit(signedWithLifetime);
+
+  return sendAndConfirmOverHttp(rpc, signedWithLifetime);
 }
