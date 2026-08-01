@@ -70,9 +70,9 @@ Paper mode runs the full decision pipeline with simulated fills and no capital.
 
 ## 8. Fees
 
-Paper mode is free. A live agent costs a one-time fee of 0.5 SOL per deployed agent. Desk arrangements are priced separately.
+Paper mode is free. A live agent is priced at a one-time fee of 0.5 SOL per deployed agent. Desk arrangements are priced separately.
 
-The fee is charged once at deploy, is denominated in SOL, and is **non-refundable**, including if your agent loses money, if you stop it, or if you delete it. It buys the ability to deploy a live agent, not a result.
+**This fee is not currently collected.** There is no billing step in the product today, and switching an agent to live trading does not require or trigger any payment. The terms below describe the fee as designed, for when collection exists, not a charge you should expect right now. Once it is collected: it is charged once at deploy, denominated in SOL, and **non-refundable**, including if your agent loses money, if you stop it, or if you delete it. It buys the ability to deploy a live agent, not a result.
 
 Fees may change with notice; a change does not apply retroactively to an agent already deployed.
 
@@ -82,7 +82,7 @@ There is no Noah Engine token, and there will be no presale and no airdrop. Any 
 
 ## 10. The public fleet
 
-Deploying an agent means it appears in a public directory. Paper agents are public by default. Live agents are opt-in for public display.
+Deploying an agent means it appears in a public directory. Paper agents are public by default. Live-agent visibility is intended to be opt-in; that choice is not built yet, so a live agent is shown publicly the same as a paper one, regardless of what its owner would prefer.
 
 What is shown, and what is withheld, is set out in the Privacy Policy. The fleet is a directory and not a competition: there is no profit leaderboard, and presence in the fleet is not an endorsement of any agent or configuration.
 

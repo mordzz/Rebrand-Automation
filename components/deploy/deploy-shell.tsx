@@ -414,9 +414,14 @@ function CharacterForm({
             )}
             {initial ? "Save changes" : "Deploy bot"}
           </Button>
-          <p className="text-xs text-muted-foreground">
-            Paper mode — it trades on paper before it ever spends a lamport.
-          </p>
+          {/* Only true of a bot being created: A.1 ships every new agent in
+              paper and stopped. Editing an existing one must not repeat it,
+              because that agent may already be live. */}
+          {!initial && (
+            <p className="text-xs text-muted-foreground">
+              Paper mode — it trades on paper before it ever spends a lamport.
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -800,9 +805,30 @@ function BotDesk({
                 </span>
               </div>
               <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
-                  <span className="inline-block size-1.5 rounded-full bg-accent" />
-                  Paper Mode
+                {/* Reads the actual mode rather than asserting one. This
+                    badge said "Paper Mode" unconditionally, including for a
+                    bot spending real SOL — the one place an operator glances
+                    to check what their agent is armed to do. Live gets the
+                    destructive tone and a pulse because it is the state that
+                    costs money if it is not the one you expected; sol-green
+                    stays reserved for P&L. */}
+                <span
+                  className={cn(
+                    "flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase",
+                    tradingMode === "live"
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block size-1.5 rounded-full",
+                      tradingMode === "live"
+                        ? "bg-destructive animate-pulse"
+                        : "bg-accent"
+                    )}
+                  />
+                  {tradingMode === "live" ? "Live Trading" : "Paper Mode"}
                 </span>
                 <Button variant="ghost" size="sm" onClick={onEdit}>
                   <Pencil className="mr-1.5 size-3.5" />

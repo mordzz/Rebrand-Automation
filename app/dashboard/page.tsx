@@ -4,6 +4,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { LlmConnections } from "@/components/dashboard/llm-connections";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { getOfficialBot } from "@/lib/db/official-bot";
 
 export const metadata: Metadata = {
   title: "Dashboard — Noah Engine",
@@ -11,7 +12,9 @@ export const metadata: Metadata = {
     "Your live agent desk: wallet balance, open positions, trade history, and the strategies on duty.",
 };
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const bot = await getOfficialBot();
+
   return (
     <>
       <SiteHeader />
@@ -32,8 +35,19 @@ export default function DashboardPage() {
               view.
             </p>
           </div>
-          <DashboardShell />
-          <LlmConnections />
+          {bot ? (
+            <>
+              <DashboardShell
+                officialBot={{ walletAddress: bot.walletAddress, name: bot.name }}
+              />
+              <LlmConnections officialWallet={bot.walletAddress} />
+            </>
+          ) : (
+            <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground">
+              Noah hasn&apos;t been provisioned on this environment yet — run{" "}
+              <code className="font-mono">npm run provision-official-bot</code>.
+            </div>
+          )}
         </div>
       </main>
       <SiteFooter slim />

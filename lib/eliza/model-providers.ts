@@ -32,19 +32,19 @@ export function getProviderStatuses(): ProviderStatus[] {
   return [
     {
       id: "openrouter",
-      name: "OpenRouter",
+      name: "Kimi K3",
       configured: openrouterConfigured,
       enabled: resolveEnabled("ELIZA_OPENROUTER_ENABLED", openrouterConfigured),
     },
     {
       id: "anthropic",
-      name: "Anthropic Claude",
+      name: "Claude Opus 5",
       configured: anthropicConfigured,
       enabled: resolveEnabled("ELIZA_ANTHROPIC_ENABLED", anthropicConfigured),
     },
     {
       id: "openai",
-      name: "OpenAI",
+      name: "GPT-5.6 Sol",
       configured: openaiConfigured,
       enabled: resolveEnabled("ELIZA_OPENAI_ENABLED", openaiConfigured),
     },

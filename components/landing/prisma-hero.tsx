@@ -8,9 +8,18 @@ import { Logo } from "@/components/logo";
 import { NavPill } from "@/components/nav-pill";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
+import { CopyAddress } from "./copy-address";
 import { WordsPullUp } from "./words-pull-up";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+/* NOTE: this contradicts what the rest of the site currently says. The
+   fine print directly below, §19 of the whitepaper, §9 of the Terms, and
+   the pricing section all state there is no token and that any token
+   claiming association with Noah Engine is fraudulent. Publishing an
+   address here while those stand tells a reader one of the two is a lie.
+   Left for the owner to resolve rather than edited away silently. */
+const CONTRACT_ADDRESS = "361S7aDFRo64BHV662nBvvZWVR3Df6P5pHBKhhg6pump";
 
 const MotionLink = motion.create(Link);
 
@@ -106,6 +115,15 @@ export function PrismaHero() {
                   Read the whitepaper
                 </MotionLink>
               </div>
+
+              <motion.div
+                className="w-full min-w-0"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.9, duration: 0.8, ease: EASE }}
+              >
+                <CopyAddress address={CONTRACT_ADDRESS} label="CA" />
+              </motion.div>
 
               <motion.p
                 className="text-[10px] leading-[1.4] text-black/45 sm:text-[11px]"

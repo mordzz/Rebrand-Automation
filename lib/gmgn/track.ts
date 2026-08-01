@@ -25,6 +25,16 @@ export type TrackedTrade = {
   symbol: string | null;
   tokenLogo: string | null;
   amountUsd: number | null;
+  /** USD price per token at trade time — combined with `totalSupply`,
+   * gives the market cap at exactly this trade rather than whatever it is
+   * now. Null when GMGN didn't report it. */
+  priceUsd: number | null;
+  /** What was originally paid for the position this sell closes out,
+   * GMGN's own cost basis (only meaningful on `side: "sell"`). This is
+   * what makes realized PnL derivable without re-deriving it from
+   * matching buy trades ourselves — see lib/gmgn/kol-positions.ts. */
+  buyCostUsd: number | null;
+  totalSupply: number | null;
   timestamp: number;
   wallet: string;
   /** Display name for the wallet: GMGN name, else X handle, else short address. */
@@ -38,9 +48,11 @@ type RawTrade = {
   maker?: unknown;
   side?: unknown;
   amount_usd?: unknown;
+  buy_cost_usd?: unknown;
+  price_usd?: unknown;
   timestamp?: unknown;
   base_address?: unknown;
-  base_token?: { symbol?: unknown; logo?: unknown } | null;
+  base_token?: { symbol?: unknown; logo?: unknown; total_supply?: unknown } | null;
   maker_info?: {
     name?: unknown;
     twitter_username?: unknown;
@@ -86,6 +98,13 @@ function normalize(
     symbol: str(raw.base_token?.symbol),
     tokenLogo: str(raw.base_token?.logo),
     amountUsd: num(raw.amount_usd),
+    priceUsd: num(raw.price_usd),
+    // GMGN sends this as 0 on buys (not applicable), not absent — but 0
+    // is also indistinguishable from "a sell that reports no cost basis",
+    // so it's kept as a plain number rather than nulled out here; callers
+    // pairing buys/sells only ever read it off a sell record anyway.
+    buyCostUsd: num(raw.buy_cost_usd),
+    totalSupply: num(raw.base_token?.total_supply),
     timestamp,
     wallet,
     traderName: name ?? handle ?? shortAddress(wallet),
@@ -107,10 +126,16 @@ async function fetchList(
     .filter((t): t is TrackedTrade => t !== null);
 }
 
-/* The upstream feed is real-time and the panel polls it; a short shared
-   cache keeps repeated page loads from spending one upstream call each,
-   without making the feed meaningfully stale. */
-const CACHE_TTL_MS = 15_000;
+/* The upstream feed is real-time and several panels poll it independently
+ * (smart-money-panel.tsx, alpha-table.tsx's tracked-wallet column) — a
+ * shared server-side cache means N browser tabs' polls collapse into one
+ * upstream call per window, not N. TTL set above every caller's own poll
+ * interval on purpose: equal to it would still race-miss on the tick the
+ * poll and the cache expiry land close together, spending an upstream
+ * call anyway. GMGN's own rate limiter has a real, sticky ban behind it
+ * (verified live: a burst of calls earlier got this key temporarily
+ * blocked project-wide, not just throttled) — err generous here. */
+const CACHE_TTL_MS = 30_000;
 let cache: { at: number; trades: TrackedTrade[] } | null = null;
 
 export async function getTrackedTrades(limit = 30): Promise<TrackedTrade[]> {
@@ -124,6 +149,31 @@ export async function getTrackedTrades(limit = 30): Promise<TrackedTrade[]> {
 
   const trades = [...kol, ...smart].sort((a, b) => b.timestamp - a.timestamp);
   cache = { at: Date.now(), trades };
+  return trades;
+}
+
+/** KOL trades only, at the endpoint's own cap (verified live: `limit`
+ * stops mattering past 100, so asking for more is pointless) rather than
+ * the combined feed's smaller page-sized default — enough per-wallet
+ * history to tell "still holding" from "already sold" (see
+ * lib/gmgn/kol-positions.ts). Deliberately its own fetch rather than
+ * reusing getTrackedTrades: that call's limit is tuned for a chronological
+ * feed's page size, not for having enough rows per individual KOL.
+ *
+ * Own cache too, same reasoning as getTrackedTrades' above (shared across
+ * every browser tab's poll, TTL above the KOL leaderboard's own poll
+ * interval) — this one used to have none at all, which made it the
+ * single heaviest contributor to the rate-limit ban this comment now
+ * warns about. */
+const KOL_CACHE_TTL_MS = 40_000;
+let kolCache: { at: number; trades: TrackedTrade[] } | null = null;
+
+export async function getKolTrades(limit = 100): Promise<TrackedTrade[]> {
+  if (!isGmgnConfigured()) return [];
+  if (kolCache && Date.now() - kolCache.at < KOL_CACHE_TTL_MS) return kolCache.trades;
+
+  const trades = await fetchList("/v1/user/kol", "kol", limit);
+  kolCache = { at: Date.now(), trades };
   return trades;
 }
 

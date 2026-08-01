@@ -137,19 +137,26 @@ function buildSections(c: SniperConfigValue): { title: string; rows: SpecRow[] }
   ];
 }
 
-/** Read-only view of the Sniper's live config for the demo desk — the
- * interactive editor (sniper-config-panel.tsx) is reserved for the
- * upcoming deploy-your-own-bot flow. */
-export function SniperConfigReadout() {
+/** Read-only view of a bot's live effective config. Defaults to the house
+ * desk (`/api/sniper/config`); /dashboard passes `endpoint` to point this
+ * at Noah's own `/api/my-bot/config` instead — same component, same
+ * read-only posture, different bot. The interactive editor
+ * (sniper-config-panel.tsx) is reserved for the deploy-your-own-bot flow,
+ * never exposed here. */
+export function SniperConfigReadout({
+  endpoint = "/api/sniper/config",
+}: {
+  endpoint?: string;
+}) {
   const response = usePolledJson<{
     configured: boolean;
     config: SniperConfigValue | null;
-  }>("/api/sniper/config", 10_000);
+  }>(endpoint, 10_000);
 
   if (response && !response.configured) {
     return (
       <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground">
-        Connect DATABASE_URL to see the Raven&apos;s live configuration.
+        Connect DATABASE_URL to see the live configuration.
       </div>
     );
   }
@@ -158,7 +165,7 @@ export function SniperConfigReadout() {
     return (
       <div className="flex items-center gap-2 rounded-2xl bg-card p-5 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        Loading Raven configuration…
+        Loading configuration…
       </div>
     );
   }
@@ -170,15 +177,15 @@ export function SniperConfigReadout() {
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-            The Raven · Live Config
+            Live Config
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            The rules the house automaton trades by, straight from the desk.
+            The rules this automaton trades by, straight from the desk.
           </p>
         </div>
         <span className="flex items-center gap-1.5 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
           <Lock className="size-3" />
-          Read-only · Demo
+          Read-only
         </span>
       </div>
 

@@ -1,7 +1,12 @@
 # Deploy: fly deploy
 # One image (see Dockerfile), shared by multiple process groups — only
-# `app` serves HTTP traffic. `paper` is the always-safe, per-user
-# paper-trading worker (no real wallet key, can't touch real funds).
+# `app` serves HTTP traffic. `paper` runs the per-user trading worker.
+#
+# Its name is historical and its comment used to read "always-safe … can't
+# touch real funds". That is false: the worker signs and spends for any bot
+# set to live, using that bot's own agent wallet, which is why
+# AGENT_WALLET_ENCRYPTION_KEY has to be present for it. It holds no house
+# wallet key, which is a different and much narrower claim.
 #
 # `sniper` (the real house trading daemon, holds PRIVATE_KEY_SOLANA_WALLET)
 # is intentionally NOT listed below yet — it's not defined as a process

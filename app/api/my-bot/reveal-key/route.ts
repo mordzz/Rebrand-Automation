@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getBase58Decoder } from "@solana/kit";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { decryptSecret } from "@/lib/solana/agent-wallet";
 import {
@@ -56,6 +57,8 @@ export async function GET(request: Request) {
   if (!bot?.agentSecretEnc) {
     return NextResponse.json({ error: "This agent has no wallet." }, { status: 404 });
   }
+  const blockedGet = assertNotOfficial(bot);
+  if (blockedGet) return blockedGet;
 
   return NextResponse.json(issueChallenge(owner));
 }
@@ -114,6 +117,8 @@ export async function POST(request: Request) {
   if (!bot?.agentSecretEnc || !bot.agentPublicKey) {
     return NextResponse.json({ error: "This agent has no wallet." }, { status: 404 });
   }
+  const blockedPost = assertNotOfficial(bot);
+  if (blockedPost) return blockedPost;
 
   const secret = decryptSecret(bot.agentSecretEnc);
 

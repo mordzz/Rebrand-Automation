@@ -67,12 +67,12 @@ const FILTERS = [
   { id: "kol", label: "KOL" },
 ] as const;
 
-/** Live view of who is actually buying and selling, from GMGN's tracked
- * wallet lists. Our own pipeline can prove a token is structurally safe
- * but has no notion of who is in it; this is that missing half. Reads
- * public wallet labels, so no X/Twitter API is involved. */
+/** Live view of who is actually buying and selling a token. Our own
+ * pipeline can prove a token is structurally safe but has no notion of
+ * who is in it; this is that missing half. Reads public wallet labels,
+ * so no X/Twitter API is involved. */
 export function SmartMoneyPanel() {
-  const response = usePolledJson<TrackResponse>("/api/alpha/track", 15_000);
+  const response = usePolledJson<TrackResponse>("/api/alpha/track", 30_000);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [now, setNow] = useState(() => Date.now());
 
@@ -97,7 +97,7 @@ export function SmartMoneyPanel() {
               Smart money &amp; KOL
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Who is actually buying, from GMGN&apos;s tracked wallets.
+              Who is actually buying, from tracked wallets.
             </p>
           </div>
         </div>
@@ -130,17 +130,8 @@ export function SmartMoneyPanel() {
             Not connected
           </p>
           <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
-            Tracked-wallet activity needs a GMGN API key. Generate an Ed25519
-            key pair, submit the public key at{" "}
-            <a
-              href="https://gmgn.ai/ai"
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent underline-offset-2 hover:underline"
-            >
-              gmgn.ai/ai
-            </a>
-            , then set <code className="font-mono">GMGN_API_KEY</code>.
+            Tracked-wallet activity isn&apos;t wired up in this environment
+            yet.
           </p>
         </div>
       ) : trades.length === 0 ? (

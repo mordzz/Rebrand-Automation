@@ -7,7 +7,6 @@ import {
   Copy,
   ExternalLink,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -35,6 +34,8 @@ type SafetyResult = {
   freezeAuthorityRenounced: boolean | null;
   creatorBuyPct: number | null;
   hasSocialLink: boolean | null;
+  alphaWalletDetected: boolean | null;
+  matchedAlphaWallets: string[];
   metadata: SafetyMetadata | null;
 };
 
@@ -124,11 +125,81 @@ type AlphaResponse = {
   pageSize: number;
   total: number;
   totalPages: number;
+  newestDetectedAt: string | null;
 };
+
+const CHECK_GLYPH_OK = (
+  <Check className="text-sol-green-ink size-3 shrink-0" aria-hidden="true" />
+);
+const CHECK_GLYPH_SKIPPED = (
+  <span className="w-3 shrink-0 text-center text-muted-foreground" aria-hidden="true">
+    –
+  </span>
+);
+
+/** Why a row earned its shield: the same criteria the page's own tagline
+ * promises ("mint/freeze authority, creator buy %, socials"), made
+ * concrete per-token instead of just a green checkmark. `reasons` on a
+ * stored row is always empty (only passing candidates are inserted — see
+ * app/api/alpha/route.ts), so this reads the underlying booleans instead. */
+function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
+  const creatorPct =
+    row.creatorBuyPct != null ? Number(row.creatorBuyPct) : null;
+  const alphaWalletDetected = row.safety?.alphaWalletDetected === true;
+
+  return (
+    <span className="group/shield relative inline-flex shrink-0">
+      <button
+        type="button"
+        className="appearance-none border-0 bg-transparent p-0"
+        aria-label="Why this token passed"
+      >
+        <ShieldCheck
+          className="text-sol-green-ink size-3.5 shrink-0"
+          aria-hidden="true"
+        />
+      </button>
+      <div
+        role="tooltip"
+        className="invisible absolute top-full left-0 z-20 mt-2 w-60 rounded-lg border border-white/10 bg-popover p-3 opacity-0 shadow-lg transition-opacity duration-150 group-hover/shield:visible group-hover/shield:opacity-100 group-focus-within/shield:visible group-focus-within/shield:opacity-100"
+      >
+        <p className="mb-1.5 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
+          Passed the checks
+        </p>
+        <ul className="space-y-1 text-xs text-popover-foreground">
+          <li className="flex items-center gap-1.5">
+            {row.mintAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            Mint authority renounced
+          </li>
+          <li className="flex items-center gap-1.5">
+            {row.freezeAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            Freeze authority renounced
+          </li>
+          <li className="flex items-center gap-1.5">
+            {row.hasSocialLink ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            Has a social link
+          </li>
+          {creatorPct != null && (
+            <li className="flex items-center gap-1.5">
+              {CHECK_GLYPH_OK}
+              Creator bought {creatorPct.toFixed(1)}%
+            </li>
+          )}
+          {alphaWalletDetected && (
+            <li className="flex items-center gap-1.5">
+              {CHECK_GLYPH_OK}
+              Tracked wallet already in
+            </li>
+          )}
+        </ul>
+      </div>
+    </span>
+  );
+}
 
 export function AlphaTable() {
   const [page, setPage] = useState(1);
-  const response = usePolledJson<AlphaResponse>(`/api/alpha?page=${page}`, 15_000);
+  const response = usePolledJson<AlphaResponse>(`/api/alpha?page=${page}`, 25_000);
   const [now, setNow] = useState(() => Date.now());
   const [copiedMint, setCopiedMint] = useState<string | null>(null);
 
@@ -169,12 +240,9 @@ export function AlphaTable() {
     <div className="overflow-hidden rounded-2xl bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
-            <Sparkles className="size-4" />
-          </span>
           <div>
             <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-              Solana · Pump.fun
+              Solana
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Newest first, one row per ticker. Every row passed the
@@ -183,15 +251,29 @@ export function AlphaTable() {
             </p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
-          <span
-            className={cn(
-              "inline-block size-1.5 rounded-full",
-              response ? "bg-sol-green" : "bg-muted-foreground/40 animate-blink"
-            )}
-          />
-          {response ? "live" : "connecting"}
-        </span>
+        <div className="flex items-center gap-4">
+          {response && total > 0 && (
+            <div className="text-right">
+              <p className="text-xs font-medium tabular-nums">
+                {total.toLocaleString()} tracked
+              </p>
+              {response.newestDetectedAt && (
+                <p className="text-[0.65rem] text-muted-foreground">
+                  newest {timeAgo(response.newestDetectedAt, now)}
+                </p>
+              )}
+            </div>
+          )}
+          <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
+            <span
+              className={cn(
+                "inline-block size-1.5 rounded-full",
+                response ? "bg-sol-green" : "bg-muted-foreground/40 animate-blink"
+              )}
+            />
+            {response ? "live" : "connecting"}
+          </span>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -235,12 +317,9 @@ export function AlphaTable() {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-3">
                         <TokenIcon src={row.icon} symbol={row.symbol} />
+                        <ChecklistTooltip row={row} />
                         <div className="min-w-0">
-                          <p className="flex items-center gap-1.5 truncate font-medium">
-                            <ShieldCheck
-                              className="text-sol-green-ink size-3.5 shrink-0"
-                              aria-label="Passed all entry checks"
-                            />
+                          <p className="truncate font-medium">
                             ${row.symbol ?? "?"}
                           </p>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">

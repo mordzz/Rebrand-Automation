@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
 import { AlphaTable } from "@/components/alpha/alpha-table";
-import { RobinhoodChainPanel } from "@/components/alpha/robinhood-chain-panel";
+import { KolLeaderboard } from "@/components/alpha/kol-leaderboard";
 import { SmartMoneyPanel } from "@/components/alpha/smart-money-panel";
+import { TopTokensMarquee } from "@/components/alpha/top-tokens-marquee";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
@@ -43,12 +44,15 @@ export default function AlphaPage() {
 
           {/* Table full width and stacked, not side-by-side: it's a real
               table now (six columns), and squeezing it into half the page
-              forced a horizontal scrollbar at every desktop width. The
-              Robinhood panel is a status note, so it reads fine below. */}
+              forced a horizontal scrollbar at every desktop width. Robinhood
+              Chain is left out entirely until a paid RPC is wired up —
+              see components/alpha/robinhood-chain-panel.tsx — a permanently
+              "not connected" card doesn't belong on a live page. */}
           <div className="flex flex-col gap-5">
+            <TopTokensMarquee />
             <AlphaTable />
+            <KolLeaderboard />
             <SmartMoneyPanel />
-            <RobinhoodChainPanel />
           </div>
         </div>
       </main>

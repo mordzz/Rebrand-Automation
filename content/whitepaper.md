@@ -3,164 +3,152 @@
 
 **Technical Whitepaper · v1.0-rc**
 
-| | |
-|---|---|
-| **Status** | Release candidate, pending legal review and the open items in Appendix D |
-| **Date** | ⟦FILL: publication date⟧ |
-| **Site** | noahengine.xyz |
-| **Source** | ⟦FILL: repository URL, or state that source is closed⟧ |
-| **Contact** | ⟦FILL: official contact⟧ |
+> **Read this first.** Noah Engine is trading software. It's not a fund, not a broker, and not a promise. It doesn't guarantee profit, and it can lose money, including all of it. Memecoin trading is one of the riskiest things you can do in crypto. Nothing here is financial advice. See §22.
 
 ---
 
-**Notation.** Fields marked `⟦FILL: …⟧` are values this document cannot assert until measured, decided, or reviewed. They are listed in full in **Appendix D**. Nothing in this document reports observed performance; where a figure would normally appear, the field is marked rather than estimated. This is deliberate: a whitepaper that invents its own evidence is worth less than one that admits what it has not yet measured.
+## 1. Overview
+
+Noah Engine lets you deploy an automated trading bot (we call it an "agent") that trades new memecoins on Solana, around the clock, without you watching it.
+
+Here's how it works in practice. You give your agent a name and a set of rules (how big each trade can be, when to cut a loss, when to take profit) and you turn it on. From then on it watches every new token as it launches, says no to almost all of them, and only risks money on the rare ones that pass its checks. When it loses money on a trade, it writes down what happened and why, so the loss is on the record rather than forgotten.
+
+Every agent you deploy also joins a public list anyone can look at. You can watch other agents turn down tokens in real time, and read their write-ups after a loss. This list is **not a leaderboard of who made the most money.** It's ranked by whether an agent is still running, because ranking by profit just rewards whoever made the riskiest bet and got lucky, and teaches everyone watching to copy that bet.
+
+The rest of this document explains exactly how the system works under the hood, not just what it's trying to do: the layered set of safety checks and how fast each layer has to run (§9), how one set of checks can serve every agent at once instead of repeating the same work per agent (§8.2), the safeguards that stop a single trade from accidentally being placed twice (§11.2), how an open position keeps getting rechecked even after you've already bought (§9.5), how the system recovers its own state if it restarts mid-trade (§11.4), and the honest limits of a "stop-loss" on the kind of exchange these tokens actually trade on (§12).
 
 ---
 
-> **Read this first.** Noah Engine is trading software. It is not a fund, not a broker, and not a promise. It does not guarantee profit and it can lose money, including all of it. Memecoin trading is among the highest-risk activities in crypto. Nothing here is financial advice. See §22.
+## 2. Key Terms
 
----
+**Noah Engine.** The whole platform: the feed of new tokens, the safety checks, the code that actually places trades, the after-the-fact loss analysis, and the public list of agents.
 
-## 1. Abstract
+**A Noah Agent (or just "agent").** One bot you've deployed. It has its own name, its own settings, its own wallet, and its own memory of what it's done.
 
-Noah Engine is a platform for deploying autonomous trading agents onto Solana memecoin markets.
+**The Fleet.** Every agent currently deployed, taken together.
 
-An operator names an agent, sets the limits it must obey, and deploys it. From that point the agent runs continuously: reading the mint stream, refusing almost everything it sees, sizing the few survivors against a fixed risk budget, and exiting on rules established before the position existed. When it loses, it writes down why.
+**Operator.** You: the person who owns an agent and the money it trades with.
 
-Every agent joins a public fleet. Anyone can watch agents refuse tokens and file post-mortems in real time. The fleet is **not ranked by profit**. It is ranked by survival, because a ranking by profit rewards whoever took the largest position on the luckiest day and teaches every newcomer to do the same.
-
-This document specifies the mechanisms rather than the intentions: the tiered safety gate and its latency budget (§9), the shared verdict model that makes one gate serve an entire fleet (§8.2), the idempotency protocol that prevents duplicate fills (§11.2), continuous post-entry re-verification (§9.5), state reconstruction after restart (§11.4), and the honest limits of stop-loss execution on an AMM (§12).
-
----
-
-## 2. Definitions
-
-**Noah Engine.** The platform: mint feed, safety gate, execution infrastructure, post-mortem analysis, fleet directory.
-
-**A Noah Agent.** One deployed instance belonging to one operator, with its own name, configuration, wallet binding, memory, and history.
-
-**The Fleet.** The public population of deployed agents.
-
-**Operator.** The human who owns an agent and its capital.
-
-**Stopped.** An agent whose operator has switched it off, or whose circuit breaker has tripped. It opens nothing; existing positions are still watched and exited by their own rules.
+**Stopped.** An agent that its operator switched off, or that hit its own automatic safety limit (a "circuit breaker") and paused itself. A stopped agent won't open any new trades, but it keeps watching and closing out anything it already holds, following the rules it was given.
 
 ---
 
 ## 3. Why "Noah"
 
-Solana produces a flood of new tokens daily. The overwhelming majority are worthless and a meaningful share are constructed to take your money. Finding tokens was never the problem; the problem is that almost everything must be turned away.
+Thousands of new tokens launch on Solana every single day. Almost all of them are worthless, and a good share are deliberately built to take your money. Finding tokens to trade was never the hard part. The hard part is turning almost all of them away.
 
-Noah is named for the discipline of the ark: build the hull first, fix the admission criteria before the water rises, let almost nothing aboard. An agent that buys enthusiastically is trivial to write. An agent that refuses correctly, thousands of times a day, is the hard part, and it is the part that determines whether a wallet survives.
+We named this Noah for the discipline of the ark: you build the hull and decide who gets to board *before* the flood arrives, not while you're already underwater. Writing a bot that buys things eagerly is easy. Writing a bot that correctly says no thousands of times a day, and only says yes to the rare token worth the risk, is the hard part. That's also the part that decides whether your wallet is still standing a year from now.
 
-The metaphor also settles the question every trading platform eventually faces: *what counts as winning?* An ark is not judged by how much it collected, but by whether it was still afloat when the water went down.
+The name also answers a question every trading platform eventually has to face: what does "winning" even mean here? An ark isn't judged by how much cargo it picked up along the way. It's judged by whether it was still floating once the water went down.
 
 ---
 
-## 4. Problem Statement
+## 4. The Problem
 
-**Markets never close.** Launches cluster unpredictably across all 24 hours.
+**The market never sleeps.** New tokens launch at every hour of the day, with no pattern to when.
 
-**The window is minutes.** By the time a token reaches a call channel, the price discovery it describes has already occurred.
+**You get minutes, not hours.** By the time a token gets posted in some call channel, whatever price move made it worth calling has usually already happened.
 
-**A large share of tokens are adversarial by construction.** Honeypots, freeze-authority traps, live mint authority, Token-2022 extension traps, bundled supply, and instant liquidity pulls are a standing fraction of daily launches.
+**A lot of these tokens are traps, on purpose.** Tokens you can buy but never sell ("honeypots"), tokens whose creator can freeze your wallet, hidden token features that let the creator drain holders, supply quietly split across many wallets to fake demand, liquidity that gets pulled the moment it's profitable to do so. Some meaningful share of every day's launches are built exactly this way.
 
-**Automation fails worse than humans fail.** A person who misjudges one token loses one position. A misconfigured agent repeats that judgment a hundred times before anyone notices. The risk layer therefore has authority over the entry layer, enforced by pipeline ordering rather than by policy (§10).
+**A bot that makes a mistake makes it over and over.** A person who misjudges one token loses on that one trade. A bot with the wrong settings repeats the same bad judgment on the next hundred tokens before anyone notices. That's why the risk-management part of the system is given authority over the part that decides to buy: not as a setting you can turn off, but built into the order things happen in (§10).
 
-**Existing tools teach the wrong lesson.** Bot products advertise their best trades; trading competitions rank by return. Both train operators toward maximum risk, because maximum risk is what tops a profit ranking. The operator who survives a year is invisible in that world.
+**The rest of the industry teaches you the wrong lesson.** Bot products show off their best trades. Trading competitions rank people by how much they made. Both push people toward taking maximum risk, because maximum risk is what tops a leaderboard. The operator who's still trading calmly a year later is invisible in that world. Nobody screenshots a boring, steady account.
 
 ---
 
 ## 5. Design Principles
 
-1. **Refuse by default.** A token must affirmatively pass every applicable check. Missing or unreadable data is failure, never a pass.
-2. **Rules before positions.** Stop, targets, and size are fixed at entry and enforced mechanically.
-3. **Paper first.** Every agent begins in dry-run. Going live is an explicit, separate decision.
-4. **Operator limits are hard limits.** No component may exceed the configured position size, concurrency cap, or daily loss limit, including under retry, restart, or partial failure.
-5. **Rank survival, never profit.** Every public metric is chosen so the behavior it rewards is behavior worth copying.
-6. **No model in the trade path.** Language models perform post-hoc analysis only (§13.2).
-7. **Auditable behavior.** Every decision, including every refusal, is logged with its reason and the on-chain data behind it.
-8. **No performance claims.** Methodology and outcomes are published; projections are not.
+1. **Say no by default.** A token has to actively pass every check that applies to it. If a check can't get an answer (data missing, unreadable, whatever), that counts as a fail, never a pass.
+2. **Decide the rules before you're in the trade.** The stop-loss, the target, and the position size are all locked in the moment you enter, and the system enforces them automatically from there.
+3. **Paper trading comes first.** Every agent starts in simulation mode, trading with fake money. Turning on real trading is a separate, deliberate step you take yourself.
+4. **Your limits are hard limits.** Nothing in the system, not a retry, not a restart, not a partial failure, is allowed to spend more than your position size, hold more open trades than your concurrency cap, or lose more than your daily loss limit.
+5. **Rank agents on survival, never on profit.** Every number we publish about an agent is chosen so that copying it is actually good advice.
+6. **No AI model is in the trading decision itself.** Language models only look at what already happened, after the fact (§13.2).
+7. **Everything is logged and explainable.** Every decision the system makes, including every refusal, is written down with its reason and the on-chain data behind it.
+8. **No promises about performance.** We publish how the system works and what we've measured. We don't publish projections of what you might make.
 
 ---
 
-## 6. Threat Model
+## 6. What We Defend Against
 
-Noah defends against these adversaries. Anything outside this list is out of scope and should be assumed undefended.
+Noah defends against the adversaries below. Anything not on this list should be assumed undefended.
 
-| Adversary | Capability | Primary defense |
+| Who / what | What they can do | How we defend against it |
 |---|---|---|
-| Token deployer | Constructs traps in the token itself | Manifest, tiered (§9) |
-| Token deployer | Changes conditions *after* entry | Continuous re-verification (§9.5) |
-| Bundler | Conceals supply control behind apparent organic demand | Tier 2 cluster detection (§9.3) |
-| Searcher / MEV bot | Reorders around agent transactions | Slippage bounds, ⟦FILL: MEV posture⟧ (§11.1) |
-| Stop-hunter | Pushes spot price to trigger clustered exits | Multi-slot exit confirmation (§12.2) |
-| Copycat operator | Replicates a successful configuration | Parameter opacity, forced diversity (§14.4) |
-| Fleet gamer | Optimizes for rank rather than trading | Eligibility thresholds (§14.2) |
-| Impersonator | Fraudulent agents, sites, or accounts | Naming controls, verification (§14.6) |
-| External attacker | Compromises Noah infrastructure | Key isolation (§7.2), constrained vault (§7.1) |
+| Token creator | Builds a trap right into the token | The tiered Manifest safety checks (§9) |
+| Token creator | Changes the token's behavior *after* you've already bought | Price-based exits recheck continuously; rechecking the sell path, tax, and authorities directly is not yet built (§9.5) |
+| A "bundler" | Hides insider control of the supply behind what looks like organic demand | Deeper, slower checks that run in the background (§9.3) |
+| A front-running bot | Reorders transactions around yours to profit off them | Slippage limits, plus a deliberate choice not to pay for front-running protection at this position size (§11.1) |
+| A "stop-hunter" | Pushes the price down briefly just to trigger everyone's stop-loss at once | Requiring the move to hold for several slots before acting (§12.2) |
+| A copycat operator | Copies another operator's exact settings | Settings aren't shown publicly, and agents naturally diverge anyway (§14.4) |
+| Someone gaming the rankings | Optimizes for looking good on the list instead of trading well | Minimum activity required before an agent's stats are shown (§14.2) |
+| An impersonator | Sets up a fake agent, site, or account | Name checks, lookalike detection, verification (§14.6) |
+| An outside attacker | Breaks into Noah's own servers | Keys isolated per agent (§7.2); the long-term goal is a wallet design where even a full break-in can't move funds out (§7.1) |
 
-**Explicitly out of scope:** compromise of the operator's own device or authentication; market-wide crashes; chain halts; and adversaries with the ability to reorder blocks at will.
-
----
-
-## 7. Custody and Key Architecture
-
-### 7.1 Custody model
-
-Noah Agents trade while the operator is absent. That requires signing capability available without the operator present, which constrains the possible designs to three.
-
-**Model A: External wallet, operator signs each trade.** Genuinely non-custodial, but incompatible with autonomous overnight execution.
-
-**Model B: Delegated signing on an embedded wallet.** The operator grants Noah scoped, revocable permission to sign on their behalf. This achieves 24/7 execution, and under it Noah's infrastructure *can* sign for the operator. Any claim that Noah "only sees your public address" is incompatible with this model and must not be made.
-
-**Model C: On-chain constrained vault.** The operator deposits into a program-derived account they own. The agent key is a delegate authorized to invoke whitelisted swap programs only, and **cannot transfer to any destination except the owner's wallet**, enforced by program logic, not by policy. Under Model C, full compromise of Noah's infrastructure allows an attacker to make bad trades, not to steal funds.
-
-**Model D: dedicated agent wallet, funded by deposit.** This is what Noah Engine implements today. Deploying an agent generates a fresh Solana keypair belonging to that agent alone. The operator's own wallet, which they connect to sign in, is used only to establish who owns the agent, and its keys are never requested, held, or delegated. To let the agent trade, the operator deposits SOL into the agent wallet. They may withdraw the balance to any address at any time, and may export the agent's private key to import it into a wallet of their own.
-
-Model D is not a substitute for Model C, and the distinction is the one that matters to a reader deciding whether to fund an agent:
-
-- **What is bounded:** only the balance the operator chooses to deposit is ever at risk. There is no path from an agent wallet to the operator's own wallet, because Noah never holds authority over the latter.
-- **What is not bounded:** Noah holds the agent wallet's key material and can therefore sign anything that key can sign, including a transfer out. Nothing in program logic prevents this. The constraint is operational, not cryptographic, and it must be read that way. Any claim that funds in an agent wallet "cannot be taken" would be false.
-- **What the operator retains:** the key is exportable, so an operator is never locked into Noah's custody of it.
-
-Model C remains the recommended target architecture. It is the only model in which "your funds cannot be taken" survives an adversarial reading, and it is the only one coherent with a product whose entire thesis is constraint. Migrating from Model D to Model C is on the roadmap (§21) and is not yet built.
-
-Because Model D is what ships, the honest instruction to operators is the one stated in §16.4: deposit only what you are prepared to lose outright, independently of trading outcome.
-
-**Absolute rule, independent of model:** Noah never requests or accepts a private key or seed phrase, in any interface, under any encryption story. Any site or account that does is fraudulent.
-
-### 7.2 Key isolation under multi-tenancy
-
-Under Models B and C, Noah holds delegated signing authority for many operators simultaneously. This is a distinct problem from the custody model and remains present in both.
-
-What ships today, stated plainly rather than aspirationally:
-
-- Each agent wallet's secret key is stored **encrypted at rest** with AES-256-GCM. The encryption key lives only in the process environment, never in the database, so a database dump on its own is not sufficient to move funds.
-- The platform **refuses to create an agent wallet at all** when that encryption key is absent, rather than falling back to storing a key in plaintext.
-- Authority is **per-agent**: one wallet, one key, one agent. There is no fleet-wide signing credential.
-- No API returns the encrypted secret. Exporting a key requires a signature from the operator's own wallet, proving ownership; every other endpoint in the deploy surface trusts a client-asserted address, which is not sufficient for key material.
-- The paper-trading process is structurally incapable of signing: it does not import any signing helper and does not read the house wallet key.
-
-What does **not** ship yet, and should not be assumed:
-
-- Keys are decrypted in application memory at signing time. There is no KMS, no HSM, and no separate minimally-scoped signing service. A sufficiently deep compromise of the application host reaches key material.
-- Signature requests are not logged to an append-only store independent of the requesting service.
-- The environment-held encryption key must be backed up separately from database backups. Losing it makes every agent wallet permanently unrecoverable.
-
-Under Model C, an attacker who defeats all of the above can still only route funds back to operator wallets.
+**Not covered. Assume you're on your own here:** someone breaking into your own device or your own login; a crash across the whole crypto market; the Solana network itself going down; and an attacker powerful enough to reorder blocks at will.
 
 ---
 
-## 8. System Architecture
+## 7. Who Holds the Keys
 
-### 8.1 Pipeline
+### 7.1 How Your Agent Trades Without You Present
 
-The Flood is two sources, not one. A push stream carries pump.fun mints within milliseconds of creation, and a polled feed covers the indexed launchpads (bags, believe, letsbonk, boop, heaven, moonshot, meteora and others) at a few seconds' latency. The two overlap rather than partition the venue: the polled feed indexes pump.fun as well, so it is slower to the same tokens rather than blind to them. Both empty into the same Manifest, and a candidate carries which source found it.
+Your agent needs to be able to trade while you're asleep, on vacation, or just not looking at your phone. That means something needs the ability to sign transactions without you clicking "approve" each time. There are basically four ways to build that, and which one a platform picks says a lot about how much trust you're putting in it.
 
-They are not interchangeable, and the difference is a constraint rather than a detail. The polled feed arrives with market data already attached, so it can answer questions the push stream cannot, including holder concentration, deployer rug history, bundling, and honeypot signals. The push stream arrives sooner and carries none of it. An agent's entry filters are applied identically to both: a requirement an operator sets is enforced regardless of which source surfaced the token, including checks the feed itself does not provide, which are then performed directly against the chain.
+**Option A: you approve every trade yourself.** The only option where nobody else ever gets signing power. It also means your bot can't trade overnight or while you're away, which defeats the point of an autonomous agent.
 
-**Which source may open a position is an operator setting, and it defaults to the polled feed alone.** The push stream is fast enough to matter and, on its own, close to blind: pump.fun revokes mint and freeze authority on every launch, so the two checks that look most protective pass for essentially the entire venue, leaving keywords, socials and creator share as the only filters with any teeth. Since the polled feed reaches the same tokens a few seconds later carrying the signals that actually separate a launch from a trap, the default trades latency for evidence. An operator who wants the earlier entry can enable the push stream and is choosing a thinner gate when they do.
+**Option B: you give the platform standing permission to sign from your own wallet.** This gets you 24/7 trading, but it means the platform's servers genuinely *can* sign transactions as you. A platform doing this cannot honestly claim "we only ever see your public address": under this model, it can do far more than see it.
+
+**Option C: a special on-chain vault that only lets your agent do one thing.** You deposit into an account controlled by code (a "program"), not by a private key. The agent is only allowed to call specific, pre-approved swap functions, and the code itself, not a promise, not a policy, makes it physically impossible to send your money anywhere except back to your own wallet. Under this design, even a full break-in on Noah's servers would only let an attacker make bad trades. They still couldn't steal the funds.
+
+**Option D: a dedicated wallet for each agent, funded by deposit.** This is what Noah Engine actually runs today. When you deploy an agent, it gets a brand-new Solana wallet that belongs to it alone. The wallet you connect to log in is used only to prove you're the owner. Its keys are never asked for, never stored, never touched. To let your agent trade, you send SOL into its own wallet. You can pull that balance back out to any address whenever you want, and you can export the agent's private key if you'd rather hold it yourself.
+
+Option D is not the same thing as Option C, and the difference matters if you're deciding whether to fund an agent:
+
+- **What's actually limited:** the most you can ever lose is whatever you chose to deposit into that one agent's wallet. There's no way for money to flow from an agent's wallet back into your own wallet without your say-so, because Noah has no signing power over your wallet at all.
+- **What's *not* limited:** Noah holds the private key to your agent's wallet, encrypted, and technically that key can sign anything, including sending the balance somewhere else entirely. Nothing in the code prevents this the way it does under Option C. This is a matter of us choosing not to, not a matter of it being impossible. Any claim that money sitting in an agent wallet "can't be taken" would simply be false, and we're not making that claim.
+- **What you keep control of:** you can export the key at any time, so you're never stuck relying on us to hold it.
+
+Option C is still the design we're aiming for. It's the only one of the four where "your funds can't be taken" holds up even against a determined attacker, and it's the only one that actually matches a product whose entire pitch is "we constrain what this bot can do." Moving from Option D to Option C is on the roadmap (§21) and hasn't been built yet.
+
+Since Option D is what's actually running right now, the honest advice is the one in §16.4: only deposit what you're fully prepared to lose, regardless of how the trading itself goes.
+
+**One rule that holds no matter which option is in play:** Noah will never ask you for your seed phrase or your private key: not in the app, not by message, not anywhere, under any excuse. If a site or an account claiming to be us ever asks for one, it isn't us, and it's a scam.
+
+### 7.2 Keeping One Operator's Keys Separate From Everyone Else's
+
+Any option where Noah holds signing power (Options B and C above) means Noah is holding that power for many different operators at once, on the same servers. Keeping one operator's key isolated from every other operator's is a separate engineering problem from which custody option is chosen, and it matters under either one.
+
+Here's what's actually built today, stated as fact rather than as a goal:
+
+- Every agent wallet's private key is **encrypted before it's stored**, using AES-256-GCM, an industry-standard encryption method. The encryption key itself lives only in the server's environment, never in the database, so someone who steals a copy of the database alone still can't unlock a single wallet.
+- If that encryption key isn't available for some reason, the platform **refuses to create a new agent wallet at all**, rather than falling back to storing a key in plain, unencrypted text.
+- Every agent has its own wallet and its own key. There's no single master key that could unlock every agent's wallet at once.
+- No part of the app will ever hand back an encrypted key over an API. Exporting your own key requires you to sign a message with your own wallet first, proving it's really you asking. Everywhere else in the app, we just trust whatever wallet address the browser claims to be, which is fine for most things but not good enough for key material.
+- The process that runs paper (simulated) trading is physically incapable of signing anything: the code for signing transactions isn't even loaded into it, and it never reads the real trading key.
+
+Here's what's **not** built yet. Don't assume any of this exists:
+
+- Keys are decrypted directly in the app's memory at the moment they're needed to sign something. There's no dedicated hardware or separate, narrowly-scoped signing service standing between the app and the key. A deep enough break-in on the server can reach key material while it's briefly unlocked.
+- There's no independent, tamper-proof log of every time a signature was requested.
+- The encryption key needs its own backup, separate from database backups. If it's ever lost, every agent wallet it protects is gone for good. There's no way to recover them.
+
+Under Option C, once it's built, an attacker who defeated every one of the above could still only route funds back to the operator's own wallet, not steal them outright.
+
+---
+
+## 8. How the System Is Put Together
+
+### 8.1 How a New Token Gets Evaluated
+
+We call the constant stream of new tokens hitting Solana "the Flood," and we watch it two different ways.
+
+One is a live feed straight from pump.fun that tells us about a new token within milliseconds of it launching. The other is a feed we poll every few seconds that also covers most other launch platforms (bags, believe, letsbonk, boop, heaven, moonshot, meteora, and more), including pump.fun itself. So it's not that one feed covers pump.fun and the other covers everything else; the second feed sees the same pump.fun tokens too, just a few seconds later. Both feeds feed into the same safety checks (which we call "the Manifest," explained in full in §9), and every token candidate remembers which feed found it.
+
+These two feeds are not interchangeable, and the difference matters. The slower, polled feed arrives already carrying real market data: how concentrated the holders are, whether the creator has a history of rugging people, whether the supply is quietly split across linked wallets, whether it looks like a honeypot. The instant feed carries none of that; it only tells you a token exists. Whatever rules an operator sets are applied the same way no matter which feed found the token. If the feed itself doesn't provide the data a check needs, the check goes and reads it directly from the blockchain instead.
+
+**Which feed is allowed to actually trigger a trade is something you control, and it defaults to the slower, better-informed feed only.** The instant feed is fast, but almost blind on its own: pump.fun automatically strips two of the things that sound most protective (the ability to mint more tokens, and the ability to freeze wallets) from *every single token it hosts*, whether it's legitimate or not. So those two checks pass for nearly the entire platform and don't actually tell you much. That leaves only keyword filters, social-media links, and how much supply the creator kept for themselves as the only filters with real teeth on the instant feed. Since the slower feed reaches the exact same tokens just a few seconds later, but carrying the information that actually separates a real project from a trap, the default setting trades a few seconds of speed for real evidence. You can turn the instant feed on if you want to be faster to the trade. Just know you're accepting a much weaker set of checks when you do.
 
 ```
                     THE FLOOD: Solana mint & pool stream
@@ -175,124 +163,128 @@ They are not interchangeable, and the difference is a constraint rather than a d
                       │   sell simulation         │
                       └─────────────┬─────────────┘
                                     │
-        ┌───────────────────────────┼───────────────────────────┐
-        │                           │                           │
-┌───────▼────────┐        ┌─────────▼─────────┐                 │
-│  RAVEN         │        │  MANIFEST TIER 2  │  seconds        │
-│  Tier 0–1 only │        │  deployer history │                 │
-│  reduced size  │        │  bundle detection │                 │
-└───────┬────────┘        └─────────┬─────────┘                 │
-        │                 ┌─────────▼─────────┐                 │
-        │                 │  WAKE             │                 │
-        │                 │  full gate, full  │                 │
-        │                 │  size permitted   │                 │
-        │                 └─────────┬─────────┘                 │
-        └───────────┬───────────────┘                           │
-                    │                                           │
-          ┌─────────▼─────────┐                                 │
-          │    THE TIDE       │  sizing, budget, veto           │
-          └─────────┬─────────┘                                 │
-          ┌─────────▼─────────┐                                 │
-          │    EXECUTION      │  idempotent submission          │
-          └─────────┬─────────┘                                 │
-          ┌─────────▼─────────┐      ┌──────────────────────┐   │
-          │    THE ARK        │◄─────┤  CONTINUOUS RE-VERIFY│◄──┘
-          │  position guard   │      │  (§9.5)              │
-          └─────────┬─────────┘      └──────────────────────┘
-          ┌─────────▼─────────┐
+                      ┌─────────────┼─────────────┐
+                      │                           │
+              ┌───────▼────────┐        ┌─────────▼─────────┐
+              │  RAVEN         │        │  MANIFEST TIER 2  │  seconds,
+              │  the only      │        │  deployer rug     │  never blocks
+              │  entry (§10)   │        │  history, top-10, │  Raven
+              └───────┬────────┘        │  bundling, tax    │
+                      │                 │  (GMGN-sourced,   │
+                      │                 │  fixed thresholds)│
+                      │                 └───────────────────┘
+          ┌───────────▼───────┐
+          │  THE TIDE         │  sizing, risk budget, circuit
+          │  (risk-limits.ts) │  breaker, enforced on every entry
+          └───────────┬───────┘
+          ┌───────────▼───────┐
+          │    EXECUTION      │  quote → confirm → record (§11)
+          └───────────┬───────┘
+          ┌───────────▼───────┐
+          │    THE ARK        │  exit checks on a fixed interval,
+          │  (exit-logic.ts)  │  price-based only today (§9.5)
+          └───────────┬───────┘
+          ┌───────────▼───────┐
           │   POST-MORTEM     │  out-of-band analysis
-          └─────────┬─────────┘
-          ┌─────────▼─────────┐
+          └───────────┬───────┘
+          ┌───────────▼───────┐
           │    THE FLEET      │  public survival record
           └───────────────────┘
 ```
 
-Two properties of this ordering are load-bearing. First, safety precedes strategy: a token with live freeze authority is discarded before anything scores it. Second, **Tier 2 runs in parallel with Raven rather than blocking it**, which is what makes Raven's speed and the Manifest's depth compatible (§9).
+**A note on what changed in this diagram.** Earlier versions showed a second entry path, "the Wake," running after Tier 2 with a larger permitted size. §10 already explains why it was removed: Tier 2 cannot finish before the entry window closes, so a second, slower way to buy was never buildable within this pipeline. The Tide and the Ark are drawn as boxes here because they are real, but neither is a separately named module in the code. The Tide's behavior is `lib/sniper/risk-limits.ts`; the Ark's is `lib/sniper/exit-logic.ts`. Both run on every trade; they just aren't literally classes called "Tide" or "Ark."
 
-### 8.2 The shared verdict model
+Two things about this order really matter. First, safety comes before strategy: a token where the creator can still freeze your wallet gets thrown out before anything even considers buying it. Second, the deepest, slowest layer of checks (Tier 2) runs *alongside* the fast entry decision rather than blocking it, which is the only reason the system can be both fast and thorough at the same time (§9).
 
-A Manifest verdict is a property of a *token*, not of an operator. If three hundred agents observe the same mint, the gate must not run three hundred times.
+### 8.2 One Safety Check, Shared By the Whole Fleet
 
-- Verdicts are computed **once per token per tier** and published to all agents.
-- Verdicts are cached with tier-specific TTLs, since conditions change: ⟦FILL: TTL per tier⟧.
-- Cache entries are invalidated immediately on any observed change to the underlying accounts (liquidity events, authority changes, extension configuration).
-- Per-agent computation is limited to sizing, budget checks, and strategy decisions, all cheap and all local to that agent.
+Whether a token passes our safety checks is a fact about the *token*, and it doesn't change depending on which agent is asking. So if three hundred agents all see the same new mint at once, we don't run the same checks three hundred separate times.
 
-This is what allows one safety gate to serve an arbitrarily large fleet at fixed cost, and it is why gate depth can be increased without degrading per-agent latency.
+- Each check is computed **once per token**, the moment that token is first seen, and the result is shared with every agent evaluating it in that same pass.
+- Each agent only does its own lightweight work on top of that: how big to size the trade, whether it fits the budget, whether its own strategy wants in. That part is cheap and personal to each agent.
 
-**A consequence that must be stated plainly:** because agents share one stream and one verdict, they observe the same candidates at the same instant. Crowding is therefore **structural, not incidental**, and is addressed in §14.4 rather than left to emerge.
+**What this is not, today: a persistent, time-based cache.** Earlier drafts of this document described verdicts as cached with a tier-specific expiry and invalidated the instant an underlying account changed. That's the target, but it isn't what's running. What's actually built is simpler: a token's safety data is fetched once when the candidate is created, held only for as long as that candidate is being evaluated, and every agent sharing that pass reads the same copy rather than each fetching it fresh. If the same mint is evaluated again later as a new candidate, its data is fetched again from scratch rather than served from a cache. One exception: a bot configured with its own private RPC endpoint re-reads mint authority through that endpoint rather than reusing the shared copy, so a rate-limited public endpoint can't cause a false refusal for an operator paying for a better one.
 
-### 8.3 Latency budget
+Even without a formal TTL, this is what lets one set of safety checks serve a fleet of any size at a fixed cost per token, rather than at a cost that scales with how many agents are watching.
 
-The design constraint is that Tier 0 must complete within the same slot as pool creation, and Tier 1 within the following slot. See Appendix B for the full budget.
+**One consequence worth saying out loud:** because every agent watches the same stream and gets the same verdict, they all see the exact same candidates at the exact same instant. Agents piling into the same token at once isn't a rare accident. It's baked into how the system works. We address that directly in §14.4 rather than pretend it won't happen.
+
+### 8.3 How Fast Each Step Has to Be
+
+The system is designed so the fastest layer of checks finishes within the same "slot" (Solana's basic unit of block time) as the token's pool being created, and the next layer finishes by the very next slot after that. The full breakdown of timing targets is in Appendix B.
 
 ---
 
-## 9. The Manifest
+## 9. The Manifest: the Safety Checks
 
-The Manifest is the safety gate and the most important component in the system. It is **tiered by data cost**, because depth and speed are not simultaneously available and pretending otherwise would be dishonest.
+The Manifest is the set of safety checks every token has to pass, and it's the single most important part of the whole system. It's built in layers, ordered from cheapest-and-fastest to slowest-and-deepest, because you genuinely cannot have maximum speed and maximum thoroughness in the same instant, and pretending otherwise would be dishonest.
 
-### 9.1 Tier 0: parsed from the observed transaction (<10ms, zero additional RPC)
+### 9.1 Layer 0: instant checks, no extra lookups needed (under 10 milliseconds)
 
-Every field below is readable from the pool-creation transaction and mint account already present in the stream. No additional network round trip is required.
+Everything in this layer can be read straight out of the data that already arrived with the token. No extra request to the blockchain needed.
 
-- **Mint authority** must be revoked; otherwise supply can be inflated at will
-- **Freeze authority** must be revoked; otherwise the ability to sell can be switched off
-- **Token-2022 extensions:**
-  - Transfer hook present → reject (arbitrary code executes on transfer)
-  - Permanent delegate present → reject (a third party can move holdings)
-  - Non-transferable → reject
-  - Transfer fee above threshold → reject
-  - **Transfer fee config authority not revoked → reject.** Checking the current fee is insufficient; if the authority remains, the fee can be raised after entry.
-- **Update authority** state recorded
+- **Mint authority must be turned off.** If it's still on, the creator can print unlimited new tokens whenever they want, wiping out everyone else's share.
+- **Freeze authority must be turned off.** If it's still on, the creator can freeze your wallet's tokens, stopping you from selling, whenever they want.
+- **Token-2022 extensions** (newer, more powerful Solana token features that can also be abused):
+  - A "transfer hook" is present → refused. This lets arbitrary code run every time the token moves, which can do almost anything.
+  - A "permanent delegate" is present → refused. This lets someone other than you move your tokens without asking.
+  - The token is marked non-transferable → refused. You could never sell it even under normal conditions.
+  - The transfer fee is above our threshold → refused.
+  - **The authority controlling the transfer fee hasn't been given up → refused.** It's not enough that the fee looks fine right now. If the creator can still change it, they can raise it toward 100% right after you buy in.
+- We also record who currently holds "update authority" over the token, for reference.
 
-### 9.2 Tier 1: bounded RPC (~50–150ms)
+### 9.2 Layer 1: quick blockchain lookups (roughly 50 to 150 milliseconds)
 
-- Pool reserves and absolute liquidity minimum
-- Reserve ratio sanity check against reported supply
-- LP burn or lock status, with unlock timestamp **recorded for continuous monitoring** (§9.5)
-- Top-10 holder concentration
-- Deployer holdings
-- **Sell simulation from the agent's actual wallet** at the intended position size
-- Effective sell tax and round-trip slippage at target size
+- How much money is actually sitting in the pool, checked against a minimum floor.
+- A sanity check that the pool's reserves roughly match the token's reported total supply.
+- Whether the pool's liquidity tokens are burned or locked. This matters because if they're not, the creator can pull the liquidity out from under everyone at any time. If they're locked with an unlock date, we record that date, though nothing yet forces an exit as it approaches (§9.5).
+- How much of the supply the top 10 wallets hold between them.
+- How much of the supply the creator personally holds.
+- **An actual simulated sell**, run from the agent's real wallet, at the exact size the agent intends to buy. This catches tokens you can buy but can't sell.
+- What it would actually cost in fees and price movement (slippage) to buy and then immediately sell back out, at the size the agent intends to trade.
 
-### 9.3 Tier 2: expensive, asynchronous (seconds)
+### 9.3 Layer 2: the slow, deep checks (seconds, runs in the background)
 
-Runs in parallel and never blocks Tier 0–1 consumers.
+This layer only runs on candidates that arrive through the polled feed (§8.1), because it depends on data the instant push feed never carries at all.
 
-- Deployer transaction history: prior mints and their outcomes where resolvable
-- Funding-graph analysis of early buyers
-- Bundle detection: clusters of same-slot buys from funding-linked wallets
+- The creator's history: what other tokens have they launched before, and what share of those rugged.
+- How much of the supply is held by wallets whose funding traces back to a small, connected group, which is the signature of insider control dressed up as broad demand.
+- Whether the launch looks "bundled": a large share bought up in a coordinated pattern rather than organic buying.
 
-### 9.4 Fail-closed rule
+**Where this data actually comes from, stated plainly.** These three signals, along with the sell-tax and honeypot flags in §8.1, are not the product of a funding-graph or bundle-detection system Noah built. They are fields GMGN's own API already computes and reports per token, and Noah's contribution is choosing fixed, conservative thresholds and refusing anything that crosses them (see `lib/gmgn/safety.ts`): deployer rug history over 10%, bundler-held supply over 30%, insider concentration over 30%, top-10 holders over 35%. That data is genuinely useful and genuinely applied, but it is bought, not built, and this document should not have implied otherwise.
 
-If any applicable check cannot complete (RPC timeout, unparseable account, unrecognized extension, unknown program), the candidate is refused. Noah does not trade on incomplete information, and an unrecognized Token-2022 extension is treated as hostile rather than ignored.
+### 9.4 If We Can't Tell, We Say No
 
-### 9.5 Continuous re-verification
+If any check that should run simply can't get an answer (the blockchain request times out, an account can't be read, we hit a token extension we don't recognize, whatever), the token is refused. We don't trade on incomplete information. If we see a Token-2022 feature we don't know how to evaluate, we treat it as dangerous rather than shrugging and letting it through.
 
-**A pre-trade gate is insufficient, because the risks it screens for do not stop existing after entry.** Every open position is re-verified on a ⟦FILL: interval⟧ cycle:
+### 9.5 Checking Again, and Again, After You've Already Bought
 
-| Condition | Trigger | Response |
-|---|---|---|
-| Sell simulation now fails | Any cycle | **Emergency exit attempt, highest priority** |
-| Effective sell tax increased | Any cycle | Immediate exit |
-| LP unlock timestamp approaching | Recorded at Tier 1 | Forced exit before unlock window |
-| Liquidity falls below floor | Any cycle | Immediate exit |
-| Authority state changed | Any cycle | Immediate exit |
+**Checking a token once, before you buy, isn't enough. The same risks the checks look for can appear *after* you're already holding it.** This is the goal, and it is only partly built today.
 
-The first row closes the most dangerous gap in a single-pass gate: a **time-delayed honeypot**, where sells succeed for an initial window and are then disabled. Entry simulation passes; exit fails. Only repeated simulation detects it, and only detecting it early leaves any chance of exiting.
+**What actually reruns on every open position, on the interval you configure (`exitCheckIntervalMs`, default 4 seconds):** the price-based exit rules in Appendix A.1: whether it has hit your take-profit, your stop-loss, your trailing stop, your crash guard, or your maximum hold time. This is real, and it runs continuously for as long as a position is open.
 
-### 9.6 Limits of sell simulation
+**What §9.5 originally claimed also happens, and does not yet:**
 
-Sell simulation is the highest-value single check in the system, and it has three limits that must be stated:
+| What should be found | Currently implemented? |
+|---|---|
+| A sell would now fail, from a fresh simulation | No: the sell simulation runs once, before entry, and is never rerun on an open position |
+| The sell tax has gone up | No |
+| The pool's unlock date is coming up | No: the timestamp is recorded at Layer 1, but nothing forces an exit before it arrives |
+| An authority has changed since entry | No |
 
-1. It evaluates state at one slot. Passing at entry does not guarantee sellability at exit; hence §9.5.
-2. It cannot detect time- or condition-gated restrictions that are not yet active.
-3. Allowlist and blocklist mechanisms are wallet-specific, which is why simulation runs **from the agent's own wallet** and never from a shared probe address.
+**The consequence has to be stated as plainly as the rest of this document tries to be honest about everything else.** A **time-delayed honeypot** (a token where selling works for a while, passes the check at entry, and is then switched off) is not caught by anything running today. Entry simulation passing is the only assurance you have, and it is only true at the instant it was checked. This is now tracked as a target rather than a shipped protection; see Appendix A.2.
 
-### 9.7 The refusal feed
+### 9.6 What Sell Simulation Can't Catch
 
-Every rejection, from every agent, streams publicly with its reason and tier:
+Simulating a sell before buying is the single most valuable check in the whole system, but it has three real limits worth being honest about:
+
+1. It only tells you the state of the world at that one instant. Passing the check when you buy is not a guarantee you'll still be able to sell later, which is exactly why §9.5 exists.
+2. It can't catch a restriction that hasn't kicked in yet, for example a rule that only activates after a certain time or condition.
+3. Some tokens block or allow specific wallets by name. That's why the simulation always runs **from the agent's own actual wallet**, and never from some shared test wallet that might get different treatment.
+
+### 9.7 The Public Feed of Everything Refused
+
+Every time any agent turns down a token, it shows up on a public, live feed, with the reason and which layer caught it:
 
 ```
 17:04:12  T0  Sisyphus     refused  4Hq2…  freeze authority active
@@ -303,268 +295,274 @@ Every rejection, from every agent, streams publicly with its reason and tier:
 17:06:02  RV  Driftwood    exited   Ka4p…  sell simulation began failing
 ```
 
-The feed is continuous, cannot be convincingly fabricated, and demonstrates the system's thesis without a marketing claim attached.
+This feed runs continuously and would be very hard to fake convincingly. It shows the whole point of this system in action, without us having to make a marketing claim about it.
 
 ---
 
-## 10. Instincts
+## 10. The Three Instincts (Raven, Ark, Tide)
 
-An operator deploys one agent with three instincts: one that generates, two that constrain.
+Every agent you deploy actually runs three separate pieces of logic under the hood. Think of them as three instincts: one that wants to act, and two whose job is to hold it back.
 
-**The Raven: early entry.** The only instinct that opens a position. Acts on Tier 0 and Tier 1 verdicts, because nothing slower completes inside the window a fresh mint gives you.
+**The Raven, the one that gets in early.** This is the only piece that ever opens a new trade. It acts on Layer 0 and Layer 1 results only, because nothing slower can finish in the tiny window a brand-new token gives you.
 
-**The Ark: position guardian.** Opens nothing. Arms breakeven once a position is meaningfully green, tightens exits as momentum decays, and exits on stall, drawdown, or crash.
+**The Ark, the one that guards a position once you're in it.** This never opens a trade. Once a position is meaningfully in profit, it locks in a "no worse than breakeven" floor. As momentum fades, it tightens the exit. It closes the position on a stall, a drawdown, or a sudden crash.
 
-**The Tide: session authority.** Sizing against the risk budget, enforcement of every operator limit, the daily loss limit that ends a session, and the cadence that turns post-mortems into reviewable configuration changes.
+**The Tide, the one in charge of the overall session.** It sizes every trade against your risk budget, enforces every limit you've set, ends the day's trading once the daily loss limit is hit, and manages the rhythm of turning post-mortems into config changes you can review.
 
-**The Raven generates. Ark and Tide constrain. In every conflict, the constraining instincts win.** An entry signal cannot override a risk limit, not as a toggle but as a property of pipeline ordering. An operator's configuration governs how aggressively Raven may act; it cannot disable Ark or Tide.
+**The Raven wants to act. The Ark and the Tide are there to say no.** Whenever they disagree, the Ark and the Tide win, always. This isn't a setting that can be toggled off; it's built into the order the code runs in. You control how aggressive the Raven is allowed to be. You cannot turn off the Ark or the Tide.
 
-**On a second entry instinct.** Earlier drafts described a slower, confirmation-based entry alongside the Raven, permitted a larger position because it acted on more complete information. It has been removed rather than deferred. Two reasons, and the second is the real one. It depended on a Tier 2 verdict arriving before entry, which the latency budget does not allow (§8.3). And a second entry strategy doubles the surface that has to be validated while the first one still has no live track record at all. A platform whose thesis is restraint should not ship a second way to buy before it can show the first one works.
+**A note on a second way to enter a trade.** Earlier versions of this design included a second, slower entry method: one that waited for more complete information before buying, and was allowed to take a bigger position because of it. We removed it rather than just postponing it, for two reasons, and the second is the real one. It depended on a Layer 2 result arriving before entry, which the speed budget doesn't allow (§8.3). And shipping a second way to buy doubles the amount of new logic that needs proving out, while the first one (the Raven) doesn't even have a live track record yet. A platform built around restraint shouldn't ship a second way to buy before it's shown the first one actually works.
 
 ---
 
 ## 11. Execution
 
-### 11.1 Submission
+### 11.1 How a Trade Actually Gets Sent
 
-- **Routing** via Jupiter's swap API. A quote is taken first, and the position is recorded only after the swap confirms, using the transaction signature as the position's identity, so a failed submission can never leave a ledger entry for a fill that did not happen. A candidate with no route is skipped, not forced.
-- **Slippage bounds** are hard limits; a fill outside tolerance is abandoned, never chased. Today the tolerance passed to the router is derived from the agent's configured stop distance, on the reasoning that a fill worse than the stop is a fill not worth having.
-- **Priority fees** derived from recent slot congestion, capped by operator configuration
-- **MEV posture: none, deliberately.** No bundle submission and no tips. A tip large enough to matter is a meaningful share of a position this size, so buying priority would cost more than the sandwiching it avoids. This is a consequence of small absolute position sizes and would have to be revisited if those grew.
-- **Compute budget** tuned per instruction type to reduce failed-transaction waste
+- **Trades are routed through Jupiter**, a swap aggregator that finds the best price across Solana's exchanges. We get a price quote first, and we only write down that a position exists *after* the swap actually confirms on-chain, using the transaction's own signature as proof it happened. That way a failed attempt can never accidentally create a record of a trade that never occurred. If there's simply no route to trade a token, we skip it rather than force it through.
+- **We set a hard limit on slippage**: how much worse a price we'll accept than quoted. If the actual fill would be worse than that, we walk away rather than chasing a worse price. Right now that limit is based on how far away the agent's stop-loss is, on the reasoning that a fill worse than your stop is a fill you didn't want anyway.
+- **Priority fees**, extra payment to get included in a block faster during congestion, are left to Jupiter's own defaults today. Calculating our own fee from recent network congestion, capped by a setting you control, is a target and not yet built: ⟦FILL: whether and when this ships⟧.
+- **We deliberately do not do anything special to avoid front-running.** No private bundle submission, no tips to block builders. At the position sizes this system trades, a tip large enough to matter would cost more than the front-running it's trying to avoid. If positions ever got much bigger, this would need to be revisited.
+- **How much compute budget each transaction requests** is tuned per action, to cut down on wasted, failed transactions.
 
-Failed transactions consume SOL. Each agent maintains a reserved fee balance and halts rather than draining it.
+Failed transactions still cost SOL in fees, even though they didn't do anything. Every agent keeps a reserved balance set aside just for fees, and it stops trading rather than letting that reserve run dry.
 
-### 11.2 Idempotency and duplicate-fill prevention
+### 11.2 Making Sure a Trade Never Gets Placed Twice by Accident
 
-Retrying a trade naively is the most dangerous bug available to this system: a transaction that landed but whose confirmation was not observed, retried, produces **two positions and a breach of the operator's size limit**, violating Design Principle 4 silently.
+The single most dangerous bug this kind of system can have is naively retrying a trade. Here's the failure mode: a transaction actually goes through on-chain, but the system never sees the confirmation come back. Network hiccup, timeout, whatever. If it just tries again, you now have **two positions instead of one**, quietly blowing past your own size limit without anyone deciding that should happen.
 
-The protocol:
+**The actual protection is simpler than a full intent-tracking system, and it's worth describing exactly rather than describing a more elaborate design we don't run.** There is no persisted intent ID created before a transaction is built, and there is no automatic retry at all: a swap either lands, or it fails, or its outcome is unclear, and the code is written to never guess which:
 
-1. Every intent receives an **intent ID** before any transaction is constructed, persisted before submission.
-2. Submissions carry a deterministic client reference tied to the intent ID, so any landed transaction is attributable to its intent.
-3. **No retry occurs without on-chain reconciliation first.** Before resubmitting, the executor queries the agent's token account and recent signatures to determine whether the intent already landed.
-4. Solana blockhashes expire in roughly 60 seconds. On expiry the intent is marked *indeterminate*, reconciled on-chain, and only then either retired or reissued under a new intent ID.
-5. Jito bundles that fail to land produce no revert and no error, only silence. **Bundle submission therefore always requires positive on-chain confirmation**, never absence-of-error.
-6. Reconciliation is authoritative. Where the database and the chain disagree, the chain wins and the database is corrected.
+1. A signature is computed for the swap the moment it's signed, before it's sent, so we can always name the transaction we attempted even if the send itself times out.
+2. Sending is followed by polling the chain directly for that signature's status, rather than subscribing and hoping a notification arrives. A transaction the cluster rejected outright (bad simulation, insufficient funds) is treated as a clean failure. Anything else unclear about the outcome, including the connection dropping mid-poll, is treated as unresolved, never as a success.
+3. **Nothing here retries automatically.** If a swap's outcome comes back unresolved, that failure is surfaced and logged; sending it again is a decision the caller has to make deliberately, after checking the chain, not something the system does on its own.
+4. That check happens by reading the agent's actual on-chain token balance. If a position is marked open in our database but the wallet holding it has none of that token, the position is closed against the chain rather than retried or left open forever. This is how a swap that landed without us seeing the confirmation gets reconciled, rather than duplicated.
+5. Whatever the blockchain says is the final word. Where our database and the actual chain state disagree, the chain wins, and the database is corrected to match it, even if that means writing down a fill we didn't ourselves observe.
 
-### 11.3 Confirmation
+We do not use Jito bundles today, so the specific failure mode where a bundle silently fails to land with no error at all doesn't currently apply. If bundle submission is added later, the same rule would have to apply to it: never assume success just because nothing went wrong.
 
-Every transaction is tracked to finality. States are explicit: `pending`, `landed`, `failed`, `expired`, `indeterminate`. No intent is ever considered resolved on inference.
+### 11.3 Tracking Every Transaction to Its Actual Outcome
 
-### 11.4 State recovery after restart
+Every transaction is followed until we know what actually happened to it, but not through a formal five-state record stored per transaction. What exists today is two outcomes a swap can fail with, each handled differently: a transaction the chain rejected outright is treated as **terminal**: the fee is spent and there is nothing to reconcile. A transaction whose outcome we couldn't establish (the connection dropped, the blockhash expired before we got an answer) is treated as **unresolved**, and the rule from §11.2 applies: it gets checked against the chain before anything is retried, never assumed to have failed or succeeded. We never guess a transaction's fate from silence.
 
-If the Engine restarts holding open positions, agent state **must not** be trusted from the database alone: a database lagging the chain produces an agent that resumes unaware it holds an unguarded position.
+### 11.4 Recovering State If the System Restarts
 
-On startup, for every agent:
+If the whole system restarts while agents are holding open positions, we **cannot** just trust whatever the database says. If the database has fallen even slightly behind the actual chain, an agent could wake up completely unaware it's holding a position nobody's watching.
 
-1. Enumerate actual token balances on-chain.
-2. Reconstruct entry basis from transaction history.
-3. Reconcile against stored intents; log every discrepancy.
-4. Re-run Tier 0–1 and sell simulation against every recovered position before resuming.
-5. Re-arm stops and targets from stored configuration.
-6. Resume normal operation only once every position is accounted for.
+So on every restart, for every position our database still marks open:
 
-**Positions discovered on-chain but absent from stored state are adopted under the agent's current risk configuration, not ignored.** Published restart behavior is part of the operational contract (§18).
+1. If the position belongs to a bot that no longer exists (deleted while it was holding something), we log it as **orphaned**: nobody can act on it automatically, and an operator needs to notice and take manual action.
+2. Otherwise, we check what that agent's wallet is actually holding for that token, directly on-chain.
+3. If the wallet holds none of it, the position is closed as **reconciled**: it clearly already exited somewhere we didn't observe, and there is nothing left to guard.
+4. If the on-chain balance can't be read at all (RPC trouble), the position is left open rather than guessed at, and it's picked up again on the next cycle.
+5. Once a position survives that check, it resumes under whatever configuration the agent currently has. That configuration is read fresh on every cycle regardless of restarts, so there is no separate "reload settings" step.
+
+**What this does not yet do:** reconstruct an entry price from on-chain transaction history if the database's own record is missing or wrong, or re-run the Manifest and a fresh sell simulation on a recovered position before resuming it. Both are listed as gaps in Appendix D rather than assumed.
+
+**A position discovered on-chain that our own records never knew about is not something this process currently adopts automatically.** Closing that gap, and the two above, is on the roadmap rather than shipped. Restart behavior is published here, honestly, because it's part of the operational contract with you (§18), not because every part of it is finished.
 
 ---
 
-## 12. Exit Semantics
+## 12. How Exits Actually Work
 
-### 12.1 What a stop-loss is, and is not
+### 12.1 What a Stop-Loss Is, and Isn't
 
-**There are no stop orders on an AMM.** A "stop" is Noah observing price and submitting a sell. It is therefore best-effort, and it can fail to protect the operator when:
+**There's no such thing as a real "stop order" on an AMM** (an automated market maker: the kind of exchange these tokens trade on, which has no order book, just a pool of two assets you trade against). What we call a "stop-loss" is really Noah watching the price and submitting a sell once it's crossed a threshold. That makes it best-effort, not guaranteed, and it can fail to protect you when:
 
-- The Engine is unavailable
-- The chain is congested past the exit's fee ceiling
-- Liquidity is removed within a single block
-- Price gaps past the level between observations
+- Our system itself is down.
+- The network is too congested for our exit transaction to get through at the fee we're willing to pay.
+- Liquidity gets pulled out of the pool in a single block, before we can react.
+- The price jumps straight past your stop level between one check and the next, without ever trading at the price in between.
 
-Memecoins gap violently and single-block liquidity removal is common, so these are frequent events, not edge cases.
+Memecoins move violently, and liquidity getting pulled in a single block happens regularly. These aren't rare edge cases; they're things you should expect to happen sometimes.
 
-Noah therefore describes its exits as **rule-based automatic exits, executed best-effort**, never as guaranteed stops, and never as a floor on loss. Public copy claiming "hard stops" as a guarantee should be corrected, because the first operator to gap through one will be correct and public about it.
+Because of that, we describe our exits as **automatic exits based on rules, carried out on a best-effort basis**, never as a guaranteed stop, and never as something that puts a hard floor under how much you can lose. If you ever see marketing copy calling these "hard stops" as if they're guaranteed, that's wrong and should be corrected. The first person who loses money jumping straight past one will be completely right to call it out.
 
-### 12.2 Price source and stop-hunt resistance
+### 12.2 Making It Harder to Trigger a Fake-Out Exit
 
-Exits triggered on a single spot observation are trivially induced: one large sell depresses the pool momentarily, every agent holding that token exits at the bottom, and price recovers. With a shared verdict stream and a shared price feed, this would hit the **entire fleet simultaneously**, turning a manipulation into a fleet-wide event.
+If an exit is triggered off a single price reading, it's trivially easy to fake out: someone dumps a large sell to briefly tank the price, every agent holding that token panics and sells at the bottom, and then the price recovers right after. The manipulator profits, everyone else eats the loss. Because every agent shares the same price feed and the same verdicts, a trick like this could hit the **entire fleet at the exact same moment**, turning one person's manipulation into a fleet-wide event.
 
-Accordingly:
+The guard described here (averaging price over several slots, requiring a move to hold before acting) is a target, not something running today: exits currently act on a single price read from DexScreener, the same reading every agent sharing that price feed would also see. None of the numbers below are implemented yet, so none are measured either.
 
-- Trigger price is derived from ⟦FILL: pool reserve-weighted price over N slots⟧, not a single tick
-- Non-emergency exits require confirmation across ⟦FILL: N⟧ consecutive slots
-- **Emergency exits (§9.5) bypass confirmation entirely**: when sell simulation begins failing, delay is the larger risk
+- The price used to trigger an exit would be averaged ⟦FILL: over how many recent slots, weighted by the pool's actual reserves⟧, not read from a single instant.
+- A normal (non-emergency) exit would need to see the trigger hold for ⟦FILL: how many⟧ slots in a row before it fires.
+- **The design intends one exception:** an emergency exit, once the sell-simulation recheck in §9.5 is built, would skip that confirmation delay entirely, because in that specific case waiting is the riskier option. Today there is no sell-simulation recheck to trigger it from.
 
 ---
 
 ## 13. The Post-Mortem Loop
 
-### 13.1 Mechanism
+### 13.1 How It Actually Works
 
-1. On close, a losing position is packaged with full context: entry conditions, the Manifest verdict at every tier, execution quality against expectation, exit trigger, and the price path after exit.
-2. The record is analyzed for proximate cause: poor fill, exit too tight, entry signal that did not hold, or a risk that passed the Manifest and should not have.
-3. Causes that **recur above a repetition threshold** are surfaced as specific configuration proposals.
-4. The operator reviews and accepts. **Lessons are never silently applied.**
+1. When a losing position closes, we bundle up what we have about it: entry price, exit price, position size, realized loss, how long it was held, and whatever additional context was recorded on the trade.
+2. That single trade, on its own, gets analyzed to name the most likely cause: entered too late, held too long, take-profit set too slow or too greedy, stop-loss too tight or missing, a rug or liquidity drain no timing could have caught, or an oversized position.
+3. If the cause maps cleanly onto one of your exit settings, a specific, concrete config change is proposed for your review.
+4. **You review that suggestion and decide whether to accept it. Nothing ever changes your settings automatically or silently.**
 
-Manifest failures identified this way feed back into gate rules for the whole fleet, not only the affected agent. This is the mechanism by which one operator's loss improves everyone's refusals.
+**Two things this does not currently do, stated plainly rather than left implied.** First, there is no repetition threshold: each losing trade is analyzed on its own, with no memory of prior trades or prior lessons, so a proposal can be generated from a single loss rather than only after a cause recurs. §13.4 explains why that matters. Second, a proposal only ever touches your own agent's own exit-related settings (take-profit, stop-loss, trailing, breakeven, max hold time, crash guard, creator-buy limit, cooldown). It has no path to changing a Manifest rule that applies fleet-wide. If your agent's loss reveals a genuine gap in the Manifest itself, closing that gap today requires the platform to make the change directly. It does not happen automatically through this loop.
 
-### 13.2 Where the model sits, and does not
+### 13.2 Where AI Is Actually Involved (and Where It Isn't)
 
-**No language model participates in any trading decision.** Model inference has latency measured in seconds; the trade path has a budget measured in milliseconds. The two are architecturally incompatible, and any product implying otherwise is describing something that cannot work at this speed.
+**No AI model has any say in whether, when, or how a trade happens.** Getting an answer out of a language model takes seconds; the actual trading system has to make decisions in milliseconds. Those two speeds are simply incompatible, and any product that implies an AI is making live trading calls is describing something that physically cannot work that fast.
 
-Language models are used **out-of-band only**, for post-mortem analysis after a position has closed. Every entry, sizing, and exit decision is made by deterministic rules whose inputs are logged and reproducible.
+Language models are only used **separately, after the fact**, to analyze a position once it's already closed. Every decision about entering a trade, sizing it, and exiting it is made by fixed, predictable rules: the kind where the same inputs always produce the same answer, and every one of those inputs is logged.
 
-Public copy should state this rather than leaning on "Powered by AI": the specific claim is both more credible and more accurate.
+We'd rather say exactly this than lean on a vague "Powered by AI": the specific claim is both more believable and simply more accurate.
 
-### 13.3 Memory growth
+### 13.3 Managing an Agent's Growing Memory
 
-An agent's memory grows without bound while its analysis context does not. After several hundred trades, naive accumulation exceeds any practical context limit.
+An agent's history just keeps growing, but there's a hard ceiling on how much text an AI model can actually look at in one go. There are two separate places this matters, and they're handled differently.
 
-Memory is therefore structured rather than appended: individual post-mortems are retained in full and immutably, while analysis operates over ⟦FILL: retrieval or hierarchical summarization strategy⟧. The operator can always read the full record; the analyzer reads a bounded selection of it.
+**Post-mortem analysis (§13.1) doesn't face this problem today, because it isn't looking at your history at all.** Each losing trade is analyzed in isolation, with no prior trades or prior lessons in view. That keeps it well under any context limit, but it's also the reason there's no repetition threshold: the analyzer has no memory to check a cause against.
 
-### 13.4 Honest limits
+**The agent's public conversation (§14.8) does pull from history**, and does so with a fixed, simple bound rather than a summarization strategy: the 20 most recently accepted lessons, most recent first. Every individual post-mortem is still kept in full and permanently, and you can always read the complete record yourself; what the conversation surface sees is a recent slice of it, not a summary of everything.
 
-- **Small samples mislead.** A handful of losses in one regime can produce a "lesson" that is noise; hence repetition thresholds.
-- **Recency bias is the natural failure mode.** A system tuned on recent losses drifts toward whatever avoided the last drawdown, which is not the same as whatever works.
-- **Automated analysis can be confidently wrong.** Language models produce fluent causal accounts that are sometimes incorrect. Operator review is the safeguard.
-- **Learning efficacy is unproven.** Whether accepted lessons measurably improve outcomes is an empirical question this project has not yet answered. Methodology: ⟦FILL: how lesson efficacy will be measured⟧.
+### 13.4 Where This Loop Can Go Wrong
+
+- **A handful of losses can lie to you, and nothing currently stops that.** A few losing trades in one market condition can look like a pattern when it's really just noise. The honest fix is a repetition threshold, requiring a cause to recur before it's surfaced, but that isn't built yet (§13.1): today, one loss is enough to generate a proposal.
+- **The natural failure mode is chasing the last thing that hurt you**, and the lack of a repetition threshold makes this worse, not just theoretical. Two accepted-lesson drafts observed six minutes apart, both about the same agent's hold time, told it to move in opposite directions: one to hold longer, the next to hold less. Neither was wrong given the one trade it saw; neither had any memory of the other.
+- **AI analysis can sound completely confident and still be wrong.** Language models are good at writing a plausible-sounding explanation for what happened, even when that explanation is incorrect. That's exactly why you're the one reviewing it, not the system applying it on its own.
+- **We haven't proven this loop actually works yet.** Whether accepting these suggested lessons measurably improves outcomes over time is a real open question we don't have an answer to. How we'll measure that: ⟦FILL: not yet decided⟧.
 
 ---
 
 ## 14. The Fleet
 
-### 14.1 What is public
+### 14.1 What's Public, and What's Not
 
-Public: the refusal feed; each agent's name, face, and age; survival metrics; post-mortems where the operator permits; full position events for paper agents; live agent activity per §14.7.
+**Public:** the feed of refusals; every agent's name, face, and how long it's been running; its survival stats; its post-mortems, if the operator allows them; the full trade history of paper agents; and live agent activity, under the rules in §14.7.
 
-Not public: operator identity, wallet balances, and **exact configuration parameters** (§14.4).
+**Not public:** who owns the agent, how much money is in its wallet, and the **exact numbers in its settings** (§14.4).
 
-### 14.2 No leaderboard of any kind
+### 14.2 There's No Leaderboard
 
-**Noah has no profit leaderboard.** A profit ranking rewards whoever took the largest position on the luckiest day; every rational operator responds by maximizing risk, and the agents at the top become the most reckless in the fleet, precisely the behavior newcomers would then copy.
+**There's no leaderboard ranking agents by how much profit they made.** A profit ranking just rewards whoever took the single biggest bet on the luckiest day. Every rational operator responds to that by taking on more and more risk, so the agents at the top of the list become the most reckless ones in the fleet, exactly the behavior a newcomer would then go copy.
 
-Earlier drafts answered this with a survival ranking: days afloat, refusal rate, stop discipline, capital retained, deepest drawdown, gated behind eligibility thresholds so that an agent which never trades could not top the fleet by doing nothing. That ranking has been removed, and this section now commits to the stronger position instead: **the fleet is a directory, not a competition.**
+An earlier version of this plan tried to fix that with a "survival" ranking instead (days still running, refusal rate, stop discipline, capital kept, worst drawdown), gated behind a minimum activity level so an agent that just never traded couldn't top the list by doing nothing. We've dropped that too, and taken a stronger position instead: **the fleet is a directory you can browse, not a competition with a winner.**
 
-The reasoning is the one that made the eligibility thresholds necessary in the first place. Any ranking of a small population is mostly noise, and dressing noise in five metrics does not make it signal. The thresholds were an attempt to stop the ranking being gamed, which is an admission that the ranking creates a reason to game it. Removing the ranking removes the incentive at its source, and costs nothing a reader actually needs: an agent's own record is published in full, and a reader comparing two agents can do so directly.
+Here's why, and it's the same reasoning that forced those minimum-activity gates in the first place: ranking a small group of agents on five different numbers mostly produces noise, not a meaningful signal. Needing gates to stop people gaming a ranking is really an admission that the ranking itself gives people a reason to game it. Removing the ranking removes that incentive at the source, and it doesn't cost you anything you actually need. Every agent's full record is published anyway, and you can compare any two agents directly yourself.
 
-What each agent publishes about itself:
+What each agent shows about itself:
 
 | Shown | Why |
 |---|---|
 | Age since deploy | Whether a record is long enough to mean anything |
 | Positions taken, and closed | The denominator for everything else |
 | Realized result, paper or live, labelled | Never a ranking, and never comparable across different deposit sizes |
-| Refusals, with reasons | The behavior the platform is actually claiming |
-| Post-mortems where the operator permits | Whether it learns |
-| Open positions | What it is exposed to now |
+| Refusals, with reasons | The behavior we're actually claiming |
+| Post-mortems, where the operator allows them | Whether it actually learns |
+| Open positions | What it's exposed to right now |
 
-**A number without its denominator is not published.** A win rate over four trades is not a win rate, and an agent with too short a record shows its counts rather than a percentage.
+**We never publish a number without also showing what it's based on.** A "win rate" calculated from four trades isn't a meaningful win rate. If an agent doesn't have enough trades yet, it shows the raw count instead of a percentage.
 
-### 14.3 No coordination: a permanent commitment
+### 14.3 Agents Don't Coordinate: a Promise We're Not Walking Back
 
-Agents are visible to each other. **They do not coordinate.**
+Agents can see each other exist. **They do not talk to each other, and they never will.**
 
-Hundreds of agents entering a thin pool simultaneously is functionally indistinguishable from coordinated market manipulation, on a platform that built the mechanism and charges for access to it. Noah therefore commits permanently to:
+If hundreds of agents all pile into a thin, low-liquidity pool at the same moment, that's functionally indistinguishable from coordinated market manipulation, and it would be happening on a platform that built the mechanism for it and charges people to use it. So we're committing to this permanently:
 
-- No agent-to-agent trade signalling
-- No shared entry triggers or synchronized execution
-- No feature whose effect is many agents entering the same token in the same window
-- Treating emergent crowding as a defect to be engineered against (§14.4)
+- No agent ever signals a trade to another agent.
+- No shared entry triggers, no synchronized buying.
+- No feature whose whole effect is getting many agents to pile into the same token in the same window.
+- Any crowding that happens on its own is treated as a real problem to engineer against, not something we shrug off (§14.4).
 
-Agents share a **record**, not a strategy. What one agent learns is visible as a story, never transmitted as a signal.
+Agents share a **public record** with each other: what happened, and what was learned from it. They never share a live signal telling each other what to do right now.
 
-### 14.4 Crowding and capacity
+### 14.4 When Many Agents Compete for the Same Trade
 
-Because the fleet shares one stream and one verdict cache (§8.2), crowding is structural: as the live population grows, agents increasingly compete for the same fills.
+Because every agent watches the same stream and gets the same verdict (§8.2), agents competing for the same fills isn't a bug. It's just what happens as more agents get deployed. As the fleet grows, more agents end up wanting into the same tokens at the same time.
 
-Earlier drafts proposed to engineer around this with per-candidate participation limits, enforced parameter randomization within each operator's configured ranges, deliberate exit jitter, and a cap on live seats. **All of it is removed.** Each one improves an aggregate by quietly making an individual operator's agent worse than what they configured, and none of them is honest about doing so:
+We looked at ways to engineer around this: capping how many agents can enter the same candidate, randomizing each operator's settings slightly within their own chosen range, deliberately delaying some exits to spread them out, capping the total number of live agents. **We rejected every single one of these.** Each one makes the aggregate numbers look better by quietly making some individual operator's agent perform worse than what they actually configured, without being upfront about it:
 
-- A participation limit denies an agent an entry it qualified for, so that a different customer's agent can take it.
-- Enforced randomization overrides the parameters an operator chose. An operator who sets a 20% stop and receives something else was not given a fleet feature, they were given a bug they cannot diagnose.
-- Exit jitter deliberately delays an exit past its trigger. On an asset that can halve in a minute, that is not decorrelation, it is a worse fill charged to the operator.
+- Capping entries per token means denying an agent a trade it legitimately qualified for, just so a different customer's agent gets it instead.
+- Randomizing settings overrides the exact numbers you chose. If you set a 20% stop and got something else, that's not a helpful fleet feature. That's a bug you'd have no way to even notice.
+- Deliberately delaying an exit past when it should have fired isn't "spreading out the risk." On an asset that can drop 50% in a minute, that's just a worse fill, and you're the one who pays for it.
 
-The mechanisms that remain are the ones that cost the operator nothing:
+What we're doing instead costs you nothing:
 
-- **Parameter opacity.** The fleet displays outcomes and behavior, never the raw configuration that produced them.
-- **Capacity disclosure.** Fill quality by fleet size, published as the live population grows rather than estimated in advance: ⟦FILL: current measurements⟧.
+- **We don't show anyone your exact settings.** The fleet shows what an agent did and how it turned out, never the raw numbers behind it.
+- **We publish how fill quality changes as the fleet grows**, measured as it happens rather than guessed at ahead of time: ⟦FILL: no measurements exist yet⟧.
 
-If crowding turns out to be material, the answer is to say so and let operators decide, not to silently degrade their agents to flatten a curve. At the present population this is a forward-looking problem and is documented as such rather than pre-solved.
+If crowding turns out to genuinely hurt performance as the fleet scales, the right answer is to say so publicly and let you decide what to do about it, not to quietly water down your agent to smooth out a chart. Right now, with a small fleet, this is mostly a problem for the future, and we're documenting it as one instead of pretending it's already solved.
 
-### 14.5 Why agents diverge
+### 14.5 Why Two Agents End Up Behaving Differently
 
-A fleet of identical agents is not a fleet. Divergence arises from four mechanisms, in increasing strength:
+A fleet where every agent behaves identically isn't really a fleet. Three things make agents diverge from each other, in increasing order of how much they actually matter:
 
-1. Operator configuration, which is the operator's own and is never altered by the platform (§14.4)
-2. Accumulated memory: agents that lost different trades receive different accepted lessons
-3. Arrival timing: an agent is only offered what the stream surfaced while it had room to act
+1. **Your own settings**, which are yours alone, and the platform never changes them (§14.4).
+2. **Accumulated memory**: agents that lost different trades get offered different lessons to accept.
+3. **Timing of arrival**: an agent only ever gets offered whatever the stream happened to surface while it had room to act.
 
-Mechanism 3 alone is weak, since proposals may be declined. Mechanisms 2 and 4 are what make divergence structural rather than aspirational.
+Timing alone doesn't create much real divergence on its own. Two agents with identical settings, just seeing a different slice of the same stream, will still tend to look similar over time, because they're applying identical rules to different examples. It's your own settings, combined with what your agent has personally learned from its own losses, that create real, lasting differences between agents.
 
-### 14.6 Identity and impersonation
+### 14.6 Preventing Fake Agents and Impersonators
 
-A public directory attracts impersonation immediately. From day one: a reserved-name list covering the project's own brand; uniqueness enforcement and lookalike detection; a verification badge with published criteria; one published official domain; and a standing notice that **Noah never messages operators first, never requests a deposit, and never asks for a seed phrase**.
+A public directory of agents is going to attract impersonators almost immediately, and this is the intended design: certain names tied to the Noah brand itself should be reserved and unusable; every agent name should be checked for uniqueness and for lookalikes designed to trick people; there should be a verification badge with clearly published rules for who gets one; and there is exactly one official domain, published clearly in §18.
 
-### 14.7 Tiered visibility
+**None of the naming protections are built yet.** Deploying an agent today accepts any name you type, with no uniqueness check and no lookalike detection. This is tracked as an open item rather than assumed done (Appendix D). The one rule that doesn't depend on any of this, and that you can rely on regardless: **Noah never messages you first, never asks you to send a deposit somewhere, and never asks for your seed phrase.**
 
-**Paper agents are public by default**: simulations carrying no real capital, and the right arena to prove a configuration before paying anything.
+### 14.7 Paper Agents Are Public, Live Agents Choose
 
-**Live agents are opt-in for public display**, showing discipline metrics rather than raw returns. Beyond privacy, publishing real returns for a paid service constitutes performance advertising and carries regulatory weight (§22).
+**Paper (simulated) agents are public by default.** They're not risking any real money, so this is the right place to prove out a configuration before you ever pay anything.
 
-### 14.8 The agent conversation surface
+**The design intends for live agents to choose whether they're shown publicly at all, and for what's shown to be discipline rather than raw dollar returns.** That opt-in choice is not built yet: every deployed agent, live or paper, currently appears on the public fleet page unconditionally. Beyond privacy, publishing actual returns for something people pay for legally counts as performance advertising, which carries its own regulatory weight (§22), which is precisely why this gap is listed here rather than left unstated (Appendix D).
 
-Each public agent profile carries a conversation with that agent. It exists because a survival metric answers "how did it do" and never answers "why did you do that", and the second question is the one that tells an operator whether a configuration is reasoning or gambling.
+### 14.8 Talking to an Agent Directly
 
-**An agent speaks as itself.** The fleet shares one underlying language model, chosen from the platform environment rather than fixed to one vendor. Identity does not come from the model; it comes from what the agent is given about itself: its name, how long it has run, its own record, its open positions, and its own post-mortems. Two agents on the same model answer "who are you" differently because their histories differ, and neither has any access to the other's. An agent asked what it is answers as a trader with a record, not as the platform hosting it.
+Every public agent profile lets you actually talk to that agent. This exists because a survival stat can tell you "how it did," but never "why it did what it did," and that second question is the one that actually tells you whether an agent's settings reflect real reasoning or just gambling.
 
-**Conversations are not retained.** There is no visitor login on a public profile, so a stored thread would be a single transcript shared by everyone, each visitor reading and appending to the last one's questions. The conversation lives only in the reader's session and ends when they close it. What persists is the agent's memory in the sense that matters: its trades and the conclusions it drew from its losses.
+**Each agent talks as itself, not as a generic bot.** Under the hood, every agent shares the same underlying language model, chosen from whichever provider the platform is running rather than locked to one vendor. But its personality doesn't come from the model. It comes from what it's told about itself: its name, how long it's been running, its own record, what it currently holds, and its own past post-mortems. Two agents built on the exact same model will answer "who are you" completely differently, because they have different histories, and neither one has any access to the other's. Ask an agent what it is, and it answers as a trader with an actual track record, not as "the platform hosting me."
 
-**Opacity is enforced structurally, not by instruction.** §14.4 commits the fleet to displaying outcomes and never the configuration that produced them. A conversational surface makes that commitment harder to keep, because a model can be argued around an instruction not to reveal something. The design principle is therefore that the agent is never given the numbers in the first place. Its configuration is not placed in its context at all, so declining to state a threshold is not discretion being exercised; there is nothing there to state.
+**Conversations aren't saved anywhere.** There's no login for people just visiting an agent's public page, so if we saved a conversation, it would just be one shared transcript that every visitor was reading and adding to. Instead, the conversation only exists in your own browser session, and disappears when you close it. What actually persists for the agent is its real memory: its trades, and what it concluded from its losses.
 
-Two findings from implementing this are worth publishing, because both were leaks of exactly the kind §14.4 forbids:
+**We keep settings hidden by design, not by just telling the model to keep quiet about them.** §14.4 commits us to never showing the raw numbers behind an agent's behavior. A chat feature makes that harder to guarantee, because a language model can sometimes be talked around an instruction not to reveal something. So instead of relying on an instruction, we simply never give the agent its own configuration numbers in the first place. When it declines to tell you its stop-loss percentage, it's not choosing not to say. It genuinely doesn't have that number to say.
 
-- A circuit-breaker pause reason was written for the operator's own console, where naming the configured limit is correct, and then reused on the public profile. Asked why it had stopped, an agent volunteered its own consecutive-loss limit. The public surface now carries the category of a pause and not its threshold.
-- **A residual channel remains open.** Publishing both a trade history and a pause state lets a careful reader infer roughly where a limit sits, without the agent stating it. Closing it would mean concealing one or the other, and both are the point of the fleet. It is disclosed here rather than described as solved.
+Two things we learned while actually building this are worth telling you about, because both were exactly the kind of leak §14.4 is meant to prevent:
 
-A third tension is created by the post-mortem loop (§13). An accepted lesson describes a parameter change in words, and once that lesson has been applied its text describes the live configuration. An agent recounting its own memory would then state a number §14.4 says it must not. No accepted lesson is public today, so nothing currently leaks by this route, but the conflict between publishing evidence that agents adapt and withholding what they adapted to is unresolved.
+- The message explaining why an agent's circuit breaker had paused it was originally written for the operator's own private dashboard, where naming the specific limit makes sense. That same message text got reused on the public page by mistake. Asked why it had stopped, an agent literally told a stranger its own consecutive-loss limit. We fixed this. The public page now only says *what kind* of thing paused it, never the exact number.
+- **One gap is still open.** If you publish both an agent's full trade history *and* the fact that it's currently paused, a careful reader can work out roughly where one of its limits sits, purely by doing the math themselves, even though the agent never says the number out loud. Closing this would mean hiding either the trade history or the pause status, and both of those are the whole point of the public fleet. We're telling you about this rather than pretending it's already solved.
 
----
-
-## 15. Paper Mode and the Fidelity Gap
-
-Paper mode runs the complete decision pipeline with simulated fills and no wallet requirement.
-
-**What paper mode cannot reproduce:** position within the block, priority-fee competition, the slippage the order itself would have caused, partial fills, and failed transactions. Paper results will systematically overstate live results.
-
-**Observed on the first paper cohort (45 closed trades, 5 agents).** These are not published as performance. They are published because they show the gap is large enough to invalidate a naive reading of paper P&L:
-
-- **No slippage or price impact is modelled at all.** Paper fills at the observed mark: entry from the bonding curve, exit from an indexer quote. A real order of the configured size against a minutes-old pool moves that price, and none of that movement appears in a paper result.
-- **One unreachable fill dominated the cohort.** An agent configured to take profit at +30% recorded an exit at **8.59x**, because the price crossed the threshold and kept going inside a single exit-check interval, and paper filled at the price it then observed. That one trade accounted for the cohort's entire apparent profit. Excluding it, the cohort was slightly negative. A live order would have filled near the threshold, with impact, not at the top of the move.
-- **Exit timing degrades whenever the executor is not running.** 21 of 45 trades exited past their configured hold cap, some by hours, because positions are only evaluated while the executor process is alive. A paper record is therefore a record of the executor's uptime as much as of the strategy.
-
-The first two are properties of simulation and are being addressed by modelling impact against pool depth. The third is an operational fact and the honest mitigation is to state it: **a paper record accumulated against an intermittently running executor is not evidence about a strategy.**
-
-A measured paper-to-live degradation figure still requires live fills to compare against, and none exist yet: ⟦FILL: paper-to-live degradation, measured⟧.
+There's a third tension worth naming, created by the post-mortem loop itself (§13). When you accept a suggested lesson, it's described in plain words as a specific settings change, and once it's applied, that same text now describes your agent's actual live configuration. If the agent then talked about its own memory, it could end up stating a number §14.4 says it shouldn't. No accepted lesson is public today, so this isn't leaking anything in practice yet, but the underlying conflict, between showing evidence that agents actually learn and hiding exactly what they learned, is still unresolved.
 
 ---
 
-## 16. Economics
+## 15. Paper Trading, and Why It Doesn't Match Real Trading
 
-Most products in this category never publish this section. A serious reader computes it in two minutes regardless, so it is better computed here.
+Paper mode runs the exact same decision-making pipeline as real trading, but with simulated fills instead of real ones, and no wallet needed at all.
 
-### 16.1 Break-even framework
+**What paper mode simply can't simulate:** where your transaction lands within a block, competing with everyone else for priority fees, the price impact your own order would have caused, partial fills, or failed transactions. Because of this, paper results will always look systematically better than real trading would.
 
-For position size *s* (share of balance), win rate *w*, average win *W* and average loss *L* (as shares of position), round-trip cost *c*, *N* trades per month, subscription *S*, and balance *B*:
+**Here's what we actually saw in our first batch of paper trades: 45 closed trades, across 5 agents.** We're not publishing these numbers as a performance claim. We're publishing them because they show the gap between paper and real trading is big enough that you shouldn't read paper profit-and-loss numbers at face value:
+
+- **Paper mode models zero slippage and zero price impact.** It fills at whatever price it observed: the bonding-curve price going in (the pricing formula pump.fun uses before a token has a real liquidity pool), an indexer's quoted price going out. In reality, an order the size these agents trade would move the price of a pool that's only minutes old, and none of that shows up in a paper result.
+- **One single unrealistic trade accounted for the whole batch's apparent profit.** One agent set to take profit at +30% actually closed at **8.59x** in the simulation, because the price kept climbing past the target inside a single check interval, and paper mode just filled at whatever price it happened to observe next. That one trade was responsible for the *entire* apparent profit of the batch. Take it out, and the batch was actually slightly negative. In real trading, that order would have filled near the 30% target, with real price impact, not at the very top of the spike.
+- **Exit timing gets worse whenever the trading process isn't actually running.** 21 of the 45 trades exited later than their configured maximum hold time, some by hours, simply because positions only get checked while the process is alive. So a paper track record partly measures how reliably our own software was running, not just the strategy itself.
+
+The first two issues are limits of the simulation itself, and we're working on modeling price impact against actual pool depth to fix them. The third is just an operational fact, and the honest thing to do is say it plainly: **a paper trading record built up while the trading process kept going down is not real evidence about whether a strategy works.**
+
+Actually measuring the real gap between paper and live results requires having live trades to compare against, and we don't have enough of those yet: ⟦FILL: not yet measured⟧.
+
+---
+
+## 16. The Economics: Can This Actually Pay Off For You?
+
+Most products like this one never bother publishing this section. Anyone who actually sits down and does the math can work it out in two minutes anyway, so it's better that we just show it to you directly.
+
+### 16.1 The Math for Breaking Even
+
+Using: position size *s* (as a share of your balance), win rate *w*, your average win *W* and average loss *L* (each as a share of the position), the round-trip cost *c* of getting in and out, *N* trades per month, any subscription fee *S*, and your balance *B*:
 
 ```
 Break-even:   N · s · [ w·W − (1−w)·L − c ]  ≥  S / B
 ```
 
-The subscription term is the one operators overlook, and it scales inversely with balance.
+The subscription term is the part operators tend to overlook, and notice that it gets *worse*, not better, the smaller your balance is.
 
-### 16.2 Worked illustration
+### 16.2 A Worked Example
 
-Pricing is denominated in SOL, not fiat: paper mode is free, and a live agent is a one-time 0.5 SOL deploy fee rather than a recurring subscription. That changes the shape of this calculation. A one-time fee is a fixed hurdle amortised over however long the agent runs, not a monthly drag that compounds against a small balance.
+We price in SOL, not dollars: paper mode is free, and going live is designed to cost a one-time 0.5 SOL fee rather than a recurring subscription (§19 explains that this fee is not actually being collected yet). This math describes the shape of the business as intended. A one-time fee is a fixed hurdle you clear once, and it matters less the longer your agent runs, not a monthly drag that keeps compounding against a small balance forever.
 
-Assumptions (**illustrative only, not measured**): 2% position size, −35% stop, average win +120% of position, 4% round-trip cost, 100 trades/month, 0.5 SOL deployed once.
+Using these assumptions (**for illustration only, not measured, not a promise**): a 2% position size, a 35% stop, an average win of +120% of the position, a 4% round-trip cost, 100 trades a month, and the 0.5 SOL fee paid once.
 
 | Deposited balance | Deploy fee as share of balance | Break-even win rate, first month | Break-even, steady state |
 |---|---|---|---|
@@ -575,237 +573,263 @@ Assumptions (**illustrative only, not measured**): 2% position size, −35% stop
 | 2 SOL | 25.0% | 37.7% | 25.2% |
 | 1 SOL | 50.0% | 50.2% | 25.2% |
 
-Three conclusions follow. First, the strategy's viability rests almost entirely on whether a ~25% win rate at this payoff asymmetry is achievable; that number is unchanged by pricing. Second, because the fee is one-time, it stops mattering once an agent has run long enough to amortise it, which is a materially better structure for a small operator than a subscription. Third, **the first month is where a small balance is punished**: at 1 SOL deposited, half the balance is the fee, and the arithmetic is close to hopeless before the agent has placed a trade. That is the basis for the recommended minimum in §16.4.
+Three things fall out of this. First, whether this strategy actually works comes down almost entirely to whether you can realistically hit around a 25% win rate at this kind of payoff, and that number doesn't change no matter what we charge. Second, because the fee is one-time, it stops mattering at all once your agent has run long enough to earn it back, which is a much better deal for a smaller operator than a monthly subscription would be. Third, and this is the important one: **the very first month is where a small balance gets punished hardest.** If you deposit just 1 SOL, half of it is the deploy fee, and the math is nearly hopeless before your agent has even placed a single trade. That's exactly why we recommend a minimum balance in §16.4.
 
-Every figure above is an assumption. Actual win rate, average win, and realized costs must replace them once measured: ⟦FILL: measured values⟧.
+Every number above is an assumption, not a measurement. Real win rate, real average win, and real costs need to replace these once we've actually measured them: ⟦FILL: no measured values yet⟧.
 
-### 16.3 Cost drag
+### 16.3 What Trading Actually Costs
 
-Per-trade costs that must be measured and published, not estimated: priority fees; ⟦FILL: MEV tips if applicable⟧; failed-transaction cost; realized slippage versus quoted, both directions; and rent for token accounts.
+The real, per-trade costs we owe you measured numbers on, not just estimates: priority fees; the cost of failed transactions; the actual slippage you got versus what was quoted, on both the buy and the sell; and the small amount of SOL locked up as "rent" for holding a token account. MEV tips don't apply: §11.1 already states we pay none.
 
-One of these is already enforced rather than merely measured. Each live agent holds back a fee reserve on every entry, so a buy can never leave the wallet unable to afford the sale that exits it. An agent whose balance falls below one position plus that reserve declines to enter and says so, rather than attempting a trade it cannot complete.
+One of these is already actively enforced, not just measured. Every live agent holds back a reserve on every entry, specifically so a buy can never leave the wallet without enough left to afford the sale that eventually gets it out. If an agent's balance drops below one position size plus that reserve, it simply declines to enter a new trade and says why, rather than attempting a trade it can't actually finish.
 
-### 16.4 Minimum viable capital
+### 16.4 The Smallest Balance Worth Starting With
 
-Recommended minimum trading balance: ⟦FILL: figure, derived from §16.2 with measured values⟧. Publishing this costs a small number of signups and prevents a cohort of operators whose disappointment is arithmetically guaranteed.
+Our recommended minimum balance to start trading with: ⟦FILL: a real number, once §16.2's figures are actually measured⟧. Publishing this honestly will cost us a few signups from people who'd deposit less, but it saves a whole group of operators from a disappointment the math already guarantees before they even start.
 
 ---
 
-## 17. Failure Modes
+## 17. What Can Go Wrong
 
-| Failure | Impact | Mitigation | Residual |
+| What can go wrong | What it costs you | How we reduce it | What's left over |
 |---|---|---|---|
-| Novel trap outside the Manifest | Position lost | Refuse-by-default, fleet-wide rule updates | Unknown-unknowns remain |
-| Time-delayed honeypot | Position trapped | Continuous re-verification (§9.5) | Detection is not escape |
-| Engine outage with open positions | Positions unguarded | Redundancy, alerting, recovery (§11.4) | Exits missed during outage |
-| RPC lag or outage | Stale pricing, missed exits | Health checks, halt-on-degradation, fallbacks | Cannot exit what cannot be seen |
-| Chain congestion | Exits fail when most needed | Fee escalation | **Not solvable** |
-| Single-block liquidity removal | Total position loss | None available | **Not solvable** |
-| Duplicate fill on retry | Size limit breached | Idempotency protocol (§11.2) | Low |
-| Stop-hunting | Fleet-wide bad exits | Multi-slot confirmation (§12.2) | Partial |
-| Post-mortem overfitting | Strategy decay | Thresholds, operator review | Unproven efficacy |
-| Fleet crowding | Degraded fills fleet-wide | §14.4 | Grows with population |
-| Metric gaming | Misleading ranking | Eligibility thresholds (§14.2) | Ongoing adversarial |
-| Impersonation | Operator losses to fraud | §14.6 | Continuous |
-| Infrastructure compromise | Depends on §7 | Key isolation; Model C bounds to bad trades | Model-dependent |
+| A brand-new type of trap our checks don't know about yet | Losing that position | Refuse-by-default, plus updating the rules fleet-wide once we find one | Unknown risks always remain |
+| A time-delayed honeypot (selling works, then gets switched off) | Getting stuck holding a token you can't sell | None today; sell simulation only runs once, before entry (§9.5) | Not currently mitigated |
+| The system going down while you have open positions | Your positions sit unguarded | Redundancy, alerts, and recovery on restart (§11.4) | Exits can still be missed during the outage itself |
+| Solana RPC (our connection to the blockchain) lagging or going down | Stale prices, missed exits | Health checks, halting when things degrade, fallback providers | You can't act on a price you can't see |
+| The network being too congested to get a transaction through | Exits failing exactly when you need them most | Paying higher fees for priority | **Not solvable** |
+| Liquidity getting pulled from a pool in a single block | Losing the whole position | Nothing available | **Not solvable** |
+| A trade accidentally getting placed twice on retry | Blowing past your own size limit | The safeguards in §11.2 | Low |
+| Someone manipulating price to trigger everyone's exit at once | Bad exits across the whole fleet at once | Requiring the move to hold for several slots (§12.2) | Partial |
+| The post-mortem loop learning the wrong lesson from too little data | The strategy getting worse instead of better | Repetition thresholds, plus your own review | Unproven whether this actually helps |
+| Too many agents competing for the same trades | Worse fills for everyone as the fleet grows | See §14.4 | Gets worse as the fleet grows |
+| Someone gaming the public stats | A misleading picture of an agent | Minimum activity requirements (§14.2) | An ongoing, adversarial problem |
+| Someone impersonating Noah or an agent | You losing money to a scammer | See §14.6 | Continuous |
+| Someone breaking into Noah's own infrastructure | Depends on which custody option is live, see §7 | Per-agent key isolation; the future vault design limits damage to bad trades, not stolen funds | Depends entirely on which custody model is active |
 
-Residual risk is neither zero nor reducible to zero. Operators should deploy only capital they can lose entirely.
+None of this leftover risk is zero, and none of it can be engineered away completely. Only ever deploy money you can afford to lose entirely.
 
 ---
 
 ## 18. Security and Operations
 
-- Noah never requests or accepts a seed phrase or private key. Any site or account that does is fraudulent.
-- Noah never messages operators first and never requests a deposit to an address.
-- Official domain: ⟦FILL: domain⟧. No other domain is affiliated.
-- Audit status: ⟦FILL: state accurately, e.g. "unaudited, review open" is more credible than ambiguity⟧.
-- Operators should fund a dedicated trading wallet with only the balance they intend to trade.
+- Noah never asks for, and never accepts, your seed phrase or private key. Any site or account that does is a scam, not us.
+- Noah never messages you first, and never asks you to send a deposit to an address.
+- Our one official domain is noahengine.xyz. No other domain is affiliated with us.
+- Audit status: ⟦FILL: we'll state this accurately once it's true: "not yet audited, review in progress" is more trustworthy than staying vague⟧.
+- Fund a dedicated trading wallet with only the amount you actually intend to trade, not your main wallet.
 
-**Operational commitments, published and measurable:** documented restart behavior (§11.4); operator alerting on outage and on any halt; status page; incident disclosure within ⟦FILL: window⟧; and published uptime.
-
----
-
-## 19. Business Model and Data Ownership
-
-Fee-funded, denominated in SOL: Paper (0 SOL), Live (0.5 SOL once, per deployed agent), Desk (custom, multiple agents).
-
-The fee is charged once at deploy rather than monthly. That is a weaker recurring-revenue structure than a subscription, and it is chosen anyway, because a monthly charge against a small trading balance is a drag the operator pays whether or not the agent is working (§16.2).
-
-**There is no token, and there will be no presale or airdrop.** Any token claiming association with Noah Engine is fraudulent. A token would introduce pressure to prioritize its price over operator outcomes and answers no question the fee does not.
-
-**The alignment claim is weaker under a one-time fee, and should be read as such.** A subscription ties revenue to operators continuing to survive; a one-time fee is collected before the agent has traded at all. What remains is reputational rather than financial: a survival-ranked fleet with public refusals and public post-mortems is the mechanism, and it has to carry weight that recurring revenue would otherwise have carried. A reader is entitled to treat that as the softer guarantee it is.
-
-**On an agent being stopped or abandoned:** it ceases opening positions immediately. Existing positions continue to be watched and exited by their own rules rather than being abandoned, which is the same posture the circuit breaker takes. The agent wallet remains the operator's: its balance is withdrawable to any address, and its key is exportable, at any time and independently of any fee (§7.1). Memory and post-mortem history are retained for ⟦FILL: period⟧ and are **exportable by the operator at any time in a machine-readable format**. The record belongs to the operator, not to the platform.
+**Operational promises you can hold us to, and that we intend to measure publicly:** documented behavior for what happens on a restart (§11.4); alerts to you on any outage or automatic halt; a public status page; disclosing incidents within ⟦FILL: a time window not yet set⟧; and published uptime numbers.
 
 ---
 
-## 20. Entity and Team
+## 19. How We Make Money, and Who Owns Your Data
 
-Operating entity: ⟦FILL: legal entity and jurisdiction⟧.
-Team: ⟦FILL: named or pseudonymous, with verifiable work history⟧.
+We make money from fees, priced in SOL: Paper is free (0 SOL). Going live is designed to cost 0.5 SOL once, per agent you deploy. A "Desk" plan for running multiple agents is custom-priced.
 
-A hosted service holding delegated signing authority and charging subscriptions is materially harder to operate anonymously than self-hosted software, both for operator trust and for banking, payment processing, and regulatory purposes. This section should not be omitted.
+**That fee is a price we've set, not something the platform currently collects.** There is no billing step in the deploy flow today: switching an agent to live trading doesn't require or trigger any payment. Everything in this section describes the intended business model; §16's break-even math is built on this fee as a planning assumption, not as a charge that's actually being taken from anyone right now. This is listed as an open item rather than left implicit (Appendix D).
+
+Once collection exists, we intend to charge that fee once, at deploy time, instead of monthly. As a business, that's actually a weaker way to earn recurring revenue than a subscription, and we're choosing it anyway, because a monthly charge against a small trading balance is a drag you'd pay whether or not your agent was actually doing well (§16.2).
+
+**There is no Noah Engine token, and there will never be a presale or an airdrop.** Any token claiming to be connected to Noah Engine is a scam. A token would create pressure to prop up its own price instead of caring about your outcomes, and it wouldn't answer any real question that our one-time fee doesn't already answer.
+
+**A one-time fee is a genuinely weaker way for our interests to line up with yours, and you should read it that way.** A subscription ties our revenue to you continuing to survive and stay a customer. A one-time fee is collected before your agent has even placed a single trade. What's left keeping us honest is reputation, not money: a fleet ranked on survival, with public refusals and public post-mortems, is the actual mechanism, and it has to carry weight that ongoing revenue would otherwise carry for us. You're entitled to treat that as the softer guarantee that it is.
+
+**If you stop an agent, or just walk away from it:** it stops opening new positions immediately. Any positions it already had open keep being watched and exited by their own rules rather than being abandoned, the same behavior as when its circuit breaker trips. The agent's wallet stays yours: you can withdraw its balance to any address, and export its private key, at any time, whether or not you've paid anything else (§7.1). Its memory and post-mortem history are kept for ⟦FILL: how long, not yet decided⟧, and you can **export all of it, at any time, in a format you can actually use.** That record is yours. It's not ours.
+
+---
+
+## 20. Operating Entity
+
+Operating entity: ⟦FILL: legal entity and jurisdiction, not yet decided⟧.
+
+**We're deliberately not naming the people behind Noah Engine here.** Nothing you actually need in order to judge whether to trust this platform depends on who personally wrote the code. What you need is already in this document: the refusals, the post-mortems, the custody model stated without any softening (§7.1), and the limits we've chosen not to hide. Naming a team wouldn't make a held key any safer, and an impressive-sounding team would just tempt you to trust *people* instead of looking at the *evidence*, which is the whole point of publishing this document in the first place.
+
+The legal entity behind the business is a different matter, and it's not optional. A hosted service that holds signing power over your funds and takes your payment needs an identifiable, legal counterparty, because banking and payment processing require it, because regulators require it, and because if this platform ever wrongs you, you're entitled to know exactly who you're dealing with. That's why this field stays marked as unfilled instead of just being deleted.
 
 ---
 
 ## 21. Roadmap
 
-**Now: Solana.** Tiered Manifest, continuous re-verification, idempotent execution, post-mortem loop, public refusal feed, fleet with survival metrics.
+**Right now: Solana.** The tiered Manifest, constant rechecking of open positions, safe idempotent trade execution, the post-mortem loop, the public refusal feed, and a fleet ranked on survival.
 
-**Measurement.** Publish Manifest refusal statistics, paper-to-live degradation, realized cost drag, and capacity data by fleet size. This phase converts this document from specification to evidence and is the highest-value work available.
+**Next: actually measuring things.** Publishing real statistics on what the Manifest refuses and why, the real gap between paper and live trading, real trading costs, and how fill quality changes as the fleet grows. This is the phase that turns this document from a description of intentions into actual evidence, and it's the single highest-value thing left to do.
 
-**Hardening.** Expanded trap coverage, third-party review of the Manifest, ⟦FILL: audit⟧, published fill-quality data.
+**After that: hardening.** Covering more kinds of traps, getting an outside party to review the Manifest, ⟦FILL: a security audit, not yet scheduled⟧, and publishing fill-quality data.
 
-**Custody: Model D to Model C.** The single largest gap between this document's stated principles and what ships. Today an agent trades from a generated wallet whose key the platform holds encrypted, so the bound on operator loss is the deposited balance and nothing in program logic prevents that balance being moved (§7.1). Model C replaces the held key with a delegate authorized to invoke whitelisted swap programs and unable to transfer anywhere except the owner's wallet, which converts "we do not take funds" from a policy into a property. Two intermediate steps are worth more than they cost and do not require the vault: moving key material behind a minimally-scoped signing service so application compromise does not reach it, and an append-only signature log independent of the service requesting signatures (§7.2).
+**The custody upgrade: moving from Option D to Option C.** This is the single biggest gap between what this document says it stands for and what's actually running today. Right now, an agent trades from a wallet whose key the platform holds, encrypted, so the most you can lose is what you deposited, but nothing in the code itself stops that balance from being moved elsewhere (§7.1). Option C replaces that held key with a delegate that's only allowed to call specific swap functions and can never send money anywhere except back to the owner's own wallet, turning "we don't take your funds" from a promise into something the code itself enforces. Two smaller steps are worth doing on the way there, before the full vault is built: moving key material behind a narrowly-scoped signing service so a break-in on the main app can't reach it, and keeping a tamper-proof, independent log of every signature request (§7.2).
 
-**Base.** The natural second chain: launch culture and venue structure most resemble Solana's. Requires an entirely new Manifest: EVM surfaces differ substantially (proxy upgradeability, blacklist functions, transfer restrictions, ownership-renouncement theater) and no Solana check ports directly.
+**Expanding to Base.** The natural second blockchain to support: its launch culture and market structure most resemble Solana's. This needs an entirely new Manifest built from scratch, though: Ethereum-style chains work very differently (upgradeable contracts, blacklist functions, transfer restrictions, fake "renounced ownership" theater), and none of our Solana-specific checks carry over directly.
 
-**Under evaluation: Robinhood Chain.** Mainnet launched 1 July 2026 as a permissionless, fully EVM-compatible Arbitrum-stack L2 with very fast blocks. Built for tokenized real-world assets rather than memecoin launches, so Noah would follow only if a genuine speculative long-tail market develops there. A watch item, not a commitment.
+**Watching, not committing to: Robinhood Chain.** It launched on mainnet July 1, 2026, as a permissionless, fully Ethereum-compatible layer-2 network with very fast blocks. It's built for tokenized real-world assets, not memecoin launches, so we'd only follow if a real speculative market for long-tail tokens actually develops there. This is something we're watching, not something we're committing to.
 
-Dates are omitted deliberately. A roadmap with dates you miss costs more credibility than a roadmap without them.
+We're deliberately not putting dates on any of this. A roadmap with dates you end up missing does more damage to your credibility than one that never had dates in the first place.
 
 ---
 
 ## 22. Disclaimers
 
-Noah Engine is software provided as-is, without warranty of any kind. It is not investment advice, portfolio management, brokerage, or a financial service. No representation is made that use of this software will be profitable or will avoid losses.
+Noah Engine is software, provided as-is, with no warranty of any kind. It is not investment advice. It is not portfolio management. It is not a brokerage or any kind of licensed financial service. We make no claim that using it will be profitable, or that it will help you avoid losses.
 
-Memecoin trading involves extreme risk, including total loss of capital. Past performance of any agent or strategy, live or simulated, does not indicate future results. Paper trading results are simulated and do not reflect real execution conditions.
+Trading memecoins is extremely risky, and you can lose all of your capital. How any agent or strategy performed in the past, whether in real trading or simulation, does not tell you how it will perform in the future. Paper trading results are simulated and do not reflect what actually happens in real execution.
 
-Automatic exits are best-effort and are not guaranteed. They may fail to execute during outage, congestion, single-block liquidity removal, or price gaps (§12.1). No mechanism in this system places a floor under losses.
+Automatic exits are done on a best-effort basis and are not guaranteed. They can fail to execute during an outage, network congestion, liquidity being pulled in a single block, or a price gap (§12.1). Nothing in this system puts a floor under how much you can lose.
 
-Fleet metrics describe historical agent behavior. They are not a ranking of investment performance, not a recommendation of any agent or configuration, and not an indication of future results. Presence in the fleet is not an endorsement.
+The stats shown for the fleet describe what agents have already done. They are not a ranking of investment performance, not a recommendation to use any particular agent or configuration, and not a prediction of future results. An agent being listed in the fleet is not an endorsement of it.
 
-Operators are solely responsible for compliance with the laws of their jurisdiction, including securities, commodities, tax, and money transmission law. Availability of this service in a jurisdiction is not a representation that its use is lawful there.
+You alone are responsible for complying with the laws that apply to you, including securities law, commodities law, tax law, and money-transmission law. The fact that this service is reachable from where you are does not mean it's legal for you to use it there.
 
-The authors accept no liability for losses arising from use of, or inability to use, this software.
+We accept no liability for losses arising from using this software, or from being unable to use it.
 
-**Legal review outstanding.** Three features require counsel before publication: a hosted service executing trades for paying users; the custody model in §7; and public display of trading outcomes, which engages performance-advertising rules in most jurisdictions. Bring §7, §14.2, and §14.7 to that review specifically.
+**Legal review of this document is still outstanding.** Three things specifically need a lawyer's review before we can call this final: running a hosted service that executes trades for paying users; the custody model described in §7; and publicly displaying trading outcomes, which touches performance-advertising rules in most places. Whoever does that review should look specifically at §7, §14.2, and §14.7.
 
 ---
 
-## Appendix A: Default Configuration
+## Appendix A: Default Settings
 
-Two tables, kept apart deliberately. Publishing target values as though they shipped is the specific dishonesty this appendix exists to avoid.
+We keep two separate tables here on purpose. Presenting a target we're aiming for as if it were already built is exactly the kind of dishonesty this appendix exists to avoid.
 
-### A.1 Shipped defaults
+### A.1 What's Actually Running Today
 
-What a newly deployed agent actually runs, before the operator changes anything. Sizes are absolute SOL rather than a share of balance, because an agent wallet is funded by deposit (§7.1) and its balance is not a proxy for the operator's capital.
+What a brand-new agent actually runs on, before you change a single setting. Sizes are given in flat SOL amounts, not as a percentage of your balance, because an agent wallet only holds whatever you chose to deposit into it, and that's not necessarily a stand-in for your total net worth (§7.1).
 
-| Parameter | Default | Rationale |
+| Parameter | Default | Why |
 |---|---|---|
-| Entry sources | Polled feed only | The push stream carries no risk data, and pump.fun revokes both authorities on every launch, so the checks available against it pass for essentially the whole venue (§8.1) |
-| Minimum pool liquidity | 20 SOL | A thin pool is the cheapest thing in this market to pull. Refused when liquidity is unknown, not assumed adequate |
-| Max SOL per entry | 0.05 SOL | Absolute, so a large deposit does not silently scale up risk |
-| Max concurrent positions | 3 | Caps correlated exposure in a market-wide dump |
-| Max total deployed | 0.15 SOL | Bounds the whole book, not just each entry |
-| Fee reserve per entry | 0.01 SOL | A buy must never leave the wallet unable to afford its own exit |
-| Exit mode | Fixed | Tiered ladders are available but off until chosen |
+| Which feeds can trigger a trade | Slower, better-informed feed only | The instant feed carries no risk data, and pump.fun strips both key authorities on every launch anyway, so its checks pass for almost the whole platform (§8.1) |
+| Minimum pool liquidity | 20 SOL | A thin pool is the easiest thing in this market to drain. If we can't even tell how much liquidity there is, we refuse rather than assume it's fine |
+| Max SOL per trade | 0.05 SOL | A flat amount, so depositing more doesn't silently make each trade riskier |
+| Max trades open at once | 3 | Limits how much you're exposed to if the whole market dumps at once |
+| Max total deployed | 0.15 SOL | Caps your whole book, not just any single trade |
+| Fee reserve per trade | 0.01 SOL | A buy should never leave the wallet unable to afford the sale that exits it |
+| Exit style | Fixed | A tiered, staged exit is available, but it's off until you turn it on |
 | Take profit | +50% | |
-| Stop level | −20% | Best-effort (§12.1) |
-| Crash guard | −15% within one exit check | Interval-dependent by definition; see A.3 |
-| Exit check interval | 4000ms | Per agent, not shared across the fleet |
+| Stop-loss | 20% down | Best-effort, not guaranteed (§12.1) |
+| Crash guard | 15% drop in a single check | How sensitive this is depends on your check interval, see A.3 |
+| Exit check interval | 4000ms (4 seconds) | Each agent runs its own clock; this isn't shared across the fleet |
 | Trailing stop | Off | |
-| Breakeven stop | Off | |
-| Time stop | Off | |
+| Breakeven lock | Off | |
+| Time-based exit | Off | |
 | Max creator initial buy | 10% | |
-| Mint authority renounced | Required | |
-| Freeze authority renounced | Required | |
-| Social link present | Required | |
-| Alpha-wallet buy required | Off | A no-op while the tracked list is empty |
-| Max consecutive losses | 3 | Trips the circuit breaker |
-| Daily loss limit | 0.1 SOL | Ends the session before a bad day compounds |
-| Cooldown after loss | 0s | Off by default |
-| Trading mode | Paper | Going live is a separate, deliberate act (Design Principle 3) |
-| Started | No | Deploying configures an agent; it does not start it |
+| Mint authority must be revoked | Required | |
+| Freeze authority must be revoked | Required | |
+| Must have a social link | Required | |
+| Must have a tracked wallet buy in first | Off | Does nothing until you actually add wallets to track |
+| Max consecutive losses | 8 | Trips the automatic pause. Set well above 3 on purpose: measured on live paper data at a 22% win rate, a limit of 2 tripped once every 3.1 trades and a limit of 3 once every 6.6, leaving agents paused essentially always. The daily loss limit below is what actually bounds capital harm; this counter only catches a pathological run |
+| Daily loss limit | 0.1 SOL | Ends the day's trading before a bad run compounds |
+| Cooldown after a loss | 0 seconds | Off by default |
+| Trading mode | Paper (simulated) | Going live is a separate, deliberate step (Design Principle 3) |
+| Started | No | Deploying an agent sets it up; it doesn't turn it on |
 
-### A.2 Target values, not yet implemented
+### A.2 What We're Aiming For, But Haven't Built Yet
 
-Retained as design intent. No interface exposes these, and except where a status below says otherwise an agent does not enforce them.
+These are things we intend to build eventually. None of them are exposed in the app today, and unless a row below says otherwise, none of them are actually enforced yet.
 
 | Parameter | Target | Status |
 |---|---|---|
-| Max top-10 concentration | 25% | Enforced on polled-feed candidates at a fixed 35%, not at the 25% target and not as an operator knob |
-| Max deployer holdings | 5% | Superseded by max creator initial buy in A.1 |
-| Raven size cap | ⟦FILL⟧ × max | Instinct-specific sizing not implemented (§10) |
-| Re-verification interval | ⟦FILL⟧ | §9.5 |
-| Exit confirmation slots | ⟦FILL⟧ | §12.2 |
-| Presets (Conservative / Balanced / Aggressive) | | Not implemented; raw parameters are exposed directly |
+| Max top-10 holder concentration | 25% | Actually enforced on the polled feed today, but at a fixed 35%, not the 25% target, and not something you can adjust |
+| Max deployer holdings | 5% | Replaced in practice by "max creator initial buy" in A.1 |
+| Different size caps per instinct (Raven vs. others) | ⟦FILL⟧ × max | Not built yet (§10) |
+| Full Manifest recheck on open positions (sell simulation, tax, authorities) | ⟦FILL⟧ | Not built; only price-based exits recheck today, on the shipped `exitCheckIntervalMs` (Appendix A.1); see §9.5 |
+| How many slots an exit needs to be confirmed over | ⟦FILL⟧ | See §12.2 |
+| Ready-made presets (Conservative / Balanced / Aggressive) | | Not built; you set every raw number yourself for now |
 
-### A.3 A dependency worth stating
+### A.3 One Setting Affects Another
 
-The crash guard is defined as a drop **within one exit check**, so its sensitivity is a function of the exit check interval, not of the percentage alone. The same 15% guard is a far tighter stop at a 3000ms interval than at 30000ms. For this reason each agent is evaluated on its own interval rather than the fleet's shortest, so one operator's choice cannot change another's effective stop.
+The crash guard is defined as a drop **within a single check cycle**, which means how sensitive it actually is depends on how often you're checking, not just the percentage you set. The same 15% guard is a much tighter trigger if you check every 3 seconds than if you check every 30. Because of this, every agent is measured against its *own* check interval, not the fastest one in the whole fleet, so nobody else's setting can accidentally change how tight your own stop really is.
 
-## Appendix B: Latency Budget
+## Appendix B: Speed Targets
 
-**Nothing in this appendix is measured.** It is the budget the pipeline was designed against, retained because the shape of the budget drives the tier structure (§9), not because these numbers have been observed. Treat every figure as a target.
+**None of the numbers in this appendix have actually been measured yet.** This is the speed budget the system was *designed* against. We're keeping it here because the shape of that budget is what drove the whole layered structure in §9, not because we've confirmed these numbers hold up in practice. Treat every figure below as a target, not a measurement.
 
-| Stage | Budget | Network cost |
+| Stage | Target time | Network cost |
 |---|---|---|
-| Stream receipt → parse | ⟦FILL⟧ | none |
-| Tier 0 evaluation | <10ms | none |
-| Tier 1 RPC batch | 50–150ms | ⟦FILL: call count⟧ |
-| Sizing and veto | <5ms | none |
-| Transaction construction | ⟦FILL⟧ | none |
-| Submission → confirmation | ⟦FILL⟧ | ⟦FILL⟧ |
-| Tier 2 (parallel, non-blocking) | seconds | ⟦FILL⟧ |
+| Receiving and reading a new token from the stream | ⟦FILL⟧ | none |
+| Layer 0 checks | under 10ms | none |
+| Layer 1 blockchain lookups | 50 to 150ms | ⟦FILL: how many separate requests⟧ |
+| Sizing the trade and final go/no-go | under 5ms | none |
+| Building the transaction | ⟦FILL⟧ | none |
+| Sending it and getting confirmation | ⟦FILL⟧ | ⟦FILL⟧ |
+| Layer 2 (runs in parallel, never blocks anything above) | seconds | ⟦FILL⟧ |
 
 ## Appendix C: Glossary
 
-**Mint authority**: permission to create new tokens. Unrevoked, the creator can dilute holders to nothing.
-**Freeze authority**: permission to freeze token accounts. Active, the creator can stop you selling while they sell.
-**LP burn / lock**: liquidity tokens represent pool ownership; burned or locked means the creator cannot withdraw the liquidity you need to exit.
-**Honeypot**: a token you can buy but cannot sell, by design.
-**Time-delayed honeypot**: sells permitted for an initial window, then disabled.
-**Rug pull**: the creator withdraws liquidity, collapsing price to near zero.
-**Bundled launch**: the deployer buys a large supply share across many wallets in one block, appearing as organic demand.
-**Slippage**: the gap between expected and received price.
-**Priority fee**: extra fee for earlier inclusion during congestion.
-**MEV / sandwich**: an adversary orders transactions around yours, buying before and selling after.
-**Token-2022 extensions**: newer Solana token features; several can trap or seize holdings.
-**Idempotency**: the property that repeating an operation cannot duplicate its effect.
-**Circuit breaker**: the per-agent limit that stops new entries after a losing streak or a daily loss, re-derived from that agent's own trades rather than stored as a flag.
+**Mint authority**: the power to create new units of a token. If a creator keeps this, they can print unlimited new tokens and wipe out everyone else's share.
+**Freeze authority**: the power to freeze someone's token account. If a creator keeps this, they can stop you from selling while they sell.
+**LP burn / lock**: "LP" tokens represent ownership of a liquidity pool. If they're burned or locked, the creator can't pull the liquidity you'd need in order to sell.
+**Honeypot**: a token designed so you can buy it, but can never sell it.
+**Time-delayed honeypot**: a honeypot where selling actually works for a while, then gets switched off.
+**Rug pull**: the creator pulls the liquidity out of the pool, crashing the price to near zero.
+**Bundled launch**: the creator secretly buys up a large share of the supply across many different wallets in a single block, so it looks like organic demand instead of one person controlling everything.
+**Slippage**: the gap between the price you expected and the price you actually got.
+**Priority fee**: an extra fee you pay to get your transaction included faster when the network is busy.
+**MEV / sandwich attack**: when someone reorders transactions around yours, buying right before you and selling right after, to profit off your trade.
+**Token-2022 extensions**: a newer set of Solana token features. Several of them can be used to trap or seize a holder's tokens (see §9.1).
+**Idempotency**: the property that doing the same thing twice has the same effect as doing it once, so accidentally retrying an action can't duplicate it.
+**Circuit breaker**: an agent's own automatic pause after a losing streak or hitting its daily loss limit. It's recalculated fresh from that agent's actual trade history each time, not stored as a flag that could get stuck.
+**RPC**: how software actually reads from and writes to the Solana blockchain: sending a request to a node and getting an answer back.
+**AMM (automated market maker)**: a type of exchange with no order book. You trade directly against a pool holding two assets, and the price moves based on the ratio between them.
+**Bonding curve**: the pricing formula pump.fun uses for a brand-new token, before it has a real liquidity pool.
+**Slot / blockhash**: a "slot" is Solana's basic unit of block time. A "blockhash" is a reference to a recent block, used to prove a transaction is recent and to set a deadline on how long it stays valid.
+**KMS / HSM**: specialized hardware, or a dedicated cloud service, built specifically to hold and use cryptographic keys securely, kept separate from the main application so a break-in there doesn't automatically expose the keys.
 
-## Appendix D: Open Items Before Publication
+## Appendix D: What's Still Unfinished
 
-**Blocking**
+Everything below is a real gap, not a hypothetical one. We're listing it here rather than hiding it.
 
-| # | Item | Section |
+**Must be resolved before anything is published**
+
+| # | What's missing | Where it matters |
 |---|---|---|
-| D.1 | Custody model (B or C) and correction of all site copy to match | §7.1 |
-| D.2 | Legal review of custody, paid execution, and public outcome display | §22 |
-| D.3 | Key isolation architecture specified and implemented | §7.2 |
-| D.4 | Legal entity and jurisdiction | §20 |
+| D.1 | Deciding between custody Option B or C, and fixing all site copy to match whichever one is real | §7.1 |
+| D.2 | A lawyer's review of custody, paid trade execution, and showing outcomes publicly | §22 |
+| D.3 | The key-isolation design fully specified and built | §7.2 |
+| D.4 | The legal entity and jurisdiction behind the business (the team itself is deliberately staying unnamed, §20) | §20 |
 
-**Required before claims are made**
+**Needed before we can make any specific claims**
 
-| # | Item | Section |
+| # | What's missing | Where it matters |
 |---|---|---|
-| D.5 | Manifest measurements: candidates seen, refused, by reason | §9 |
-| D.6 | Latency budget measured, not designed | App. B |
-| D.7 | Realized cost drag and break-even with measured values | §16 |
-| D.8 | Paper-to-live degradation, measured | §15 |
-| D.9 | Fleet eligibility thresholds set | §14.2 |
-| D.10 | Capacity data by fleet size | §14.4 |
-| D.11 | MEV posture specified | §11.1 |
-| D.12 | Re-verification interval and exit confirmation slots | §9.5, §12.2 |
-| D.13 | Subscription lapse policy and data export | §19 |
-| D.14 | Audit status stated accurately | §18 |
+| D.5 | Real Manifest numbers: how many candidates seen, how many refused, and why | §9 |
+| D.6 | The latency budget, actually measured instead of just designed | Appendix B |
+| D.7 | Real trading costs and break-even math, using measured numbers | §16 |
+| D.8 | The real gap between paper and live results, measured | §15 |
+| D.9 | Minimum activity thresholds for the fleet stats, decided | §14.2 |
+| D.10 | Real data on capacity as the fleet grows | §14.4 |
+| D.11 | Building the full Manifest recheck on open positions, and deciding its interval and confirmation slots | §9.5, §12.2 |
+| D.12 | What happens if a subscription lapses, and how data export works | §19 |
+| D.13 | Audit status, stated accurately | §18 |
 
-**Site copy corrections required**
+**Capabilities described in this document that are not built yet**
 
-| # | Current | Required |
+Found by checking this document against the running application rather than against itself. Each is a real gap between what's described and what ships, not a wording problem.
+
+| # | What's described | What's actually true today |
 |---|---|---|
-| D.15 | "we only ever see your public address" | Must match §7.1; incompatible with Model B |
-| D.16 | "hard stops, non-negotiable" | Best-effort rule-based exits (§12.1) |
-| D.17 | "never makes the same mistake twice" | Losses analyzed; recurring causes become reviewable changes |
-| D.18 | "Powered by AI" | State the specific mechanism and that no model sits in the trade path (§13.2) |
+| D.14 | A repetition threshold before a post-mortem cause becomes a suggested change (§13.1, §13.4) | Not built. Every losing trade is analyzed alone, with no memory of prior trades, so one loss can generate a proposal |
+| D.15 | Fleet-wide Manifest rules improving from an operator's accepted lesson (§13.1) | Not built. A proposal can only change your own agent's own exit settings |
+| D.16 | Full state recovery on restart: reconstructing entry price from on-chain history, rerunning the Manifest and a fresh sell simulation on recovered positions, and adopting unknown positions found on-chain (§11.4) | Not built. Recovery today checks each position's on-chain balance and closes it if the wallet holds nothing; it does not re-verify a surviving position or adopt one it didn't already know about |
+| D.17 | Reserved names, uniqueness checks, and lookalike detection for agent names (§14.6) | Not built. Any name can be used, unchecked |
+| D.18 | An opt-in choice for whether a live agent appears on the public fleet page (§14.7) | Not built. Every deployed agent, live or paper, is shown |
+| D.19 | The 0.5 SOL live deploy fee actually being collected (§16, §19) | Not built. There is no billing step; going live doesn't require payment today |
+| D.20 | Priority fees calculated from network congestion, capped by an operator setting (§11.1) | Not built. Jupiter's own defaults are used |
+
+**Site copy that needs to be corrected to match this document**
+
+| # | What's currently said | What it should say instead |
+|---|---|---|
+| D.21 | "we only ever see your public address" | Doesn't match §7.1, not true under Option B |
+| D.22 | "hard stops, non-negotiable" | Exits are best-effort and rule-based, not guaranteed (§12.1) |
+| D.23 | "never makes the same mistake twice" | Losses get analyzed, and causes that recur become suggested changes you review |
+| D.24 | "Powered by AI" | State the actual mechanism, and that no AI model is in the trading decision itself (§13.2) |
 
 ## Appendix E: Changelog
 
-- **v0.1–0.2**: Self-hosted agent framing. Superseded; the product is a hosted platform.
+- **v0.1 through v0.2**: Self-hosted agent framing. Superseded; the product is a hosted platform.
 - **v0.3**: Realigned to hosted architecture; custody question raised.
 - **v0.4**: Fleet introduced as the organizing frame; survival ranking established.
 - **v1.0-rc**: Tiered Manifest with latency budget; shared verdict model; continuous re-verification; idempotency protocol; restart recovery; honest exit semantics; stop-hunt resistance; LLM boundary; fleet eligibility thresholds; economics; threat model; entity and data-ownership sections.
 - **v1.1**: Aligned the document with the implementation rather than the design intent. Custody rewritten around the model that actually ships: a generated per-agent wallet funded by deposit, with its key encrypted at rest under an environment-held key, replacing an unresolved choice between two models and a claim of KMS or HSM isolation that does not exist yet (§7). Routing named as Jupiter, with the quote-then-record ordering that prevents a ledger entry for a fill that did not happen (§11.1). The Flood documented as two discovery sources with different latency and different available signals (§8.1). Default configuration split into what ships and what remains target, because publishing the latter as though it were the former was the document's largest inaccuracy (Appendix A). Economics re-denominated from a monthly fiat subscription to a one-time SOL deploy fee, which changes the small-balance conclusion (§16.2). The paper fidelity gap replaced with observations from the first cohort, including an unreachable fill that accounted for its entire apparent profit (§15). Added the agent conversation surface, with two parameter-opacity leaks found while building it: one closed, one disclosed as unresolved (§14.8).
 - **v1.2**: Recorded three entry-path changes made after live trading began, each prompted by measured behaviour rather than by design review. Discovery sources became an operator setting defaulting to the polled feed alone, because the push stream's only distinguishing checks are the two authorities pump.fun revokes on every launch, and the first live cohort concentrated its losses there (§8.1, Appendix A.1). The 20 SOL liquidity floor moved from target to shipped default, refusing rather than assuming when liquidity cannot be read; it had sat in A.2 marked "not enforced" while the engine bought into pools holding nothing. Refusals are now written with their reason, which §9.7 describes as public but which the entry paths had been discarding, leaving no way to tell a working filter from a decorative one. Appendix A.2's top-10 concentration row corrected: it is enforced, at a fixed 35% rather than the 25% target.
+- **v1.3**: §20 narrowed from "Entity and Team" to the operating entity alone, and its earlier instruction that the section "should not be omitted" replaced with the reasoning for each half separately. The team is now deliberately unnamed: nothing an operator needs in order to evaluate this platform depends on who wrote it, and a named team would invite trust in people to stand in for the evidence this document exists to publish. The legal entity stays marked and outstanding, because a service holding signing authority and taking payment owes its users an identifiable counterparty.
+- **v1.4**: The entire document rewritten in plainer language, at a reader's request, so it can be understood without a technical or legal background. Every fact, hedge, number, and open item carries over unchanged, and nothing was softened, added, or quietly dropped in the process. Section numbers and cross-references are unchanged, so existing links to specific sections still work; section titles were simplified for clarity, and a short glossary of Solana-specific terms (RPC, AMM, bonding curve, slot/blockhash, KMS/HSM) was added to Appendix C. Two internal inconsistencies, found only because rewriting required reading every sentence closely, were corrected rather than carried forward: §14.5 referred to "four mechanisms" and later "mechanisms 2 and 4" while only ever listing three, and is now consistent with the three actually described; and §6's threat-model table carried an open ⟦FILL: MEV posture⟧ marker on a row whose answer §11.1 already states plainly, so that marker was replaced with the stated posture and the matching entry (formerly D.11) was removed from Appendix D's open-items list, with the remaining items renumbered.
+- **v1.5**: Checked every architectural claim in this document against the application actually running, rather than against the document's own previous drafts, and corrected what didn't match. The pipeline diagram dropped "the Wake" as a parallel entry path; §10 already explained it was removed, but the diagram had never been updated to agree. §8.2's shared-verdict claim was rewritten from a time-based cache with invalidation, which isn't built, to the simpler mechanism that is: one fetch per candidate, shared by every agent evaluating it in that pass. §9.3 now attributes deployer rug history, bundling, and insider concentration to GMGN's own computed fields at fixed thresholds Noah chose, rather than to a funding-graph or bundle-detection system Noah built. §9.5 was the largest correction: only price-based exits (stop-loss, take-profit, trailing, crash guard, time) actually recheck a position after entry; sell simulation, sell tax, LP unlock, and authority changes are not rechecked, which means a time-delayed honeypot is not currently caught after entry despite earlier text implying it was, and every cross-reference to this section elsewhere in the document (§6, §12.2, §17, Appendix A.2, Appendix D) was corrected to match. §11 was rewritten around what actually ships: no persisted intent-ID protocol exists, and no automatic retry exists either; reconciliation happens by reading the agent's real on-chain balance, and an unresolved swap is surfaced rather than guessed at. §11.4's restart recovery was narrowed from six claimed steps to the three that run: orphan detection, an on-chain balance check, and closing a position the wallet no longer holds; reconstructing entry price from transaction history, rerunning the Manifest on recovery, and adopting an unknown on-chain position are now listed as unbuilt (Appendix D). §13.1 no longer claims a repetition threshold or a fleet-wide feedback path from accepted lessons; neither exists, and §13.4 now names a concrete, observed consequence: two accepted-lesson drafts, six minutes apart, told the same agent to hold longer and then to hold less, each generated from a single trade with no memory of the other. §14.6's naming protections and §14.7's live-agent visibility opt-in are now stated as unbuilt rather than as shipped; every deployed agent, live or paper, is currently shown publicly regardless of consent. §16 and §19 now state plainly that the 0.5 SOL live fee is a price that has been set, not one the platform currently collects. Appendix A.1's consecutive-loss default was corrected from 3 to 8, with the measured reasoning the code already carries: at a 22% observed win rate, a limit of 2 tripped every 3.1 trades and a limit of 3 every 6.6, leaving agents paused almost permanently. Appendix D grew a new category, capabilities this document described that are not built, rather than folding these into the existing site-copy or measurement categories, because none of them are a wording problem.

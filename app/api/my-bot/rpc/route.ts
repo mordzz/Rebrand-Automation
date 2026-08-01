@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { maskRpcUrl, validateRpcUrl } from "@/lib/solana/rpc-validate";
 
@@ -71,6 +72,8 @@ export async function POST(request: Request) {
   if (!bot) {
     return NextResponse.json({ error: "No automaton deployed" }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   const result = await validateRpcUrl(body.url ?? "");
   if (!result.ok) {
@@ -106,6 +109,8 @@ export async function DELETE(request: Request) {
   if (!bot) {
     return NextResponse.json({ error: "No automaton deployed" }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   await db
     .update(userBots)

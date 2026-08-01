@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ export async function POST(request: Request) {
   if (!bot) {
     return NextResponse.json({ error: "No automaton deployed" }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   const breakerResetAt = new Date();
   await db

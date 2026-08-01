@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
       pageSize: DEFAULT_PAGE_SIZE,
       total: 0,
       totalPages: 0,
+      newestDetectedAt: null,
     });
   }
 
@@ -61,8 +62,13 @@ export async function GET(request: NextRequest) {
   const pageSize = positiveInt(params.get("pageSize"), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
   const requestedPage = positiveInt(params.get("page"), 1);
 
-  const [{ count: total }] = await db
-    .select({ count: sql<number>`count(*)::int` })
+  // Global, not page-scoped — a header "pulse" stat should read the same
+  // no matter which page of results is on screen.
+  const [{ count: total, newest: newestDetectedAt }] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      newest: sql<string | null>`max(${alphaCandidates.detectedAt})`,
+    })
     .from(alphaCandidates);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -111,5 +117,6 @@ export async function GET(request: NextRequest) {
     pageSize,
     total,
     totalPages,
+    newestDetectedAt,
   });
 }

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import {
   generateAgentWallet,
@@ -105,6 +106,9 @@ export async function POST(request: Request) {
     .from(userBots)
     .where(eq(userBots.walletAddress, wallet))
     .limit(1);
+
+  const blocked = assertNotOfficial(existing ?? null);
+  if (blocked) return blocked;
 
   let agentPublicKey = existing?.agentPublicKey ?? null;
   let agentSecretEnc = existing?.agentSecretEnc ?? null;

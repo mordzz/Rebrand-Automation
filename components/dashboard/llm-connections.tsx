@@ -25,15 +25,15 @@ type ProviderId = "openrouter" | "anthropic" | "openai";
    categorical hues" rule. */
 const CHART_CONFIG = {
   anthropic: {
-    label: "Anthropic",
+    label: "Claude Opus 5",
     theme: { light: "#c96442", dark: "#d47250" },
   },
   openai: {
-    label: "OpenAI",
+    label: "GPT-5.6 Sol",
     theme: { light: "#2e74ad", dark: "#3f82bd" },
   },
   openrouter: {
-    label: "OpenRouter",
+    label: "Kimi K3",
     theme: { light: "#9c7e16", dark: "#ab8b1d" },
   },
 } satisfies ChartConfig;
@@ -131,10 +131,16 @@ function usePolledJson<T>(url: string, intervalMs: number): T | null {
   return data;
 }
 
-export function LlmConnections() {
+/** `officialWallet` scopes the execution terminal and agent-memory table
+ * to Noah's own ledger (same `?wallet=` convention BotDesk uses) — the
+ * defaults below (`/api/logs`, `/api/lessons`) are house-scoped and read
+ * from rows nothing currently deployed writes to. */
+export function LlmConnections({ officialWallet }: { officialWallet?: string } = {}) {
+  const walletQuery = officialWallet ? `wallet=${encodeURIComponent(officialWallet)}` : null;
+
   const usage = usePolledJson<ModelUsageResponse>("/api/model-usage", 5_000);
   const lessonsResponse = usePolledJson<{ configured: boolean; data: LessonApiRow[] }>(
-    "/api/lessons",
+    walletQuery ? `/api/lessons?${walletQuery}` : "/api/lessons",
     15_000
   );
 
@@ -218,7 +224,7 @@ export function LlmConnections() {
                 )}
                 title={p.name}
               >
-                {p.id === "openrouter" ? "OR" : p.id === "anthropic" ? "CL" : "OA"}
+                {p.id === "openrouter" ? "KM" : p.id === "anthropic" ? "CL" : "GP"}
               </div>
             ))}
           </div>
@@ -379,7 +385,9 @@ export function LlmConnections() {
 
       {/* Live execution log — sits directly below the chart */}
       <div className="min-w-0 lg:col-span-5">
-        <ExecutionTerminal />
+        <ExecutionTerminal
+          endpoint={walletQuery ? `/api/my-bot/activity?${walletQuery}` : undefined}
+        />
       </div>
 
       {/* Agent memory — losses distilled into rules */}

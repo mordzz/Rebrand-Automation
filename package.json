@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "sniper": "tsx scripts/sniper-daemon.ts",
-    "paper": "tsx scripts/paper-daemon.ts"
+    "paper": "tsx scripts/paper-daemon.ts",
+    "provision-official-bot": "tsx scripts/provision-official-bot.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

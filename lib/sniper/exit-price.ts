@@ -5,10 +5,20 @@
  * wallet once its usage is metered. Response shape confirmed via a live
  * curl against a real pump.fun-launched mint, not assumed.
  */
+const PRICE_TIMEOUT_MS = 4000;
+
 export async function getCurrentPrice(mint: string): Promise<number | null> {
+  /* Bounded, like every other outbound call in the daemon's scheduled
+     loops. Without it a hung connection here never settles, and because
+     the exit loop awaits this before rescheduling itself, one stalled
+     request stops every exit check for every position permanently — no
+     error, no log, just silence and open positions nobody is watching. */
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PRICE_TIMEOUT_MS);
   try {
     const res = await fetch(
-      `https://api.dexscreener.com/latest/dex/tokens/${mint}`
+      `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+      { signal: controller.signal }
     );
     if (!res.ok) return null;
 
@@ -37,5 +47,7 @@ export async function getCurrentPrice(mint: string): Promise<number | null> {
     return Number.isFinite(price) && price > 0 ? price : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }

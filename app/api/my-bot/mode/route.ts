@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";
@@ -57,6 +58,8 @@ export async function POST(request: Request) {
   if (!bot) {
     return NextResponse.json({ error: "No automaton deployed" }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   if (mode === "live") {
     if (!bot.agentPublicKey) {

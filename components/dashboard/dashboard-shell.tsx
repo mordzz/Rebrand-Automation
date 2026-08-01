@@ -1,6 +1,17 @@
 "use client";
 
-import { Check, Copy, Layers, Target, TrendingUp, Wallet } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  Copy,
+  Layers,
+  ShieldAlert,
+  ShieldCheck,
+  Target,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
@@ -9,7 +20,6 @@ import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
 import { LiveMints } from "@/components/dashboard/live-mints";
 import { NewLaunches } from "@/components/dashboard/new-launches";
 import { SniperConfigReadout } from "@/components/dashboard/sniper-config-readout";
-import { SniperStatusPanel } from "@/components/dashboard/sniper-status-panel";
 import {
   TradeHistoryTable,
   formatSignedSol,
@@ -44,8 +54,10 @@ type WalletState = {
   address?: string;
   balanceSol?: number;
   balanceUsd?: number;
-  rpc?: string;
   error?: string;
+  /** Why there's no wallet yet, when `connected` is false — replaces a
+   * fabricated balance rather than inventing one (Design Principle 8). */
+  hint?: string;
 };
 
 function shortAddress(addr: string) {
@@ -60,6 +72,12 @@ type StatsResponse = {
   winRate30d?: number | null;
   trades30dCount?: number;
   wins30dCount?: number;
+  /** Per-bot state (see app/api/stats/route.ts) — replaces the old
+   * daemon-heartbeat panel, which read a table nothing deployed writes to. */
+  active?: boolean;
+  tradingMode?: "paper" | "live";
+  tradingPaused?: boolean;
+  pauseReason?: string | null;
 };
 
 type PositionRow = {
@@ -99,12 +117,18 @@ function usePolledJson<T>(url: string): T | null {
   return data;
 }
 
-// The Raven is real and gets its own live-config panel below — these
-// three remaining automatons aren't built yet, still placeholder rows.
+/* The Raven is real and gets its own live-config panel below. These three
+   are not: no wallet-mirroring, position-guard, or session-authority
+   automaton exists as a separately deployable strategy today. They used to
+   render with a green "Active" dot and specific weekly trade counts,
+   which read as live telemetry next to a header that says "coming soon" —
+   exactly the kind of invented evidence Design Principle 8 exists to rule
+   out. Kept as a preview of the intended lineup, not a report of current
+   activity. */
 const STRATEGIES = [
-  { name: "The Wake", status: "Active", detail: "Mirroring 6 wallets · proportional sizing", trades: "9 trades this week" },
-  { name: "The Ark", status: "Active", detail: "Guarding 8 positions · trailing 12%", trades: "3 exits this week" },
-  { name: "The Tide", status: "Paused", detail: "Daily WIF ladder · resumes on -8% dip", trades: "4 buys this week" },
+  { name: "The Wake", detail: "Mirrors a curated set of wallets, sizing entries proportionally." },
+  { name: "The Ark", detail: "Guards every open position: breakeven lock, trailing exit, crash guard." },
+  { name: "The Tide", detail: "Session authority: sizing, daily loss limit, post-mortem cadence." },
 ];
 
 /** Shared micro-label style for panel headers — the desk's typographic signature. */
@@ -114,20 +138,30 @@ const PANEL_LABEL =
 const TABLE_HEAD =
   "px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase";
 
-export function DashboardShell() {
+type OfficialBot = { walletAddress: string; name: string };
+
+/** Always given a real bot — app/dashboard/page.tsx resolves
+ * getOfficialBot() server-side and renders a "not provisioned yet" state
+ * itself rather than passing null down, so this component never has to
+ * conditionally skip its own hooks. */
+export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
   const [mood, setMood] = useState<CharacterMood>("idle");
   const [thinking, setThinking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 0,
       role: "assistant",
-      text: "Welcome back. Your bot kept working overnight — 3 trades closed, +2.3 SOL. How can I help?",
+      text: "Welcome back. Ask me about open positions, recent trades, or how the Manifest is filtering right now.",
     },
   ]);
   const idRef = useRef(1);
 
-  /* Live automation wallet — the private key stays server-side; this only
-     ever receives the public address + balance from /api/wallet. */
+  const walletQuery = `wallet=${encodeURIComponent(officialBot.walletAddress)}`;
+
+  /* Noah's own agent wallet — the private key stays server-side; this
+     only ever receives the public address + balance from
+     /api/my-bot/wallet, the same read-only endpoint /deploy's BotDesk
+     uses for a user's own bot. */
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
@@ -146,9 +180,32 @@ export function DashboardShell() {
     let disposed = false;
     async function load() {
       try {
-        const res = await fetch("/api/wallet");
-        const json = (await res.json()) as WalletState;
-        if (!disposed) setWallet(json);
+        const res = await fetch(`/api/my-bot/wallet?${walletQuery}`);
+        const json = (await res.json()) as {
+          configured: boolean;
+          wallet: {
+            address: string;
+            balanceSol: number | null;
+            balanceUsd: number | null;
+            error: string | null;
+          } | null;
+          reason?: "not_generated" | "encryption_key_missing";
+        };
+        if (disposed) return;
+        const w = json.wallet;
+        setWallet({
+          connected: w != null,
+          address: w?.address,
+          balanceSol: w?.balanceSol ?? undefined,
+          balanceUsd: w?.balanceUsd ?? undefined,
+          error: w?.error ?? undefined,
+          hint:
+            w == null
+              ? json.reason === "encryption_key_missing"
+                ? "Agent wallet not configured on this server"
+                : "Agent wallet not generated yet"
+              : undefined,
+        });
       } catch {
         if (!disposed) setWallet({ connected: false });
       }
@@ -159,7 +216,7 @@ export function DashboardShell() {
       disposed = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [walletQuery]);
 
   const walletCard: { value: string; hint: string; tone: Tone } =
     wallet?.connected && typeof wallet.balanceSol === "number"
@@ -172,23 +229,15 @@ export function DashboardShell() {
           tone: "positive",
         }
       : wallet?.connected
-        ? {
-            value: "—",
-            hint: "RPC unavailable — set SOLANA_RPC_URL",
-            tone: "muted",
-          }
-        : {
-            value: "42.7 SOL",
-            hint: "Sample · set PRIVATE_KEY_SOLANA_WALLET",
-            tone: "muted",
-          };
+        ? { value: "—", hint: wallet.error ?? "RPC unavailable", tone: "muted" }
+        : { value: "—", hint: wallet?.hint ?? "Not connected", tone: "muted" };
 
-  const statsData = usePolledJson<StatsResponse>("/api/stats");
+  const statsData = usePolledJson<StatsResponse>(`/api/stats?${walletQuery}`);
   const positionsData = usePolledJson<{ configured: boolean; data: PositionRow[] }>(
-    "/api/positions"
+    `/api/positions?${walletQuery}`
   );
   const tradesData = usePolledJson<{ configured: boolean; data: TradeRow[] }>(
-    "/api/trades"
+    `/api/trades?${walletQuery}`
   );
 
   const openPositionsCard: { value: string; hint: string; tone: Tone } =
@@ -295,15 +344,62 @@ export function DashboardShell() {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-      {/* Daemon health + circuit-breaker status — full width, above both columns */}
-      <div className="lg:col-span-5">
-        <SniperStatusPanel />
+      {/* Trading status + circuit-breaker — full width, above both columns.
+          Sourced from Noah's own per-bot stats (same fields BotDesk reads
+          for a user's own bot), not the old daemon heartbeat: nothing
+          deployed ever wrote to the table that read from. */}
+      <div className="overflow-hidden rounded-2xl bg-card lg:col-span-5">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3.5">
+          <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
+            <Activity className="size-3.5" />
+            <span
+              className={cn(
+                "inline-block size-1.5 rounded-full",
+                statsData?.active ? "bg-sol-green" : "bg-muted-foreground/40"
+              )}
+            />
+            {statsData == null ? "Status unknown" : statsData.active ? "On duty" : "Stopped"}
+          </span>
+
+          <span className="h-4 w-px bg-white/10" />
+
+          <span
+            className={cn(
+              "flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase",
+              statsData?.tradingPaused ? "text-destructive" : "text-sol-green-ink"
+            )}
+          >
+            {statsData?.tradingPaused ? (
+              <ShieldAlert className="size-3.5" />
+            ) : (
+              <ShieldCheck className="size-3.5" />
+            )}
+            {statsData == null
+              ? "Trading status unknown"
+              : statsData.tradingPaused
+                ? "Trading paused"
+                : "Trading active"}
+          </span>
+
+          {statsData && (
+            <span className="ml-auto rounded-full bg-secondary px-2.5 py-1 text-[0.65rem] font-semibold tracking-[0.1em] uppercase text-muted-foreground">
+              {statsData.tradingMode === "live" ? "Live" : "Paper"}
+            </span>
+          )}
+        </div>
+
+        {statsData?.tradingPaused && statsData.pauseReason && (
+          <div className="flex items-start gap-2 border-t border-white/5 px-4 py-2.5 text-xs text-destructive">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            Circuit breaker tripped — {statsData.pauseReason}
+          </div>
+        )}
       </div>
 
       {/* Left column — one flat panel: automaton on top, concierge below */}
       <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:col-span-2">
         <div className="flex items-center justify-between px-4 py-3">
-          <p className={PANEL_LABEL}>Your Bot · On Duty</p>
+          <p className={PANEL_LABEL}>{officialBot.name} · On Duty</p>
           <span className="flex items-center gap-1.5 text-[0.7rem] font-medium tracking-[0.15em] uppercase text-muted-foreground">
             <span
               className={cn(
@@ -365,21 +461,7 @@ export function DashboardShell() {
                       : "bg-muted-foreground/40"
                 )}
               />
-              {wallet == null ? (
-                "Connecting…"
-              ) : wallet.connected ? (
-                <>
-                  Connected
-                  {wallet.rpc && (
-                    <span className="hidden normal-case tracking-normal sm:inline">
-                      {" "}
-                      · {wallet.rpc}
-                    </span>
-                  )}
-                </>
-              ) : (
-                "Not connected"
-              )}
+              {wallet == null ? "Connecting…" : wallet.connected ? "Connected" : "Not connected"}
             </span>
           </div>
 
@@ -540,7 +622,7 @@ export function DashboardShell() {
           </TabsContent>
 
           <TabsContent value="strategies">
-            <SniperConfigReadout />
+            <SniperConfigReadout endpoint={`/api/my-bot/config?${walletQuery}`} />
             {/* Remaining automatons — flat hairline list, not a card grid */}
             <div className="mt-4 overflow-hidden rounded-2xl bg-card">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -556,14 +638,7 @@ export function DashboardShell() {
                     className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-3.5 transition-colors hover:bg-accent/[0.03]"
                   >
                     <span className="flex w-32 shrink-0 items-center gap-2">
-                      <span
-                        className={cn(
-                          "inline-block size-1.5 rounded-full",
-                          s.status === "Active"
-                            ? "bg-accent"
-                            : "bg-muted-foreground/40"
-                        )}
-                      />
+                      <span className="inline-block size-1.5 rounded-full bg-muted-foreground/40" />
                       <span className="text-base font-medium">
                         {s.name}
                       </span>
@@ -571,18 +646,8 @@ export function DashboardShell() {
                     <span className="min-w-0 flex-1 text-xs text-muted-foreground">
                       {s.detail}
                     </span>
-                    <span className="text-xs text-muted-foreground/70">
-                      {s.trades}
-                    </span>
-                    <span
-                      className={cn(
-                        "w-14 text-right text-[0.65rem] font-semibold tracking-[0.15em] uppercase",
-                        s.status === "Active"
-                          ? "text-accent"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {s.status}
+                    <span className="w-24 shrink-0 text-right text-[0.65rem] font-semibold tracking-[0.15em] text-muted-foreground uppercase">
+                      Not built yet
                     </span>
                   </li>
                 ))}

@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   jsonb,
   numeric,
@@ -270,6 +272,15 @@ export const logs = pgTable(
  */
 export const userBots = pgTable("user_bots", {
   id: uuid("id").defaultRandom().primaryKey(),
+  /* At most one row may ever be true (enforced by the partial unique
+   * index below) — the single public "Noah" agent shown on /dashboard,
+   * with no login. Every /api/my-bot mutating route refuses to touch a
+   * bot with this flag set (see lib/db/official-bot.ts#assertNotOfficial):
+   * once a bot's wallet address is printed on a public page, the
+   * client-asserted-wallet trust model the rest of this table relies on
+   * no longer holds. A CHECK constraint below backs this up structurally
+   * for tradingMode specifically, independent of any application code. */
+  isOfficial: boolean("is_official").notNull().default(false),
   walletAddress: text("wallet_address").notNull().unique(),
   name: text("name").notNull(),
   characterType: text("character_type").notNull(), // 3d | image | gif
@@ -334,7 +345,18 @@ export const userBots = pgTable("user_bots", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("user_bots_official_unique_idx")
+    .on(table.isOfficial)
+    .where(sql`is_official = true`),
+  /* Belt-and-suspenders alongside the application-level guard: even a
+   * future bug or a forgotten check can never flip the public bot to
+   * live trading, because Postgres itself refuses the row. */
+  check(
+    "user_bots_official_never_live",
+    sql`NOT (is_official AND trading_mode = 'live')`
+  ),
+]);
 
 /**
  * UNUSED — nothing reads or writes this table any more.

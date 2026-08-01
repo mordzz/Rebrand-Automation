@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import {
   generateAgentWallet,
@@ -66,6 +67,8 @@ export async function POST(request: Request) {
       { status: 404 }
     );
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   // If the agent already has a wallet, do not generate a new one (1 wallet per agent).
   if (bot.agentPublicKey) {

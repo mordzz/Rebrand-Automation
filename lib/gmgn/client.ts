@@ -52,8 +52,21 @@ export async function gmgnGet<T>(
       },
       body: init?.body ? JSON.stringify(init.body) : undefined,
       signal: controller.signal,
+      // Next.js caches server-side fetch() by URL+options by default; a
+      // call with identical params (e.g. getKolTrades' fixed chain+limit)
+      // would otherwise freeze on whatever it first returned — wrong for
+      // trade/price data that's stale within seconds. Every caller here
+      // already marks its own route `force-dynamic` for the same reason;
+      // this is that same intent applied to the fetch itself.
+      cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Rate limiting (429) is the one failure worth a trace: it looks
+      // identical to "no data right now" everywhere upstream of this
+      // function otherwise, which cost real time to diagnose once.
+      if (res.status === 429) console.error(`[gmgn] 429 on ${path}`);
+      return null;
+    }
 
     const json = (await res.json()) as { code?: number; data?: T };
     // GMGN wraps every response as { code, msg, data }; code 0 is success.

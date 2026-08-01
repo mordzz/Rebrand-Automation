@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { getEffectiveConfig, sanitize } from "@/lib/sniper/effective-config";
 
@@ -55,6 +56,8 @@ export async function PATCH(request: Request) {
   if (!bot) {
     return NextResponse.json({ error: "No automaton deployed" }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   let raw: Record<string, unknown>;
   try {

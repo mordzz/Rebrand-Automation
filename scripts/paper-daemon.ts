@@ -513,6 +513,15 @@ function logRefusal(
   reasons: string[]
 ): void {
   const reason = reasons[0] ?? "failed entry criteria";
+
+  /* Backlog, not a verdict. "too old by the time it was evaluated" says the
+     queue fell behind, not that anything was found wrong with the token,
+     and it fires once per bot per stale candidate. On the first run after
+     deploy that alone wrote 1,827 rows in twenty minutes, drowning the
+     reasons a reader actually needs and putting the refusal feed's write
+     volume on the critical path of a process that also has to guard live
+     positions. It belongs in the daemon's own log, not the fleet's. */
+  if (reason.startsWith("too old by the time it was evaluated")) return;
   void writeLog({
     level: "guard",
     source: "manifest",
@@ -1190,14 +1199,59 @@ async function processGmgnCandidates(): Promise<void> {
 let gmgnTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scheduleGmgnPoll(): Promise<void> {
-  await processGmgnCandidates().catch((error) => log("GMGN poll error", error));
+  await runLoopIteration("GMGN poll", GMGN_POLL_WATCHDOG_MS, processGmgnCandidates);
   gmgnTimer = setTimeout(() => void scheduleGmgnPoll(), GMGN_POLL_INTERVAL_MS);
+}
+
+/* Watchdog budgets. Generous enough that healthy work never trips them,
+   short enough that a stall costs one cycle rather than the process. */
+const EXIT_CHECK_WATCHDOG_MS = 60_000;
+const GMGN_POLL_WATCHDOG_MS = 60_000;
+const ROSTER_WATCHDOG_MS = 30_000;
+// scheduleQueueDrain needs none: it never awaits the work it fires, so it
+// reschedules regardless of how long any individual evaluation takes.
+
+/**
+ * Runs one iteration of a scheduled loop so that it always ends, and the
+ * loop always gets to reschedule itself.
+ *
+ * `.catch()` alone is not enough. It handles a promise that *rejects*; a
+ * promise that never settles at all leaves the await hanging, the
+ * setTimeout below it never runs, and the loop is dead permanently with
+ * nothing logged. That is not hypothetical: exits, GMGN polling and roster
+ * refresh all stopped together mid-session while the process stayed alive,
+ * and four live positions sat unwatched for hours.
+ *
+ * The hung work is not cancelled, only abandoned — Promise.race cannot
+ * cancel. Every outbound call it makes is individually bounded, so an
+ * abandoned iteration settles on its own rather than accumulating.
+ */
+async function runLoopIteration(
+  label: string,
+  budgetMs: number,
+  work: () => Promise<unknown>
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const watchdog = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      log(`WATCHDOG ${label} exceeded ${budgetMs}ms; skipping this cycle`);
+      resolve();
+    }, budgetMs);
+  });
+  try {
+    await Promise.race([
+      work().catch((error) => log(`${label} error`, error)),
+      watchdog,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 let exitTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scheduleExitCheck(): Promise<void> {
-  await checkAllExits().catch((error) => log("exit-check error", error));
+  await runLoopIteration("exit-check", EXIT_CHECK_WATCHDOG_MS, checkAllExits);
   const interval =
     roster.length > 0
       ? Math.max(MIN_EXIT_CHECK_INTERVAL_MS, Math.min(...roster.map((r) => r.config.exitCheckIntervalMs)))
@@ -1208,7 +1262,7 @@ async function scheduleExitCheck(): Promise<void> {
 let rosterTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function scheduleRosterRefresh(): Promise<void> {
-  await refreshRoster().catch((error) => log("roster refresh error", error));
+  await runLoopIteration("roster refresh", ROSTER_WATCHDOG_MS, refreshRoster);
   rosterTimer = setTimeout(() => void scheduleRosterRefresh(), ROSTER_REFRESH_INTERVAL_MS);
 }
 
@@ -1313,10 +1367,19 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  log("Paper daemon starting — simulated trades only, no wallet, no signing.");
+  /* The name is historical. This process does sign and spend for any bot
+     whose tradingMode is "live", using that bot's own agent wallet key —
+     the previous banner claimed "no wallet, no signing" and was printed
+     twelve seconds before the first real buy of a live session. */
+  log("Paper daemon starting — paper bots get simulated fills; live bots sign real swaps from their own agent wallets.");
 
   await refreshRoster();
-  log(`Roster: ${roster.length} deployed bot(s).`);
+  const liveCount = roster.filter(
+    (r) => r.bot.tradingMode === "live" && r.bot.active
+  ).length;
+  log(
+    `Roster: ${roster.length} deployed bot(s), ${liveCount} live and active${liveCount > 0 ? " — this process will spend real SOL" : ""}.`
+  );
   await reconcileOnStart().catch((error) => log("reconcile error", error));
   void scheduleRosterRefresh();
   void scheduleExitCheck();

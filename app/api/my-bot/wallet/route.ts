@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
+import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import {
   isAgentWalletConfigured,
@@ -138,6 +139,8 @@ export async function POST(request: Request) {
   if (!bot?.agentSecretEnc || !bot.agentPublicKey) {
     return NextResponse.json({ error: "This agent has no wallet." }, { status: 404 });
   }
+  const blocked = assertNotOfficial(bot);
+  if (blocked) return blocked;
 
   /* Check the balance server-side rather than trusting the amount the
      browser sent. Without this a request could ask for more than the
