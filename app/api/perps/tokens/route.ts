@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
 
-import {
-  createPendingPerpspadToken,
-  getPerpspadTokens,
-} from "@/lib/perps/tokens";
-import { getMarketBySymbol } from "@/lib/perps/markets";
+import { fetchOnChainPerpToken } from "@/lib/perps/onchain";
+import { getPerpspadTokens, ingestOnChainToken } from "@/lib/perps/tokens";
 
 export const dynamic = "force-dynamic";
 
 function isPlausibleSolanaAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
 }
-
-const MAX_LEVERAGE = 20;
 
 /** Every launched Perpspad token, newest first. `configured: false` when
  * DATABASE_URL is unset, same convention as every other list route in
@@ -23,77 +18,50 @@ export async function GET() {
 }
 
 /**
- * Phase 0 only: records a creator's launch intent as a `status: "pending"`
- * row — no chain interaction happens here, because no on-chain program
- * exists yet (see the Perpspad plan). Once Phase 1/2 land, token creation
- * becomes a user-signed on-chain `register_token` transaction — the
- * creator spends their own money, not pooled funds, so this route's job
- * changes to "verify and ingest a transaction signature" rather than "do
- * the work" the way it does today.
+ * Ingests a token that the creator already registered on-chain.
+ *
+ * The client sends only a `mint` — everything recorded comes from the
+ * program's own `PerpToken` account, read back off the chain. That's the
+ * whole point of this shape: the creator signs and pays for
+ * `register_token` themselves, and this route's job is to mirror what
+ * landed, not to take the client's word for what it says. A caller can
+ * choose which mint we look at; they cannot choose what we believe about
+ * it, so there is no way to fabricate a launch by posting JSON.
+ *
+ * Idempotent: re-posting the same mint (a retry, two tabs, a refresh
+ * mid-launch) updates the existing row rather than duplicating it.
  */
 export async function POST(request: Request) {
-  let body: {
-    name?: string;
-    symbol?: string;
-    underlying?: string;
-    direction?: string;
-    targetLeverage?: number;
-    creatorWallet?: string;
-  };
+  let body: { mint?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const name = (body.name ?? "").trim().slice(0, 60);
-  const symbol = (body.symbol ?? "").trim().toUpperCase().slice(0, 20);
-  const underlying = (body.underlying ?? "").trim().toUpperCase();
-  const direction = body.direction;
-  const targetLeverage = Number(body.targetLeverage);
-  const creatorWallet = (body.creatorWallet ?? "").trim();
+  const mint = (body.mint ?? "").trim();
+  if (!isPlausibleSolanaAddress(mint)) {
+    return NextResponse.json({ error: "Invalid mint address" }, { status: 400 });
+  }
 
-  if (name.length < 2) {
-    return NextResponse.json({ error: "Name too short" }, { status: 400 });
-  }
-  if (symbol.length < 2) {
-    return NextResponse.json({ error: "Symbol too short" }, { status: 400 });
-  }
-  if (!getMarketBySymbol(underlying)) {
+  const onChain = await fetchOnChainPerpToken(mint);
+  if (!onChain) {
+    // Covers "not registered", "program not deployed on this cluster",
+    // and "RPC unreachable" alike — see fetchOnChainPerpToken. All three
+    // mean we have no evidence, and guessing here would be the one way
+    // to get a fake launch into the table.
     return NextResponse.json(
-      { error: `Unsupported underlying market: ${underlying}` },
-      { status: 400 }
+      { error: "No Perpspad token found on-chain for that mint" },
+      { status: 404 }
     );
-  }
-  if (direction !== "LONG" && direction !== "SHORT") {
-    return NextResponse.json(
-      { error: "direction must be LONG or SHORT" },
-      { status: 400 }
-    );
-  }
-  if (!Number.isFinite(targetLeverage) || targetLeverage < 1 || targetLeverage > MAX_LEVERAGE) {
-    return NextResponse.json(
-      { error: `targetLeverage must be between 1 and ${MAX_LEVERAGE}` },
-      { status: 400 }
-    );
-  }
-  if (!isPlausibleSolanaAddress(creatorWallet)) {
-    return NextResponse.json({ error: "Invalid creatorWallet" }, { status: 400 });
   }
 
   try {
-    const token = await createPendingPerpspadToken({
-      name,
-      symbol,
-      underlying,
-      direction,
-      targetLeverage,
-      creatorWallet,
-    });
+    const token = await ingestOnChainToken(onChain);
     return NextResponse.json({ configured: true, token });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create token" },
+      { error: error instanceof Error ? error.message : "Failed to record token" },
       { status: 503 }
     );
   }

@@ -5,7 +5,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: "Perpspad · Noah Engine",
+  title: "Noahpad Perpetuals",
   description:
     "Launch tokens backed by real perpetual futures. Trading fees auto compound into collateral, buy back and burn tokens, and strengthen governance all autonomous.",
 };

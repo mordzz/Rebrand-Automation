@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# anchor / rust program build artifacts
+target
+.anchor
+test-ledger
+**/*.rs.bk

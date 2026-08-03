@@ -1,24 +1,64 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
+import {
+  useSignAndSendTransaction,
+  useWallets,
+} from "@privy-io/react-auth/solana";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { MarketSelector } from "./market-selector";
 import { useFeeSplit } from "./use-fee-split";
 
+import { buildRegisterTokenTransaction } from "@/lib/perps/launch";
+import { getMarketBySymbol } from "@/lib/perps/markets";
+import { explorerUrl, PERPSPAD_CHAIN } from "@/lib/perps/program";
 import type { PerpsDirection } from "@/lib/perps/perpspad-types";
 
 const LEVERAGE_OPTIONS = [2, 3, 5, 10, 20];
 
 type SubmitState =
   | { phase: "idle" }
-  | { phase: "submitting" }
+  | { phase: "building" }
+  | { phase: "signing" }
+  | { phase: "recording" }
   | { phase: "error"; message: string }
-  | { phase: "done"; symbol: string };
+  | { phase: "done"; symbol: string; mint: string; signature: string };
+
+const BUSY_PHASES = new Set(["building", "signing", "recording"]);
+
+const PHASE_LABEL: Record<string, string> = {
+  building: "Preparing transaction…",
+  signing: "Confirm in your wallet…",
+  recording: "Recording launch…",
+};
+
+function toBase58Signature(sig: Uint8Array): string {
+  // Privy hands back raw signature bytes; the explorer wants base58.
+  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let num = 0n;
+  for (const byte of sig) num = num * 256n + BigInt(byte);
+  let out = "";
+  while (num > 0n) {
+    out = ALPHABET[Number(num % 58n)] + out;
+    num /= 58n;
+  }
+  for (const byte of sig) {
+    if (byte === 0) out = "1" + out;
+    else break;
+  }
+  return out;
+}
 
 export function CreateTokenForm() {
-  const { ready, authenticated, user, login } = usePrivy();
-  const address = user?.wallet?.address ?? null;
+  const { ready, authenticated, login } = usePrivy();
+  const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
+  // The Solana wallet specifically — `user.wallet` is Privy's primary
+  // wallet, which on a multi-chain account can be an EVM one whose
+  // address would never resolve as a Solana signer.
+  const solanaWallet = wallets[0] ?? null;
+  const address = solanaWallet?.address ?? null;
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -37,34 +77,62 @@ export function CreateTokenForm() {
     collateralNum >= 10;
 
   async function handleSubmit() {
-    if (!authenticated || !address) {
+    if (!authenticated || !address || !solanaWallet) {
       login();
       return;
     }
-    if (!isValid || submit.phase === "submitting") return;
+    if (!isValid || BUSY_PHASES.has(submit.phase)) return;
 
-    setSubmit({ phase: "submitting" });
+    const market = getMarketBySymbol(underlying);
+    if (!market) {
+      setSubmit({ phase: "error", message: `Unsupported market: ${underlying}` });
+      return;
+    }
+
     try {
-      const res = await fetch("/api/perps/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          symbol: symbol.trim().toUpperCase(),
-          underlying,
-          direction,
-          targetLeverage: leverage,
-          creatorWallet: address,
-        }),
+      setSubmit({ phase: "building" });
+      const { transactionBytes, mint } = await buildRegisterTokenTransaction({
+        creatorWallet: address,
+        name: name.trim(),
+        symbol: symbol.trim().toUpperCase(),
+        underlyingMarketIndex: market.marketIndex,
+        direction,
+        targetLeverage: leverage,
       });
-      const json = await res.json();
-      if (!res.ok) {
-        setSubmit({ phase: "error", message: json.error ?? "Something went wrong." });
-        return;
+
+      setSubmit({ phase: "signing" });
+      const { signature } = await signAndSendTransaction({
+        transaction: transactionBytes,
+        wallet: solanaWallet,
+        chain: PERPSPAD_CHAIN,
+      });
+
+      // The launch is real the moment that lands. Recording it in our
+      // own table is bookkeeping, so a failure here must not be reported
+      // as a failed launch — the token exists either way.
+      setSubmit({ phase: "recording" });
+      try {
+        await fetch("/api/perps/tokens", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mint }),
+        });
+      } catch {
+        // fall through — the on-chain launch already succeeded
       }
-      setSubmit({ phase: "done", symbol: json.token.symbol });
-    } catch {
-      setSubmit({ phase: "error", message: "Connection trouble — try again." });
+
+      setSubmit({
+        phase: "done",
+        symbol: symbol.trim().toUpperCase(),
+        mint,
+        signature: toBase58Signature(signature),
+      });
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : String(error);
+      const message = /user rejected|declined|cancel/i.test(raw)
+        ? "Transaction cancelled."
+        : raw || "Launch failed — nothing was sent.";
+      setSubmit({ phase: "error", message });
     }
   }
 
@@ -286,16 +354,34 @@ export function CreateTokenForm() {
 
           {/* Submit */}
           {submit.phase === "done" ? (
-            <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 text-center">
+            <div className="rounded-xl border border-[#5ed29c]/25 bg-[#5ed29c]/5 p-4 text-center">
               <p className="text-sm font-semibold text-foreground">
-                Request received for ${submit.symbol}.
+                ${submit.symbol} is live on devnet.
               </p>
-              {/* Honest, not a fake "your token is live" — no on-chain
-                  program exists yet in this phase, see the Perpspad plan. */}
               <p className="mt-1 text-xs text-muted-foreground">
-                On-chain launch opens once the devnet program ships. We&apos;ll
-                keep this request on file.
+                The mint is created and its full supply is in your wallet. The
+                backing Drift position opens once the perp instructions ship —
+                the token shows as{" "}
+                <span className="text-foreground/70">Pending</span> until then.
               </p>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
+                <a
+                  href={explorerUrl("address", submit.mint)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[10px] text-primary underline-offset-2 hover:underline"
+                >
+                  View mint ↗
+                </a>
+                <a
+                  href={explorerUrl("tx", submit.signature)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[10px] text-primary underline-offset-2 hover:underline"
+                >
+                  View transaction ↗
+                </a>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -306,7 +392,7 @@ export function CreateTokenForm() {
                 }}
                 className="mt-3 text-xs font-medium text-primary underline-offset-2 hover:underline"
               >
-                Submit another
+                Launch another
               </button>
             </div>
           ) : (
@@ -314,7 +400,9 @@ export function CreateTokenForm() {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!ready || submit.phase === "submitting" || (authenticated && !isValid)}
+                disabled={
+                  !ready || BUSY_PHASES.has(submit.phase) || (authenticated && !isValid)
+                }
                 className={cn(
                   "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200",
                   !authenticated || isValid
@@ -334,11 +422,10 @@ export function CreateTokenForm() {
                   ? "Loading…"
                   : !authenticated
                     ? "Connect wallet to launch"
-                    : submit.phase === "submitting"
-                      ? "Submitting…"
-                      : isValid
+                    : (PHASE_LABEL[submit.phase] ??
+                      (isValid
                         ? `Launch ${symbol || "Token"} — ${direction} ${underlying} ${leverage}×`
-                        : "Fill in all fields to continue"}
+                        : "Fill in all fields to continue"))}
               </button>
               {submit.phase === "error" && (
                 <p className="mt-2 text-center text-xs text-[#e2603f]">

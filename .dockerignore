@@ -12,3 +12,10 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+target
+.anchor
+test-ledger
+programs
+Cargo.toml
+Cargo.lock
+Anchor.toml

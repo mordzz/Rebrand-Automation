@@ -71,6 +71,51 @@ export async function getPerpspadTokenByMint(
   return row ? toApiToken(row) : null;
 }
 
+/** Records a token that already exists on-chain. Every field comes from
+ * the program's own `PerpToken` account (see lib/perps/onchain.ts), so
+ * this is a mirror of chain state rather than a claim a caller made.
+ * Idempotent on `mint`: re-submitting the same launch updates the row
+ * instead of creating a second one or erroring on the unique index. */
+export async function ingestOnChainToken(input: {
+  mint: string;
+  perpTokenPda: string;
+  driftAuthorityPda: string;
+  creator: string;
+  name: string;
+  symbol: string;
+  underlyingMarketIndex: number;
+  direction: PerpsDirection;
+  targetLeverage: number;
+  status: string;
+}): Promise<PerpspadToken> {
+  const db = getDb();
+  if (!db) throw new Error("DATABASE_URL not configured");
+
+  const values = {
+    mint: input.mint,
+    name: input.name,
+    symbol: input.symbol,
+    underlyingMarketIndex: String(input.underlyingMarketIndex),
+    direction: input.direction,
+    targetLeverage: String(input.targetLeverage),
+    creatorWallet: input.creator,
+    programTokenPda: input.perpTokenPda,
+    driftSubaccountAuthority: input.driftAuthorityPda,
+    status: input.status,
+  };
+
+  const [row] = await db
+    .insert(perpspadTokens)
+    .values(values)
+    .onConflictDoUpdate({
+      target: perpspadTokens.mint,
+      set: { ...values, updatedAt: new Date() },
+    })
+    .returning();
+
+  return toApiToken(row);
+}
+
 export type CreatePendingTokenInput = {
   name: string;
   symbol: string;

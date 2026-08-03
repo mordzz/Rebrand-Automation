@@ -11,7 +11,9 @@
     "db:studio": "drizzle-kit studio",
     "sniper": "tsx scripts/sniper-daemon.ts",
     "paper": "tsx scripts/paper-daemon.ts",
-    "provision-official-bot": "tsx scripts/provision-official-bot.ts"
+    "provision-official-bot": "tsx scripts/provision-official-bot.ts",
+    "gen:perpspad": "tsx scripts/generate-perpspad-client.ts",
+    "test:perpspad": "tsx scripts/test-perpspad.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
@@ -49,10 +51,13 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
+    "@codama/nodes-from-anchor": "^1.5.3",
+    "@codama/renderers-js": "^2.3.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "codama": "^1.10.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",

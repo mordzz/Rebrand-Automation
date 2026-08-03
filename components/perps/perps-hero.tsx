@@ -26,7 +26,7 @@ const PILLARS = [
 export function PerpsHero() {
   return (
     <section className="relative pt-4 pb-14">
-      <div className="relative max-w-3xl">
+      <div className="relative">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
