@@ -13,7 +13,9 @@
     "paper": "tsx scripts/paper-daemon.ts",
     "provision-official-bot": "tsx scripts/provision-official-bot.ts",
     "gen:perpspad": "tsx scripts/generate-perpspad-client.ts",
-    "test:perpspad": "tsx scripts/test-perpspad.ts"
+    "test:perpspad": "tsx scripts/test-perpspad.ts",
+    "init:perpspad": "tsx scripts/init-perpspad-config.ts",
+    "deploy:perpspad": "anchor deploy --provider.cluster devnet"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

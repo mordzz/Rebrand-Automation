@@ -5,6 +5,7 @@ import {
   useSignAndSendTransaction,
   useWallets,
 } from "@privy-io/react-auth/solana";
+import { getBase58Decoder } from "@solana/kit";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { MarketSelector } from "./market-selector";
@@ -33,21 +34,11 @@ const PHASE_LABEL: Record<string, string> = {
   recording: "Recording launch…",
 };
 
+/** Privy hands back raw signature bytes; explorers want base58. Kit's
+ * own codec rather than a hand-rolled loop — it already handles the
+ * leading-zero rule that trips up naive implementations. */
 function toBase58Signature(sig: Uint8Array): string {
-  // Privy hands back raw signature bytes; the explorer wants base58.
-  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let num = 0n;
-  for (const byte of sig) num = num * 256n + BigInt(byte);
-  let out = "";
-  while (num > 0n) {
-    out = ALPHABET[Number(num % 58n)] + out;
-    num /= 58n;
-  }
-  for (const byte of sig) {
-    if (byte === 0) out = "1" + out;
-    else break;
-  }
-  return out;
+  return getBase58Decoder().decode(sig);
 }
 
 export function CreateTokenForm() {

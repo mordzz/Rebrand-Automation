@@ -12,6 +12,20 @@ export const metadata: Metadata = {
     "Your live agent desk: wallet balance, open positions, trade history, and the strategies on duty.",
 };
 
+/**
+ * Rendered per request, not prerendered at build.
+ *
+ * This page reads Noah's row from Postgres. The deploy image's build
+ * step (Dockerfile) is only given NEXT_PUBLIC_PRIVY_APP_ID — no
+ * DATABASE_URL — so during `npm run build` getOfficialBot() has no
+ * database to reach and returns null. Without this, that null gets
+ * baked into static HTML and every visitor is permanently told Noah
+ * isn't provisioned, no matter what the live database actually holds.
+ * The local build didn't show it because .env is present there, which
+ * is exactly what made the bug look environment-specific.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const bot = await getOfficialBot();
 
@@ -43,9 +57,25 @@ export default async function DashboardPage() {
               <LlmConnections officialWallet={bot.walletAddress} />
             </>
           ) : (
+            /* Reached when the database is unreachable or Noah's row is
+               missing. Those are different audiences: locally it means a
+               developer skipped provisioning and should be told the exact
+               command, but on the deployed site it is a transient backend
+               problem and a visitor pasting an npm command into nothing is
+               worse than useless. */
             <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground">
-              Noah hasn&apos;t been provisioned on this environment yet — run{" "}
-              <code className="font-mono">npm run provision-official-bot</code>.
+              {process.env.NODE_ENV === "development" ? (
+                <>
+                  Noah hasn&apos;t been provisioned on this environment yet —
+                  run{" "}
+                  <code className="font-mono">
+                    npm run provision-official-bot
+                  </code>
+                  .
+                </>
+              ) : (
+                "Noah's desk is temporarily unavailable. This is on our side — try again in a moment."
+              )}
             </div>
           )}
         </div>

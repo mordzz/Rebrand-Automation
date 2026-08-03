@@ -19,6 +19,7 @@ import { join } from "node:path";
 import {
   address,
   appendTransactionMessageInstruction,
+  assertIsTransactionWithBlockhashLifetime,
   createSolanaRpc,
   createTransactionMessage,
   generateKeyPairSigner,
@@ -26,6 +27,7 @@ import {
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
+  type Address,
   type Instruction,
   type KeyPairSigner,
 } from "@solana/kit";
@@ -43,11 +45,20 @@ import { sendAndConfirmOverHttp } from "@/lib/solana/confirm";
 const PROGRAM_ID = "CUsgyc49DaWgRcRyLfKjrR5SnCRcDi4CAyuBuU692VQa";
 const RPC_URL = "http://127.0.0.1:8899";
 const SO_PATH = join(process.cwd(), "target", "deploy", "perpspad.so");
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const LAMPORTS_PER_SOL = BigInt("1000000000");
 /** 1e9 whole tokens at 6 decimals — must match state.rs's TOTAL_SUPPLY. */
-const EXPECTED_SUPPLY = 1_000_000_000n * 10n ** 6n;
+const EXPECTED_SUPPLY = BigInt("1000000000000000");
 
-type Rpc = ReturnType<typeof createSolanaRpc>;
+/** `requestAirdrop` only exists on test clusters, so Kit's generic RPC
+ * type doesn't carry it — this script is localnet-only by construction
+ * (it spawns the validator itself), so widening here is accurate rather
+ * than a papered-over mismatch. */
+type Rpc = ReturnType<typeof createSolanaRpc> & {
+  requestAirdrop: (
+    recipient: Address,
+    lamports: bigint
+  ) => { send: () => Promise<string> };
+};
 
 let passed = 0;
 let failed = 0;
@@ -75,6 +86,9 @@ async function send(
     (m) => appendTransactionMessageInstruction(instruction, m)
   );
   const signed = await signTransactionMessageWithSigners(message);
+  // Narrows the lifetime union — the message above was built with a
+  // blockhash, but the signer's return type still admits durable nonces.
+  assertIsTransactionWithBlockhashLifetime(signed);
   return sendAndConfirmOverHttp(rpc, signed);
 }
 
@@ -95,13 +109,11 @@ async function expectFailure(
 }
 
 async function airdrop(rpc: Rpc, to: string, sol: number): Promise<void> {
-  await rpc
-    .requestAirdrop(address(to), (BigInt(sol) * LAMPORTS_PER_SOL) as never)
-    .send();
+  await rpc.requestAirdrop(address(to), BigInt(sol) * LAMPORTS_PER_SOL).send();
   // Localnet confirms fast, but not instantly.
   for (let i = 0; i < 40; i++) {
     const { value } = await rpc.getBalance(address(to)).send();
-    if (value > 0n) return;
+    if (value > BigInt(0)) return;
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error(`airdrop to ${to} never landed`);
@@ -144,7 +156,7 @@ async function main(): Promise<void> {
 
   console.log("Starting local validator…");
   const validator = startValidator();
-  const rpc = createSolanaRpc(RPC_URL);
+  const rpc = createSolanaRpc(RPC_URL) as Rpc;
 
   try {
     await waitForValidator(rpc);
@@ -187,7 +199,7 @@ async function main(): Promise<void> {
     check("token burn leg is 2500 bps", config.data.feeSplitTokenBurnBps === 2500);
     check("gov burn leg is 2500 bps", config.data.feeSplitGovBurnBps === 2500);
     check("starts unpaused", config.data.paused === false);
-    check("token count starts at zero", config.data.tokenCount === 0n);
+    check("token count starts at zero", config.data.tokenCount === BigInt(0));
 
     // ── update_fee_split ───────────────────────────────────────────
     console.log("\nupdate_fee_split");
@@ -283,10 +295,10 @@ async function main(): Promise<void> {
       typeof perpToken.data.driftAuthorityBump === "number" &&
         perpToken.data.driftAuthorityBump > 0
     );
-    check("counters start at zero", perpToken.data.totalFeesCollected === 0n);
+    check("counters start at zero", perpToken.data.totalFeesCollected === BigInt(0));
 
     config = await fetchConfig(rpc, configPda);
-    check("config token count incremented", config.data.tokenCount === 1n);
+    check("config token count incremented", config.data.tokenCount === BigInt(1));
 
     // Real SPL state, not just our own account
     const supply = await rpc.getTokenSupply(mint.address).send();
@@ -320,7 +332,7 @@ async function main(): Promise<void> {
       creatorTokens.value[0]?.account.data.parsed.info.tokenAmount.amount;
     check(
       "creator holds the entire supply",
-      BigInt(creatorBalance ?? 0) === EXPECTED_SUPPLY,
+      BigInt(creatorBalance ?? "0") === EXPECTED_SUPPLY,
       `got ${creatorBalance}`
     );
 
@@ -382,7 +394,7 @@ async function main(): Promise<void> {
       })
     );
     config = await fetchConfig(rpc, configPda);
-    check("registration works again after unpause", config.data.tokenCount === 2n);
+    check("registration works again after unpause", config.data.tokenCount === BigInt(2));
   } finally {
     validator.kill("SIGTERM");
   }
