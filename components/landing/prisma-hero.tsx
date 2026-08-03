@@ -13,12 +13,6 @@ import { WordsPullUp } from "./words-pull-up";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-/* NOTE: this contradicts what the rest of the site currently says. The
-   fine print directly below, §19 of the whitepaper, §9 of the Terms, and
-   the pricing section all state there is no token and that any token
-   claiming association with Noah Engine is fraudulent. Publishing an
-   address here while those stand tells a reader one of the two is a lie.
-   Left for the owner to resolve rather than edited away silently. */
 const CONTRACT_ADDRESS = "361S7aDFRo64BHV662nBvvZWVR3Df6P5pHBKhhg6pump";
 
 const MotionLink = motion.create(Link);
@@ -132,8 +126,7 @@ export function PrismaHero() {
                 transition={{ delay: 1, duration: 0.8, ease: EASE }}
               >
                 Every agent ships in paper mode. No performance claims, no
-                leaderboard, no token. Memecoin trading can lose everything
-                you put in.
+                leaderboard. Memecoin trading can lose everything you put in.
               </motion.p>
             </div>
           </div>

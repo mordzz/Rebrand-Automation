@@ -16,7 +16,7 @@ import { SiteFooter } from "@/components/site-footer";
 export const metadata: Metadata = {
   title: "Noah Engine · A Public Fleet of Autonomous Trading Agents on Solana",
   description:
-    "Deploy an autonomous trading agent onto Solana memecoin markets. It refuses almost everything it sees, sizes the survivors against a fixed risk budget, and writes down why when it loses. No leaderboard, no performance claims, no token.",
+    "Deploy an autonomous trading agent onto Solana memecoin markets. It refuses almost everything it sees, sizes the survivors against a fixed risk budget, and writes down why when it loses. No leaderboard, no performance claims.",
 };
 
 /** Section order follows the whitepaper's argument rather than a funnel:

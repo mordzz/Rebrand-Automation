@@ -104,7 +104,7 @@ export function PrismaPricing() {
                 className: "text-primary",
               },
               {
-                text: "Not a subscription, and not a token. Paper is free for as long as you want it.",
+                text: "Not a subscription. Paper is free for as long as you want it.",
                 className: "text-gray-500",
               },
             ]}
@@ -290,44 +290,7 @@ export function PrismaPricing() {
               is the fee and the arithmetic is close to hopeless before the
               agent has placed a trade.
             </p>
-          </motion.div>
-
-          <motion.div
-            className="flex flex-col rounded-2xl bg-[#141414] p-6 ring-1 ring-white/5 sm:p-8"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={
-              inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95 }
-            }
-            transition={{ delay: 0.57, duration: 0.7, ease: CARD_EASE }}
-          >
-            <p className="text-[10px] tracking-widest text-gray-500 uppercase">
-              Two things worth saying out loud
-            </p>
-            <h3 className="text-primary mt-4 text-base font-medium sm:text-lg">
-              There is no token, and there will be no presale or airdrop.
-            </h3>
-            <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
-              Anything claiming association with Noah Engine is fraudulent. A
-              token would introduce pressure to prioritise its price over
-              operator outcomes, and answers no question the fee does not.
-            </p>
-            <h3 className="text-primary mt-6 text-base font-medium sm:text-lg">
-              A one-time fee is a weaker alignment claim.
-            </h3>
-            <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
-              A subscription ties our revenue to you continuing to survive; a
-              one-time fee is collected before the agent has traded at all. What
-              remains is reputational: a fleet with public refusals and public
-              post-mortems, carrying weight that recurring revenue would
-              otherwise carry. You are entitled to read that as the softer
-              guarantee it is.
-            </p>
-            <p className="mt-auto pt-6 text-xs leading-relaxed text-gray-500">
-              Stop an agent whenever you like. Its wallet balance is
-              withdrawable to any address, its key is exportable, and its memory
-              is exportable, independently of any fee.
-            </p>
-          </motion.div>
+          </motion.div>n
         </div>
       </div>
     </section>

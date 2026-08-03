@@ -76,9 +76,9 @@ Paper mode is free. A live agent is priced at a one-time fee of 0.5 SOL per depl
 
 Fees may change with notice; a change does not apply retroactively to an agent already deployed.
 
-## 9. There is no token
+## 9. The Noah Engine token
 
-There is no Noah Engine token, and there will be no presale and no airdrop. Any token, sale, or allocation claiming association with Noah Engine is fraudulent.
+Noah Engine has launched an official token. The contract address is published on the Deploy page and in the Pricing section. Any other token, sale, or allocation claiming association with Noah Engine is fraudulent.
 
 ## 10. The public fleet
 

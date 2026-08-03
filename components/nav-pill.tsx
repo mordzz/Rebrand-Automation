@@ -14,10 +14,13 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 type NavLink = { href: string; label: string; icon?: LucideIcon };
 
-const NAV_LINKS: NavLink[] = [
+type NavLinkWithBadge = NavLink & { badge?: string };
+
+const NAV_LINKS: NavLinkWithBadge[] = [
   { href: "/#about", label: "Why Noah" },
   { href: "/#manifest", label: "The Manifest" },
   { href: "/alpha", label: "Alpha" },
+  { href: "/perps", label: "Perps", badge: "New" },
   { href: "/whitepaper", label: "Whitepaper" },
   { href: "/#pricing", label: "Pricing" },
 ];
@@ -137,7 +140,12 @@ export function NavPill() {
             </li>
 
             {NAV_LINKS.slice(1).map((link) => (
-              <li key={link.href}>
+              <li key={link.href} className="relative">
+                {link.badge && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-white shadow-[0_0_8px_rgba(167,139,250,0.5)] animate-pulse">
+                    {link.badge}
+                  </span>
+                )}
                 <Link
                   href={link.href}
                   className={cn(
@@ -173,6 +181,7 @@ export function NavPill() {
           <ul className="flex flex-col">
             {MOBILE_LINKS.map((link) => {
               const Icon = link.icon;
+              const l = link as NavLinkWithBadge;
               return (
                 <li key={link.href}>
                   <Link
@@ -182,6 +191,11 @@ export function NavPill() {
                   >
                     {Icon && <Icon size={14} className="opacity-70" />}
                     {link.label}
+                    {l.badge && (
+                      <span className="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-white shadow-[0_0_6px_rgba(167,139,250,0.4)]">
+                        {l.badge}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

@@ -631,7 +631,7 @@ We make money from fees, priced in SOL: Paper is free (0 SOL). Going live is des
 
 Once collection exists, we intend to charge that fee once, at deploy time, instead of monthly. As a business, that's actually a weaker way to earn recurring revenue than a subscription, and we're choosing it anyway, because a monthly charge against a small trading balance is a drag you'd pay whether or not your agent was actually doing well (§16.2).
 
-**There is no Noah Engine token, and there will never be a presale or an airdrop.** Any token claiming to be connected to Noah Engine is a scam. A token would create pressure to prop up its own price instead of caring about your outcomes, and it wouldn't answer any real question that our one-time fee doesn't already answer.
+**Noah Engine has launched an official token. The contract address is published on the Deploy page and in the Pricing section. Any other token claiming to be connected to Noah Engine is a scam.**
 
 **A one-time fee is a genuinely weaker way for our interests to line up with yours, and you should read it that way.** A subscription ties our revenue to you continuing to survive and stay a customer. A one-time fee is collected before your agent has even placed a single trade. What's left keeping us honest is reputation, not money: a fleet ranked on survival, with public refusals and public post-mortems, is the actual mechanism, and it has to carry weight that ongoing revenue would otherwise carry for us. You're entitled to treat that as the softer guarantee that it is.
 
