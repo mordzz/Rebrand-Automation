@@ -50,12 +50,17 @@ function toApiToken(row: PerpspadTokenRow): PerpspadToken {
 export async function getPerpspadTokens(limit = 50): Promise<PerpspadToken[]> {
   const db = getDb();
   if (!db) return [];
-  const rows = await db
-    .select()
-    .from(perpspadTokens)
-    .orderBy(desc(perpspadTokens.createdAt))
-    .limit(limit);
-  return rows.map(toApiToken);
+  try {
+    const rows = await db
+      .select()
+      .from(perpspadTokens)
+      .orderBy(desc(perpspadTokens.createdAt))
+      .limit(limit);
+    return rows.map(toApiToken);
+  } catch (error) {
+    console.warn("Database error in getPerpspadTokens:", error);
+    return [];
+  }
 }
 
 export async function getPerpspadTokenByMint(
@@ -63,12 +68,17 @@ export async function getPerpspadTokenByMint(
 ): Promise<PerpspadToken | null> {
   const db = getDb();
   if (!db) return null;
-  const [row] = await db
-    .select()
-    .from(perpspadTokens)
-    .where(eq(perpspadTokens.mint, mint))
-    .limit(1);
-  return row ? toApiToken(row) : null;
+  try {
+    const [row] = await db
+      .select()
+      .from(perpspadTokens)
+      .where(eq(perpspadTokens.mint, mint))
+      .limit(1);
+    return row ? toApiToken(row) : null;
+  } catch (error) {
+    console.warn("Database error in getPerpspadTokenByMint:", error);
+    return null;
+  }
 }
 
 /** Records a token that already exists on-chain. Every field comes from

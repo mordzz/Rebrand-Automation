@@ -27,31 +27,7 @@ export type PerpspadMarket = {
   logoUri: string | null;
 };
 
-/** Drift publishes its own perp-market icons here — the most directly
- * correct source for a Drift market list, since it's the same artwork
- * Drift's own UI labels these markets with. Each path below was verified
- * to return a real `image/svg+xml` body. WIF is the one market absent
- * from this bucket (403), so it falls back to its verified Jupiter token
- * icon — see WIF's entry. */
-const DRIFT_ICONS = "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets";
-
-export const SUPPORTED_MARKETS: PerpspadMarket[] = [
-  { symbol: "SOL", name: "Solana", marketIndex: 0, logoUri: `${DRIFT_ICONS}/sol.svg` },
-  { symbol: "BTC", name: "Bitcoin", marketIndex: 1, logoUri: `${DRIFT_ICONS}/btc.svg` },
-  { symbol: "ETH", name: "Ethereum", marketIndex: 2, logoUri: `${DRIFT_ICONS}/eth.svg` },
-  { symbol: "SUI", name: "Sui", marketIndex: 26, logoUri: `${DRIFT_ICONS}/sui.svg` },
-  {
-    symbol: "WIF",
-    name: "dogwifhat",
-    marketIndex: 23,
-    // Not in Drift's bucket; this is dogwifhat's own token metadata image,
-    // resolved and verified via Jupiter's token API (mint
-    // EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm, isVerified: true).
-    logoUri:
-      "https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link",
-  },
-  { symbol: "JUP", name: "Jupiter", marketIndex: 24, logoUri: `${DRIFT_ICONS}/jup.svg` },
-];
+import driftMarketsJson from "@/lib/perps/generated/drift-markets.json";
 
 /** Logo for a market symbol, or null if it isn't one we support. Used by
  * views that only carry a symbol string (launched-token cards) rather
@@ -69,22 +45,14 @@ export type MarketPrice = {
   change24h: number | null;
 };
 
-/**
- * Pyth Hermes price-feed IDs, one per supported market. Each was
- * confirmed directly against Pyth's own `/v2/price_feeds?query=` search
- * API (not taken from a search-engine summary) by matching the exact
- * `display_symbol` — e.g. "BTC/USD", not a wrapped/staked variant like
- * WBTC or JITOSOL. Drift itself uses Pyth as its oracle, so this is the
- * same price the on-chain markets will ultimately mark against.
- */
-const PYTH_FEED_IDS: Record<string, string> = {
-  SOL: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-  BTC: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-  ETH: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
-  SUI: "23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744",
-  WIF: "4ca4beeca86f0d164160323817a4e42b10010a724c2217c6ee41b54cd4cc61fc",
-  JUP: "0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
-};
+const PYTH_FEED_IDS: Record<string, string> = {};
+for (const m of driftMarketsJson) {
+  if (m.pythFeedId) {
+    PYTH_FEED_IDS[m.symbol] = m.pythFeedId;
+  }
+}
+
+export const SUPPORTED_MARKETS: PerpspadMarket[] = driftMarketsJson as PerpspadMarket[];
 
 const HERMES_BASE = "https://hermes.pyth.network/v2/updates/price";
 
@@ -141,10 +109,24 @@ export async function getMarketPrices(): Promise<Map<string, MarketPrice>> {
   const dayAgoUnix = Math.floor(Date.now() / 1000) - 86_400;
 
   try {
-    const [latest, dayAgo] = await Promise.all([
-      fetchHermes("/latest", ids),
-      fetchHermes(`/${dayAgoUnix}`, ids),
-    ]);
+    const latest = await fetchHermes("/latest", ids);
+    const dayAgo = new Map<string, number>();
+
+    const chunkSize = 10;
+    const historicalPromises: Promise<Map<string, number>>[] = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      historicalPromises.push(fetchHermes(`/${dayAgoUnix}`, chunk));
+    }
+
+    const historicalResults = await Promise.allSettled(historicalPromises);
+    for (const result of historicalResults) {
+      if (result.status === "fulfilled") {
+        for (const [id, price] of result.value.entries()) {
+          dayAgo.set(id, price);
+        }
+      }
+    }
 
     for (const market of SUPPORTED_MARKETS) {
       const feedId = PYTH_FEED_IDS[market.symbol];
@@ -156,9 +138,8 @@ export async function getMarketPrices(): Promise<Map<string, MarketPrice>> {
           : null;
       out.set(market.symbol, { markPrice, change24h });
     }
-  } catch {
-    // Leave every entry null — an outage at Pyth shouldn't crash the
-    // market picker, it should just render "—" until the next poll.
+  } catch (err) {
+    console.warn("Failed to fetch Pyth latest market prices:", err);
   }
 
   cache = { at: Date.now(), prices: out };

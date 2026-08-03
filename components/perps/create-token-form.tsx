@@ -16,6 +16,8 @@ import { getMarketBySymbol } from "@/lib/perps/markets";
 import { explorerUrl, PERPSPAD_CHAIN } from "@/lib/perps/program";
 import type { PerpsDirection } from "@/lib/perps/perpspad-types";
 
+import { PRIVY_APP_ID } from "@/components/providers";
+
 const LEVERAGE_OPTIONS = [2, 3, 5, 10, 20];
 
 type SubmitState =
@@ -41,7 +43,7 @@ function toBase58Signature(sig: Uint8Array): string {
   return getBase58Decoder().decode(sig);
 }
 
-export function CreateTokenForm() {
+function CreateTokenFormInner() {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { signAndSendTransaction } = useSignAndSendTransaction();
@@ -429,4 +431,27 @@ export function CreateTokenForm() {
       </div>
     </section>
   );
+}
+
+function CreateTokenFormNoPrivy() {
+  return (
+    <section className="relative mt-8 rounded-2xl border border-white/8 bg-black/40 p-8 backdrop-blur-xl">
+      <div className="mx-auto max-w-md text-center">
+        <h3 className="text-lg font-semibold text-foreground mb-2">
+          Privy Wallet Required
+        </h3>
+        <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+          To launch a perpetual-backed token, connect your Solana wallet.
+          Please add your <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[11px] text-foreground">NEXT_PUBLIC_PRIVY_APP_ID</code> to your <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[11px] text-foreground">.env</code> file.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+export function CreateTokenForm() {
+  if (!PRIVY_APP_ID) {
+    return <CreateTokenFormNoPrivy />;
+  }
+  return <CreateTokenFormInner />;
 }

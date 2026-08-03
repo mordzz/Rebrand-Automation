@@ -1,0 +1,443 @@
+[
+  {
+    "symbol": "SOL",
+    "name": "Solana",
+    "marketIndex": 0,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/sol.svg",
+    "pythFeedId": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+  },
+  {
+    "symbol": "BTC",
+    "name": "Bitcoin",
+    "marketIndex": 1,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/btc.svg",
+    "pythFeedId": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43"
+  },
+  {
+    "symbol": "ETH",
+    "name": "Ethereum",
+    "marketIndex": 2,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/eth.svg",
+    "pythFeedId": "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace"
+  },
+  {
+    "symbol": "APT",
+    "name": "Aptos",
+    "marketIndex": 3,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/apt.svg",
+    "pythFeedId": "03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5"
+  },
+  {
+    "symbol": "BONK",
+    "name": "Bonk",
+    "marketIndex": 4,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/1mbonk.svg",
+    "pythFeedId": "72b021217ca3fe68922a19aaf990109cb9d84e9ad004b4d2025ad6f529314419"
+  },
+  {
+    "symbol": "POL",
+    "name": "Polygon",
+    "marketIndex": 5,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/pol.svg",
+    "pythFeedId": "ffd11c5a1cfd42f80afb2df4d9f264c15f956d68153335374ec10722edd70472"
+  },
+  {
+    "symbol": "ARB",
+    "name": "Arbitrum",
+    "marketIndex": 6,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/arb.svg",
+    "pythFeedId": "3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5"
+  },
+  {
+    "symbol": "DOGE",
+    "name": "Doge",
+    "marketIndex": 7,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/doge.svg",
+    "pythFeedId": "dcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c"
+  },
+  {
+    "symbol": "BNB",
+    "name": "Binance Coin",
+    "marketIndex": 8,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/bnb.svg",
+    "pythFeedId": "2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f"
+  },
+  {
+    "symbol": "SUI",
+    "name": "Sui",
+    "marketIndex": 9,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/sui.svg",
+    "pythFeedId": "23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744"
+  },
+  {
+    "symbol": "1MPEPE",
+    "name": "Pepe",
+    "marketIndex": 10,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/1mpepe.svg",
+    "pythFeedId": "d69731a2e74ac1ce884fc3890f7ee324b6deb66147055249568869ed700882e4"
+  },
+  {
+    "symbol": "OP",
+    "name": "OP",
+    "marketIndex": 11,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/op.svg",
+    "pythFeedId": "385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf"
+  },
+  {
+    "symbol": "RENDER",
+    "name": "RENDER",
+    "marketIndex": 12,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/render.svg",
+    "pythFeedId": "3d4a2bd9535be6ce8059d75eadeba507b043257321aa544717c56fa19b49e35d"
+  },
+  {
+    "symbol": "XRP",
+    "name": "XRP",
+    "marketIndex": 13,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/xrp.svg",
+    "pythFeedId": "ec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8"
+  },
+  {
+    "symbol": "HNT",
+    "name": "HNT",
+    "marketIndex": 14,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/hnt.svg",
+    "pythFeedId": "649fdd7ec08e8e2a20f425729854e90293dcbe2376abc47197a14da6ff339756"
+  },
+  {
+    "symbol": "INJ",
+    "name": "INJ",
+    "marketIndex": 15,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/inj.svg",
+    "pythFeedId": "7a5bc1d2b56ad029048cd63964b3ad2776eadf812edc1a43a31406cb54bff592"
+  },
+  {
+    "symbol": "LINK",
+    "name": "LINK",
+    "marketIndex": 16,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/link.svg",
+    "pythFeedId": "8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221"
+  },
+  {
+    "symbol": "RLB",
+    "name": "Rollbit",
+    "marketIndex": 17,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/rlb.svg",
+    "pythFeedId": "2f2d17abbc1e781bd87b4a5d52c8b2856886f5c482fa3593cebf6795040ab0b6"
+  },
+  {
+    "symbol": "PYTH",
+    "name": "Pyth",
+    "marketIndex": 18,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/pyth.svg",
+    "pythFeedId": "0bbf28e9a841a1cc788f6a361b17ca072d0ea3098a1e5df1c3922d06719579ff"
+  },
+  {
+    "symbol": "TIA",
+    "name": "Celestia",
+    "marketIndex": 19,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/tia.svg",
+    "pythFeedId": "09f7c1d7dfbb7df2b8fe3d3d87ee94a2259d212da4f30c1f0540d066dfa44723"
+  },
+  {
+    "symbol": "JTO",
+    "name": "Jito",
+    "marketIndex": 20,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/jto.svg",
+    "pythFeedId": "b43660a5f790c69354b0729a5ef9d50d68f1df92107540210b9cccba1f947cc2"
+  },
+  {
+    "symbol": "SEI",
+    "name": "SEI",
+    "marketIndex": 21,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/sei.svg",
+    "pythFeedId": "53614f1cb0c031d4af66c04cb9c756234adad0e1cee85303795091499a4084eb"
+  },
+  {
+    "symbol": "AVAX",
+    "name": "AVAX",
+    "marketIndex": 22,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/avax.svg",
+    "pythFeedId": "93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7"
+  },
+  {
+    "symbol": "W",
+    "name": "Wormhole",
+    "marketIndex": 23,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/w.svg",
+    "pythFeedId": "eff7446475e218517566ea99e72a4abec2e1bd8498b43b7d8331e29dcb059389"
+  },
+  {
+    "symbol": "KMNO",
+    "name": "Kamino",
+    "marketIndex": 24,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/kmno.svg",
+    "pythFeedId": "b17e5bc5de742a8a378b54c9c75442b7d51e30ada63f28d9bd28d3c0e26511a0"
+  },
+  {
+    "symbol": "1KWEN",
+    "name": "Wen",
+    "marketIndex": 25,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/1kwen.svg",
+    "pythFeedId": "5169491cd7e2a44c98353b779d5eb612e4ac32e073f5cc534303d86307c2f1bc"
+  },
+  {
+    "symbol": "NVDA",
+    "name": "Nvidia",
+    "marketIndex": 29,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/nvda.svg",
+    "pythFeedId": "b1073854ed24cbc755dc527418f52b7d271f6cc967bbf8d8129112b18860a593"
+  },
+  {
+    "symbol": "WIF",
+    "name": "WIF",
+    "marketIndex": 23,
+    "logoUri": "https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link",
+    "pythFeedId": "4ca4beeca86f0d164160323817a4e42b10010a724c2217c6ee41b54cd4cc61fc"
+  },
+  {
+    "symbol": "JUP",
+    "name": "JUP",
+    "marketIndex": 24,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/jup.svg",
+    "pythFeedId": "0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996"
+  },
+  {
+    "symbol": "DYM",
+    "name": "Dymension",
+    "marketIndex": 25,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/dym.svg",
+    "pythFeedId": "a9f3b2a89c6f85a6c20a9518abde39b944e839ca49a0c92307c65974d3f14a57"
+  },
+  {
+    "symbol": "TAO",
+    "name": "BITTENSOR",
+    "marketIndex": 26,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/tao.svg",
+    "pythFeedId": "410f41de235f2db824e562ea7ab2d3d3d4ff048316c61d629c0b93f58584e1af"
+  },
+  {
+    "symbol": "TNSR",
+    "name": "Tensor",
+    "marketIndex": 29,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/tnsr.svg",
+    "pythFeedId": "05ecd4597cd48fe13d6cc3596c62af4f9675aee06e2e0b94c06d8bee2b659e05"
+  },
+  {
+    "symbol": "DRIFT",
+    "name": "Drift",
+    "marketIndex": 30,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/drift.svg",
+    "pythFeedId": "5c1690b27bb02446db17cdda13ccc2c1d609ad6d2ef5bf4983a85ea8b6f19d07"
+  },
+  {
+    "symbol": "CLOUD",
+    "name": "Sanctum",
+    "marketIndex": 31,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/cloud.svg",
+    "pythFeedId": "7358313661dcd4f842a1423aa4f7a05f009001c9113201c719621d3f1aa80a73"
+  },
+  {
+    "symbol": "IO",
+    "name": "IO",
+    "marketIndex": 32,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/io.svg",
+    "pythFeedId": "82595d1509b770fa52681e260af4dda9752b87316d7c048535d8ead3fa856eb1"
+  },
+  {
+    "symbol": "ZEX",
+    "name": "ZEX",
+    "marketIndex": 33,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/zex.svg",
+    "pythFeedId": "3d63be09d1b88f6dffe6585d0170670592124fd9fa4e0fe8a09ff18464f05e3a"
+  },
+  {
+    "symbol": "POPCAT",
+    "name": "POPCAT",
+    "marketIndex": 34,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/popcat.svg",
+    "pythFeedId": "b9312a7ee50e189ef045aa3c7842e099b061bd9bdc99ac645956c3b660dc8cce"
+  },
+  {
+    "symbol": "TON",
+    "name": "TON",
+    "marketIndex": 42,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/ton.svg",
+    "pythFeedId": "8963217838ab4cf5cadc172203c1f0b763fbaa45f346d8ee50ba994bbcac3026"
+  },
+  {
+    "symbol": "MOTHER",
+    "name": "MOTHER",
+    "marketIndex": 44,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/mother.svg",
+    "pythFeedId": "62742a997d01f7524f791fdb2dd43aaf0e567d765ebf8fd0406a994239e874d4"
+  },
+  {
+    "symbol": "MOODENG",
+    "name": "MOODENG",
+    "marketIndex": 45,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/moodeng.svg",
+    "pythFeedId": "ffff73128917a90950cd0473fd2551d7cd274fd5a6cc45641881bbcc6ee73417"
+  },
+  {
+    "symbol": "DBR",
+    "name": "DeBridge",
+    "marketIndex": 47,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/dbr.svg",
+    "pythFeedId": "f788488fe2df341b10a498e0a789f03209c0938d9ed04bc521f8224748d6d236"
+  },
+  {
+    "symbol": "1KMEW",
+    "name": "1KMEW",
+    "marketIndex": 51,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/1kmew.svg",
+    "pythFeedId": "514aed52ca5294177f20187ae883cec4a018619772ddce41efcc36a6448f5d5d"
+  },
+  {
+    "symbol": "MICHI",
+    "name": "MICHI",
+    "marketIndex": 52,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/michi.svg",
+    "pythFeedId": "63a45218d6b13ffd28ca04748615511bf70eff80a3411c97d96b8ed74a6decab"
+  },
+  {
+    "symbol": "GOAT",
+    "name": "GOAT",
+    "marketIndex": 53,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/goat.svg",
+    "pythFeedId": "f7731dc812590214d3eb4343bfb13d1b4cfa9b1d4e020644b5d5d8e07d60c66c"
+  },
+  {
+    "symbol": "FWOG",
+    "name": "FWOG",
+    "marketIndex": 54,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/fwog.svg",
+    "pythFeedId": "656cc2a39dd795bdecb59de810d4f4d1e74c25fe4c42d0bf1c65a38d74df48e9"
+  },
+  {
+    "symbol": "PNUT",
+    "name": "PNUT",
+    "marketIndex": 55,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/pnut.svg",
+    "pythFeedId": "116da895807f81f6b5c5f01b109376e7f6834dc8b51365ab7cdfa66634340e54"
+  },
+  {
+    "symbol": "RAY",
+    "name": "RAY",
+    "marketIndex": 56,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/ray.svg",
+    "pythFeedId": "91568baa8beb53db23eb3fb7f22c6e8bd303d103919e19733f2bb642d3e7987a"
+  },
+  {
+    "symbol": "HYPE",
+    "name": "Hyperliquid",
+    "marketIndex": 59,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/hype.svg",
+    "pythFeedId": "4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b"
+  },
+  {
+    "symbol": "LTC",
+    "name": "LiteCoin",
+    "marketIndex": 60,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/ltc.svg",
+    "pythFeedId": "6e3f3fa8253588df9326580180233eb791e03b443a3ba7a1d892e73874e19a54"
+  },
+  {
+    "symbol": "ME",
+    "name": "Magic Eden",
+    "marketIndex": 61,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/me.svg",
+    "pythFeedId": "91519e3e48571e1232a85a938e714da19fe5ce05107f3eebb8a870b2e8020169"
+  },
+  {
+    "symbol": "PENGU",
+    "name": "PENGU",
+    "marketIndex": 62,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/pengu.svg",
+    "pythFeedId": "bed3097008b9b5e3c93bec20be79cb43986b85a996475589351a21e67bae9b61"
+  },
+  {
+    "symbol": "AI16Z",
+    "name": "AI16Z",
+    "marketIndex": 63,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/ai16z.svg",
+    "pythFeedId": "2551eca7784671173def2c41e6f3e51e11cd87494863f1d208fdd8c64a1f85ae"
+  },
+  {
+    "symbol": "TRUMP",
+    "name": "TRUMP",
+    "marketIndex": 64,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/trump.svg",
+    "pythFeedId": "879551021853eec7a7dc827578e8e69da7e4fa8148339aa0d3d5296405be4b1a"
+  },
+  {
+    "symbol": "MELANIA",
+    "name": "MELANIA",
+    "marketIndex": 65,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/melania.svg",
+    "pythFeedId": "8fef7d52c7f4e3a6258d663f9d27e64a1b6fd95ab5f7d545dbf9a515353d0064"
+  },
+  {
+    "symbol": "BERA",
+    "name": "BERA",
+    "marketIndex": 66,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/bera.svg",
+    "pythFeedId": "962088abcfdbdb6e30db2e340c8cf887d9efb311b1f2f17b155a63dbb6d40265"
+  },
+  {
+    "symbol": "KAITO",
+    "name": "KAITO",
+    "marketIndex": 69,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/kaito.svg",
+    "pythFeedId": "7302dee641a08507c297a7b0c8b3efa74a48a3baa6c040acab1e5209692b7e59"
+  },
+  {
+    "symbol": "IP",
+    "name": "Story Protocol",
+    "marketIndex": 70,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/ip.svg",
+    "pythFeedId": "b620ba83044577029da7e4ded7a2abccf8e6afc2a0d4d26d89ccdd39ec109025"
+  },
+  {
+    "symbol": "ASTER",
+    "name": "ASTER",
+    "marketIndex": 76,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/aster.svg",
+    "pythFeedId": "a903b5a82cb572397e3d47595d2889cf80513f5b4cf7a36b513ae10cc8b1e338"
+  },
+  {
+    "symbol": "XPL",
+    "name": "PLASMA",
+    "marketIndex": 77,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/xpl.svg",
+    "pythFeedId": "9873512f5cb33c77ad7a5af098d74812c62111166be395fd0941c8cedb9b00d4"
+  },
+  {
+    "symbol": "2Z",
+    "name": "Double Zero",
+    "marketIndex": 78,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/2z.svg",
+    "pythFeedId": "f2b3ab1c49e35e881003c3c0482d18b181a1560b697b844c24c8f85aba1cab95"
+  },
+  {
+    "symbol": "ZEC",
+    "name": "ZCash",
+    "marketIndex": 79,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/zec.svg",
+    "pythFeedId": "be9b59d178f0d6a97ab4c343bff2aa69caa1eaae3e9048a65788c529b125bb24"
+  },
+  {
+    "symbol": "MNT",
+    "name": "Mantle",
+    "marketIndex": 80,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/mnt.svg",
+    "pythFeedId": "4e3037c822d852d79af3ac80e35eb420ee3b870dca49f9344a38ef4773fb0585"
+  },
+  {
+    "symbol": "LIT",
+    "name": "Lighter",
+    "marketIndex": 84,
+    "logoUri": "https://drift-public.s3.eu-central-1.amazonaws.com/assets/icons/markets/lit.svg",
+    "pythFeedId": "c0c83f00c39165892d55dcd17ade2191e289697e2ac132d9ab721e20834e2a9e"
+  }
+]
