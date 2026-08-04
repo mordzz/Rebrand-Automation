@@ -46,7 +46,7 @@ export function MarketTicker() {
               const up = (m.change24h ?? 0) >= 0;
               return (
                 <div
-                  key={m.symbol}
+                  key={`${m.symbol}-${m.marketIndex}`}
                   className="group flex shrink-0 items-center gap-2.5 px-4 py-3 transition-colors hover:bg-white/[0.025]"
                 >
                   <TokenIcon

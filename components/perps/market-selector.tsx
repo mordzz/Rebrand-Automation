@@ -42,7 +42,7 @@ export function MarketSelector({
           const isPositive = (market.change24h ?? 0) >= 0;
           return (
             <button
-              key={market.symbol}
+              key={`${market.symbol}-${market.marketIndex}`}
               type="button"
               onClick={() => handleSelect(market.symbol)}
               aria-pressed={isActive}
