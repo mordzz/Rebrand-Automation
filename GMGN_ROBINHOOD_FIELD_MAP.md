@@ -2,6 +2,25 @@
 
 Source: `lib/solana/pumpportal.ts`, `lib/sniper/safety-checks.ts`, `lib/sniper/config.ts` (repo, read 2026-09-28) vs. `gmgn-cli` docs (`github.com/GMGNAI/gmgn-skills`: `docs/cli-usage.md`, `skills/gmgn-token/SKILL.md`, `skills/gmgn-market/SKILL.md`, `skills/gmgn-swap/SKILL.md`) — read 2026-09-28.
 
+## PR05 update (2026-09-29): a verified baseline now exists, but not for Robinhood specifically
+
+This repo already has a **working, production-verified** GMGN discovery adapter for Solana — `lib/gmgn/discovery.ts` — whose field names (`address`, `symbol`, `name`, `created_timestamp`, `launchpad_platform`, `renounced_mint`, `renounced_freeze_account`, `has_at_least_one_social`, `twitter`, `telegram`, `website`, `is_honeypot`, `buy_tax`, `sell_tax`, `rug_ratio`, `top_10_holder_rate`, `bundler_trader_amount_rate`, `suspected_insider_hold_rate`, `creator_balance_rate`, `creator_created_count`, `is_wash_trading`, `image_dup`, `usd_market_cap`, `total_supply`, `liquidity`, `holder_count`, `progress`, `smart_degen_count`, `renowned_count`) are confirmed against real production responses per that file's own comments ("verified against live rows", "measured live").
+
+**PR05 could not complete its own mandatory verification step**: `GMGN_API_KEY` is unset in this environment, so no live authenticated call to `chain=robinhood` was possible. `lib/gmgn/discovery-robinhood.ts` uses the Solana adapter's field names as a documented *working hypothesis* (GMGN's docs describe one shared schema/wrapper across the chains it indexes), **not** a verified Robinhood-specific mapping. Everything below this point that predates this update should be read as background/documentation-derived context; the table immediately below reflects the more authoritative (but still chain-unconfirmed) Solana-verified baseline.
+
+| Field (verified name, `chain=sol`) | Robinhood status |
+|---|---|
+| `address` | Used as-is by `normalizeRobinhoodToken`, validated as `0x[0-9a-fA-F]{40}` — UNVERIFIED that Robinhood responses use this same key |
+| `created_timestamp` | Same, UNVERIFIED for Robinhood |
+| `launchpad_platform` | Same, UNVERIFIED — critically, the actual value set for Robinhood (`trench`/`pons`/etc.) vs. what GMGN returns is unconfirmed |
+| `renounced_mint` / `renounced_freeze_account` | **Deliberately NOT carried into the Robinhood type at all** — these are Solana-SPL concepts with no EVM equivalent; inventing an always-null field would misrepresent "not a concept" as "not yet checked" |
+| `has_at_least_one_social`, `twitter`, `telegram`, `website` | Carried over, UNVERIFIED for Robinhood |
+| `is_honeypot`, `buy_tax`, `sell_tax`, `rug_ratio`, `top_10_holder_rate`, `bundler_trader_amount_rate`, `suspected_insider_hold_rate`, `creator_balance_rate`, `creator_created_count`, `is_wash_trading`, `image_dup` | Carried over, UNVERIFIED for Robinhood — these are honeypot/tax/EVM-native risk signals GMGN's Solana docs already frame as chain-agnostic, so more likely to hold than the Solana-SPL fields above, but still unconfirmed |
+| `usd_market_cap`, `total_supply`, `liquidity`, `holder_count`, `progress`, `smart_degen_count`, `renowned_count` | Carried over, UNVERIFIED for Robinhood |
+| Creator/deployer address | **Confirmed absent even in the verified Solana response** — `lib/gmgn/discovery.ts`'s `DiscoveredToken` type has no such field. Not a Robinhood-specific gap; this was already unavailable on the working chain too. `creatorAddress` in the Robinhood type is always `null`. |
+
+**Action required before PR06 (safety adaptation) or PR07 (paper trading) proceed on real data**: run `npm run inspect:gmgn-robinhood` (added in PR05, `scripts/inspect-gmgn-robinhood.ts`) once a real `GMGN_API_KEY` is available, compare the raw output against `normalizeRobinhoodToken()`, and update both that function and this table from what actually comes back — not from this Solana-derived hypothesis.
+
 ## 1. Discovery event shape
 
 | Existing PumpPortal Field | Purpose in Noah | GMGN Robinhood Equivalent | Exact / Approximate / Missing |
