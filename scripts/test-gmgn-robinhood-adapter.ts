@@ -40,6 +40,7 @@ function assert(condition: boolean, label: string): void {
 }
 
 const A = "0x1111111111111111111111111111111111111111";
+const CREATOR = "0x9999999999999999999999999999999999999999";
 const ALLOWED = ["trench", "pons"];
 
 function validRaw(overrides: Record<string, unknown> = {}) {
@@ -48,6 +49,7 @@ function validRaw(overrides: Record<string, unknown> = {}) {
     created_timestamp: 1700000000,
     symbol: "TEST",
     launchpad_platform: "trench",
+    creator: CREATOR,
     ...overrides,
   };
 }
@@ -60,8 +62,49 @@ function validRaw(overrides: Record<string, unknown> = {}) {
   if (token) {
     assertEqual(token.tokenAddress, A, "tokenAddress preserved verbatim");
     assertEqual(token.chain, "robinhood", "chain is robinhood");
-    assertEqual(token.creatorAddress, null, "creatorAddress always null (unverified — see file header)");
+    assertEqual(token.creatorAddress, CREATOR, "creatorAddress mapped from live-verified `creator` field");
   }
+}
+
+{
+  const token = normalizeRobinhoodToken(validRaw({ creator: "not-an-evm-address" }));
+  assertEqual(token?.creatorAddress, null, "malformed creator address doesn't reject the token, just nulls the field");
+}
+
+// ═══ "yes"/"no"/"unknown" string convention (live-verified: is_honeypot,
+//     owner_renounced, open_source, burn_status all use this on Robinhood,
+//     not JSON booleans) ═════════════════════════════════════════════════
+
+{
+  const token = normalizeRobinhoodToken(validRaw({ is_honeypot: "no" }));
+  assertEqual(token?.isHoneypot, false, '"no" string parses to false, not null');
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ is_honeypot: "unknown" }));
+  assertEqual(token?.isHoneypot, null, '"unknown" string parses to null (unknown), not false');
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ is_honeypot: "yes" }));
+  assertEqual(token?.isHoneypot, true, '"yes" string parses to true');
+}
+{
+  // Real booleans (is_wash_trading, has_at_least_one_social) must keep working.
+  const token = normalizeRobinhoodToken(validRaw({ is_wash_trading: false }));
+  assertEqual(token?.isWashTrading, false, "real JSON boolean false still parses correctly");
+}
+
+// ═══ market_cap field priority (live-verified: usd_market_cap never
+//     appears on Robinhood; market_cap is the real field) ══════════════
+
+{
+  const token = normalizeRobinhoodToken(validRaw({ market_cap: 5131.21 }));
+  assertEqual(token?.marketCapUsd, 5131.21, "market_cap alone (no usd_market_cap) maps correctly");
+}
+{
+  // usd_market_cap kept only as a fallback for a hypothetical response
+  // shape that uses it — market_cap must win when both are present.
+  const token = normalizeRobinhoodToken(validRaw({ market_cap: 100, usd_market_cap: 999 }));
+  assertEqual(token?.marketCapUsd, 100, "market_cap takes priority over usd_market_cap");
 }
 
 {
@@ -96,7 +139,11 @@ assertEqual(
 
 {
   const outcome = parseNewCreationPayload({ new_creation: [] }, ALLOWED);
-  assertEqual(outcome, { ok: true, tokens: [], malformedCount: 0 }, "empty new_creation → successful empty result");
+  assertEqual(
+    outcome,
+    { ok: true, tokens: [], malformedCount: 0, totalCount: 0 },
+    "empty new_creation → successful empty result"
+  );
 }
 
 {
@@ -117,6 +164,12 @@ assertEqual(
   if (outcome.ok) {
     assertEqual(outcome.tokens.length, 0, "unsupported launchpad → excluded by the allow-list");
     assertEqual(outcome.malformedCount, 0, "allow-list exclusion is not counted as malformed");
+    assertEqual(
+      outcome.totalCount,
+      1,
+      "totalCount still reflects the raw item even though it's neither a token nor malformed " +
+        "(this is exactly what malformedCount + tokens.length would have missed — it'd report 0/0)"
+    );
   }
 }
 
@@ -147,6 +200,7 @@ assertEqual(
   if (outcome.ok) {
     assertEqual(outcome.tokens.length, 1, "valid row survives");
     assertEqual(outcome.malformedCount, 1, "malformed row is counted, doesn't corrupt the valid one");
+    assertEqual(outcome.totalCount, 2, "totalCount is the real raw item count, not malformedCount + tokens.length");
   }
 }
 

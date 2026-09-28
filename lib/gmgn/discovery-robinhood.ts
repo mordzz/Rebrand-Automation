@@ -7,49 +7,69 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  * ══════════════════════════════════════════════════════════════════════
  * VERIFICATION STATUS — read before trusting any field mapping below.
  * ══════════════════════════════════════════════════════════════════════
- * GMGN_API_KEY is unset in this environment, so no live authenticated
- * call to `chain=robinhood` has been made — the "mandatory first step"
- * this PR was asked to complete (inspect real Robinhood payloads) could
- * NOT be finished. What follows distinguishes two different kinds of
- * claim, which must not be conflated:
+ * LIVE-VERIFIED 2026-09-29 against `chain=robinhood`, `new_creation`, via
+ * GMGN's public read-only demo key (60 sampled items, 3 launchpads: flap,
+ * flap_pve, longxyz — see GMGN_ROBINHOOD_FIELD_MAP.md for the full
+ * comparison and scripts/inspect-gmgn-robinhood.ts for how to re-run
+ * this). Fields below are now real-payload-confirmed unless noted
+ * otherwise:
  *
- *   - DOCUMENTED by GMGN for `market trenches` generally: `address`,
- *     `symbol`, `name`, `launchpad_platform`, `usd_market_cap`,
- *     `liquidity`, `total_supply`, `created_timestamp`, `twitter`,
- *     `telegram`, `website`, `has_at_least_one_social` — these appear in
- *     GMGN's own documentation for the trenches response shape in
- *     general, not specifically confirmed for `chain=robinhood`.
- *   - LIVE-VERIFIED against a real response: only for `chain=sol`, via
- *     `lib/gmgn/discovery.ts` (see that file's own comments — "verified
- *     against live rows", "measured live"). Its full field set (risk
- *     signals like `is_honeypot`/`buy_tax`/`rug_ratio`/etc., plus the
- *     documented fields above) is what this module's field names are
- *     copied from, as a working hypothesis for Robinhood.
+ *   - `address`, `created_timestamp`, `launchpad_platform`/`launchpad`,
+ *     `symbol`, `name`, `twitter`, `telegram`, `website`,
+ *     `has_at_least_one_social` (present on ~half of sampled items;
+ *     absent items fall back to the twitter/telegram/website check,
+ *     which still works), `total_supply`, `holder_count`,
+ *     `creator_balance_rate`, `creator_created_count`, `is_wash_trading`,
+ *     `image_dup` — all confirmed present with the expected shape.
+ *   - `market_cap` (NOT `usd_market_cap` — that key never appeared in any
+ *     sampled Robinhood item; `usd_market_cap ?? market_cap` below
+ *     already falls through to the right one). Denomination is
+ *     UNCONFIRMED — GMGN's field name carries no explicit currency label
+ *     here (unlike the Solana adapter's `usd_market_cap`), though the
+ *     observed scale (~$5,000 for freshly-launched tokens) is consistent
+ *     with USD.
+ *   - `liquidity` — present, but its VALUES ARE ON A COMPLETELY DIFFERENT
+ *     SCALE than `market_cap` (liquidity ~0.001-0.005, market_cap
+ *     ~4,900-5,200 in the same items). On Solana, `lib/gmgn/safety.ts`
+ *     assumes liquidity and usd_market_cap share a unit — that assumption
+ *     does NOT hold here. Liquidity looks like it may be native-ETH-
+ *     denominated instead of USD. This is a PR06 blocker, not fixed here
+ *     (PR05 doesn't touch safety.ts) — flagged prominently in
+ *     GMGN_ROBINHOOD_FIELD_MAP.md.
+ *   - `creator` — LIVE-VERIFIED present on 60/60 sampled items as a valid
+ *     EVM address. Corrects the earlier (pre-verification) assumption,
+ *     inherited from the Solana adapter's lack of this field, that it
+ *     wouldn't exist here. Now mapped to `creatorAddress` below.
+ *   - `is_honeypot`, `owner_renounced`, `open_source`, `burn_status` use
+ *     GMGN's "yes"/"no"/"unknown" STRING convention on this chain, not
+ *     JSON booleans (unlike `is_wash_trading`/`has_at_least_one_social`,
+ *     which ARE real booleans). `bool()` below now handles both. Observed
+ *     `is_honeypot` values: "unknown", "no" (no "yes" seen in this
+ *     sample). `owner_renounced`/`open_source`/`burn_status` were "yes"
+ *     on every sampled item (no "no" observed) — plausible EVM analogs to
+ *     Solana's mint/freeze-authority checks, but mapping them into safety
+ *     policy is explicitly PR06's job, not this adapter's; they are not
+ *     added to RobinhoodDiscoveredToken in this PR.
+ *   - No `renounced_mint`/`renounced_freeze_account`/SPL `standard`
+ *     fields exist on this chain (as expected — those are Solana-SPL
+ *     concepts). No dedicated nested "security" object was found either;
+ *     risk signals are flat scalar fields.
+ *   - Launchpad allow-list: the ONLY `launchpad_platform` values observed
+ *     across 60 sampled items were `flap`, `flap_pve`, `longxyz`.
+ *     `trench` and `pons` — the earlier documentation-derived guess for
+ *     the eventual production allow-list — were NOT observed at all in
+ *     this sample. That guess should not be treated as a starting point;
+ *     the allow-list decision remains unresolved and gated behind
+ *     `GMGN_ROBINHOOD_LAUNCHPADS`/an explicit caller argument regardless
+ *     (see resolveLaunchpadAllowlist below) — this finding doesn't change
+ *     the fail-closed mechanism, only what evidence exists to inform the
+ *     eventual choice.
  *
- *   Neither of these is "live-verified for chain=robinhood specifically".
- *   That verification requires running `npm run inspect:gmgn-robinhood`
- *   with a real GMGN_API_KEY and reviewing the actual response — not yet
- *   done. Do not proceed to PR06 (safety adaptation) or PR07 (paper
- *   trading integration) against this module's field assumptions until
- *   that inspection has happened; see that script and
- *   GMGN_ROBINHOOD_FIELD_MAP.md.
- *
- *   - Solana-SPL-specific fields (renounced_mint, renounced_freeze_account,
- *     standard) are NOT carried into this module's type at all — they are
- *     not EVM concepts, so inventing an "always null" field for them
- *     would misrepresent absence-of-concept as absence-of-data. Their EVM
- *     equivalents (owner-renounced, blacklist capability, etc.) are PR06's
- *     job, not this one's.
- *   - creatorAddress: not mapped by the existing (verified, chain=sol)
- *     adapter, and not confirmed present in the documented trenches
- *     response shape either — live Robinhood payload verification is
- *     required before this can be populated or declared absent. Kept in
- *     this module's type (per the requested shape) but always null for
- *     now; do not invent a raw key name for it.
- *   - Whether `chain=robinhood` returns launchpad_platform values that
- *     match any particular allow-list is entirely UNVERIFIED, which is
- *     exactly why this module requires an explicit allow-list rather than
- *     shipping a default — see resolveLaunchpadAllowlist below.
+ * This was a single ~60-item sample from one point in time via a shared
+ * public demo key, not a production-scale audit — treat it as strong
+ * evidence, not exhaustive proof (e.g. no "yes" is_honeypot or "no"
+ * owner_renounced was observed, but that doesn't mean those values never
+ * occur).
  */
 
 /**
@@ -143,15 +163,34 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Handles both real booleans and GMGN's own "yes"/"no"/"unknown" string
+ * convention — confirmed live on the Robinhood payload (is_honeypot,
+ * owner_renounced, open_source, burn_status all use "yes"/"no"/"unknown"
+ * strings, not JSON booleans, unlike the boolean has_at_least_one_social/
+ * is_wash_trading fields). "unknown" (and anything else unrecognized)
+ * falls through to null — never guessed as false. */
 function bool(v: unknown): boolean | null {
   if (typeof v === "boolean") return v;
   if (v === 1 || v === "1" || v === "true") return true;
   if (v === 0 || v === "0" || v === "false") return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "yes") return true;
+    if (s === "no") return false;
+  }
   return null;
 }
 
 function isEvmAddress(value: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+/** Same EVM-address validation as the token address, but non-fatal: an
+ * unparseable creator address shouldn't reject the whole token, it
+ * should just leave creatorAddress null. */
+function evmAddressOrNull(v: unknown): string | null {
+  const s = str(v);
+  return s && isEvmAddress(s) ? s : null;
 }
 
 /**
@@ -190,7 +229,11 @@ export function normalizeRobinhoodToken(
     launchpad,
     stage: "new_creation",
     createdAt,
-    creatorAddress: null, // see module-level verification-status comment
+    // LIVE-VERIFIED 2026-09-29 (public GMGN demo key, chain=robinhood):
+    // `creator` is present on 60/60 sampled new_creation items and is a
+    // valid EVM address — see GMGN_ROBINHOOD_FIELD_MAP.md. Corrects the
+    // earlier (Solana-derived) assumption that this field doesn't exist.
+    creatorAddress: evmAddressOrNull(raw.creator),
 
     hasSocialLink: bool(raw.has_at_least_one_social) ?? Boolean(twitter || telegram || website),
     twitter,
@@ -209,7 +252,11 @@ export function normalizeRobinhoodToken(
     isWashTrading: bool(raw.is_wash_trading),
     imageDup: num(raw.image_dup),
 
-    marketCapUsd: num(raw.usd_market_cap) ?? num(raw.market_cap),
+    // `market_cap`, not `usd_market_cap` — the latter never appears on
+    // Robinhood (live-verified). `usd_market_cap` kept as a fallback only
+    // in case a future/other response shape uses it; primary key
+    // reordered to match what's actually observed.
+    marketCapUsd: num(raw.market_cap) ?? num(raw.usd_market_cap),
     totalSupply: num(raw.total_supply),
     liquidity: num(raw.liquidity),
     holderCount: num(raw.holder_count),
@@ -226,7 +273,7 @@ export function normalizeRobinhoodToken(
 }
 
 export type ParseOutcome =
-  | { ok: true; tokens: RobinhoodDiscoveredToken[]; malformedCount: number }
+  | { ok: true; tokens: RobinhoodDiscoveredToken[]; malformedCount: number; totalCount: number }
   | { ok: false; reason: "malformed_payload"; detail: string };
 
 /**
@@ -273,7 +320,7 @@ export function parseNewCreationPayload(
     };
   }
   if (list.length === 0) {
-    return { ok: true, tokens: [], malformedCount: 0 };
+    return { ok: true, tokens: [], malformedCount: 0, totalCount: 0 };
   }
 
   const allowSet = new Set(allowlist);
@@ -308,7 +355,12 @@ export function parseNewCreationPayload(
     };
   }
 
-  return { ok: true, tokens: tokens.sort((a, b) => b.createdAt - a.createdAt), malformedCount };
+  return {
+    ok: true,
+    tokens: tokens.sort((a, b) => b.createdAt - a.createdAt),
+    malformedCount,
+    totalCount: list.length,
+  };
 }
 
 export type RobinhoodDiscoveryResult =
@@ -377,11 +429,14 @@ export async function discoverRobinhoodTokens(
   if (!outcome.ok) return outcome;
 
   if (outcome.malformedCount > 0) {
-    // No secrets here — just a count and the (non-secret) endpoint path.
+    // No secrets here — just counts and the (non-secret) endpoint path.
+    // Denominator is the actual raw item count, not malformedCount +
+    // tokens.length — that sum silently excludes policy-filtered
+    // (allow-list) and deduplicated rows, understating how many items
+    // GMGN actually sent.
     console.warn(
-      `[gmgn/discovery-robinhood] ${outcome.malformedCount} of ${
-        outcome.malformedCount + outcome.tokens.length
-      } new_creation item(s) failed to normalize this cycle`
+      `[gmgn/discovery-robinhood] ${outcome.malformedCount} of ${outcome.totalCount} ` +
+        `new_creation item(s) failed to normalize this cycle`
     );
   }
 

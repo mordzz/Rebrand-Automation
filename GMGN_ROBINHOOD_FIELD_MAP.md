@@ -2,6 +2,77 @@
 
 Source: `lib/solana/pumpportal.ts`, `lib/sniper/safety-checks.ts`, `lib/sniper/config.ts` (repo, read 2026-09-28) vs. `gmgn-cli` docs (`github.com/GMGNAI/gmgn-skills`: `docs/cli-usage.md`, `skills/gmgn-token/SKILL.md`, `skills/gmgn-market/SKILL.md`, `skills/gmgn-swap/SKILL.md`) — read 2026-09-28.
 
+## LIVE-VERIFIED 2026-09-29: real `chain=robinhood` payload reviewed
+
+`npm run inspect:gmgn-robinhood` was run against GMGN's public read-only demo API key (`chain=robinhood`, `new_creation`, no launchpad filter, 60 items returned, one point-in-time sample). This is the first section in this document backed by an actual response rather than documentation or a Solana-adapter-derived guess — everything below in this section supersedes the corresponding claims further down the file, which are kept for history, not as current guidance.
+
+### Representative sanitized item
+
+```json
+{
+  "address": "0xc3185178243c5a8f85abe1e52fe4119298ba7777",
+  "symbol": "FAR",
+  "name": "Far Protocol",
+  "creator": "0x8bf8eace53982a349195c452d1a22d025fae6666",
+  "created_timestamp": 1790620671,
+  "launchpad": "flap",
+  "launchpad_platform": "flap",
+  "market_cap": 5131.21,
+  "liquidity": 0.004131894081536473,
+  "total_supply": 1000000000,
+  "holder_count": 2,
+  "is_honeypot": "no",
+  "owner_renounced": "yes",
+  "open_source": "yes",
+  "burn_status": "yes",
+  "buy_tax": 0.0899,
+  "sell_tax": 0.0899,
+  "creator_balance_rate": 0,
+  "creator_created_count": 13116,
+  "creator_token_status": "creator_hold",
+  "twitter": "FarProtocol",
+  "telegram": "https://t.me/#0x...",
+  "website": "https://farprotocol.app",
+  "is_wash_trading": false,
+  "top_10_holder_rate": 0,
+  "suspected_insider_hold_rate": 0,
+  "bundler_trader_amount_rate": 0
+}
+```
+
+(Addresses/handles are real but public on-chain/social data from live tokens — not secrets. Full raw sample not committed to the repo.)
+
+### Exact field names actually returned (superset across 60 items — not every field appears on every item)
+
+`address`, `bot_degen_count`, `bot_degen_rate`, `bundler_mhr`, `bundler_trader_amount_rate`, `burn_status`, `buy_tax`, `buy_tips`, `buys_24h`, `callout_count`, `chain`, `co_d`, `complete_cost_time`, `complete_timestamp`, `created_timestamp`, `creation_tool`, `creator`, `creator_balance_rate`, `creator_created_count`, `creator_created_inner_count`, `creator_created_open_count`, `creator_created_open_ratio`, `creator_token_status`, `cto_flag`, `dev_team_hold_rate`, `dev_token_burn_amount`, `dev_token_burn_ratio`, `dexscr_ad`, `dexscr_boost_fee`, `dexscr_trending_bar`, `dexscr_update_link`, `entrapment_ratio`, `exchange`, `fee_params`, `fresh_wallet_rate`, `fund_from_address`, `fund_from_ts`, `has_at_least_one_social`, `holder_count`, `image_dup`, `is_honeypot`, `is_og`, `is_wash_trading`, `launchpad`, `launchpad_platform`, `launchpad_status`, `liquidity`, `logo`, `logo_small_base64`, `market_cap`, `mk`, `name`, `net_buy_24h`, `new_wallet_volume`, `open_source`, `open_timestamp`, `owner_renounced`, `pool_address`, `price`, `progress`, `quote_address`, `quote_address_type`, `rat_trader_amount_rate`, `renowned_count`, `s_qsafe`, `sell_tax`, `sells_24h`, `seq_index`, `smart_degen_count`, `sniper_count`, `status`, `suspected_insider_hold_rate`, `swaps_24h`, `symbol`, `tax_allocation`, `telegram`, `telegram_dup`, `tg_call_count`, `top70_sniper_hold_rate`, `top_10_holder_rate`, `total_buy_tax`, `total_fee`, `total_sell_tax`, `total_supply`, `trade_fee`, `trans_name_zhcn`, `trans_symbol_zhcn`, `tweet_publish_time`, `twitter`, `twitter_change_flag`, `twitter_create_token_count`, `twitter_del_post_token_count`, `twitter_dup`, `twitter_handle`, `twitter_is_tweet`, `twitter_rename_count`, `visiting_count`, `volume_24h`, `website`, `website_dup`, `x_user_follower`, `x_user_following`.
+
+**No `usd_market_cap` key appeared in any sampled item** — the field is `market_cap`.
+
+### `launchpad_platform` values actually observed
+
+Only **`flap`**, **`flap_pve`**, **`longxyz`** across all 60 sampled items. **`trench` and `pons` — the earlier documentation-derived allow-list guess — were not observed at all.** That guess should not be used as a starting point for the production allow-list decision; treat it as superseded.
+
+### Comparison against `lib/gmgn/discovery-robinhood.ts` and the earlier (pre-verification) mapping in this file
+
+| Item | Earlier assumption | Live-verified finding | Adapter status |
+|---|---|---|---|
+| `address` | UNVERIFIED for Robinhood | Confirmed: 40-hex-char (`0x` + 20 bytes) EVM address, matches the Solana adapter's key name | Correct as-is |
+| `created_timestamp` | UNVERIFIED | Confirmed: Unix seconds, matches | Correct as-is |
+| `launchpad_platform` | UNVERIFIED which values exist | Confirmed key name; **observed values (`flap`/`flap_pve`/`longxyz`) contradict the `trench`/`pons` guess** | No code change needed (adapter never hardcoded a default — see `resolveLaunchpadAllowlist`) — only the guess in this document is corrected |
+| `symbol`, `name`, `twitter`, `telegram`, `website`, `has_at_least_one_social` | UNVERIFIED | Confirmed present with expected shape. `has_at_least_one_social` only present on ~half of items (boolean when present) | Correct as-is — the `?? Boolean(twitter\|\|telegram\|\|website)` fallback is exactly what covers the other half |
+| `market_cap` vs `usd_market_cap` | Assumed `usd_market_cap` primary, `market_cap` fallback (copied from Solana) | **`usd_market_cap` never appears; `market_cap` is the actual field.** Denomination unconfirmed (no currency label on the field itself) but observed scale (~$5,000 for fresh launches) is consistent with USD | Already correct by luck — the existing `?? ` fallback chain resolves to `market_cap` — but the field name priority/comment was backwards and has been corrected |
+| `liquidity` | Assumed same USD unit as market cap (per the Solana adapter's comment) | **Liquidity values (~0.001–0.005) are on a completely different scale than market_cap (~5,000) in the same items — they do NOT share a unit on Robinhood.** Likely native-ETH-denominated | Not yet consumed by any safety logic in this PR (PR05 doesn't touch `safety.ts`) — **flagged as a PR06 blocker**: `lib/gmgn/safety.ts`'s liquidity-floor logic assumes a shared unit with market cap, which will be wrong here if ported unchanged |
+| Creator/deployer address | Assumed absent (inherited from the Solana adapter, which has no such field) | **`creator` is present on 60/60 sampled items, valid EVM address.** This was a genuine gap in the Solana-derived hypothesis, now corrected | `creatorAddress` now mapped from `raw.creator` (was hardcoded `null`) |
+| Creator-holding data | Assumed `creator_balance_rate`/`creator_created_count` (copied from Solana) | Confirmed present under the same key names | Correct as-is |
+| `is_honeypot` and similar security flags | Assumed JSON boolean (copied from Solana) | **`is_honeypot`, `owner_renounced`, `open_source`, `burn_status` use GMGN's own `"yes"`/`"no"`/`"unknown"` STRING convention on this chain** — `is_wash_trading`/`has_at_least_one_social` remain real JSON booleans | `bool()` helper was silently mis-parsing `"no"` as `null` (unknown) instead of `false` — **fixed** to also recognize `"yes"`/`"no"` strings |
+| `owner_renounced`, `open_source`, `burn_status` | Not previously known to exist | Confirmed present, `"yes"` on every sampled item (no `"no"` observed in this sample) | **Not added to `RobinhoodDiscoveredToken` or any safety check in this PR** — deciding whether/how these map to Noah's mint/freeze-authority-equivalent checks is explicitly PR06's job |
+| Nested "security" object | Unknown | **None found** — no `blacklist`/`proxy`/`pausable`/`mintable`/`hidden_owner` keys anywhere in the sample; risk signals are all flat scalar fields | No nested-object handling needed |
+| `total_supply`, `holder_count` | UNVERIFIED | Confirmed present, expected shape (`total_supply` consistently `1000000000` in this sample — fixed-supply meme-token pattern, same as Solana) | Correct as-is |
+
+### Caveat
+
+This was a single ~60-item sample from one point in time, via a shared public demo key — strong evidence, not an exhaustive audit. No `is_honeypot: "yes"` or `owner_renounced: "no"` was observed, which doesn't mean those values never occur; safety logic (PR06) should not assume this sample was exhaustive.
+
 ## PR05 update (2026-09-29): a verified baseline now exists, but not for Robinhood specifically
 
 This repo already has a **working, production-verified** GMGN discovery adapter for Solana — `lib/gmgn/discovery.ts` — whose field names (`address`, `symbol`, `name`, `created_timestamp`, `launchpad_platform`, `renounced_mint`, `renounced_freeze_account`, `has_at_least_one_social`, `twitter`, `telegram`, `website`, `is_honeypot`, `buy_tax`, `sell_tax`, `rug_ratio`, `top_10_holder_rate`, `bundler_trader_amount_rate`, `suspected_insider_hold_rate`, `creator_balance_rate`, `creator_created_count`, `is_wash_trading`, `image_dup`, `usd_market_cap`, `total_supply`, `liquidity`, `holder_count`, `progress`, `smart_degen_count`, `renowned_count`) are confirmed against real production responses per that file's own comments ("verified against live rows", "measured live").
