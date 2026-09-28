@@ -16,6 +16,7 @@
     "test:perpspad": "tsx scripts/test-perpspad.ts",
     "init:perpspad": "tsx scripts/init-perpspad-config.ts",
     "verify:robinhood-rpc": "tsx scripts/verify-robinhood-rpc.ts",
+    "migrate:chain-neutral": "tsx scripts/apply-chain-neutral-migration.ts",
     "deploy:perpspad": "anchor deploy --provider.cluster devnet"
   },
   "dependencies": {
