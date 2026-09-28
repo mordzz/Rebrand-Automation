@@ -69,6 +69,14 @@ Only **`flap`**, **`flap_pve`**, **`longxyz`** across all 60 sampled items. **`t
 | Nested "security" object | Unknown | **None found** — no `blacklist`/`proxy`/`pausable`/`mintable`/`hidden_owner` keys anywhere in the sample; risk signals are all flat scalar fields | No nested-object handling needed |
 | `total_supply`, `holder_count` | UNVERIFIED | Confirmed present, expected shape (`total_supply` consistently `1000000000` in this sample — fixed-supply meme-token pattern, same as Solana) | Correct as-is |
 
+### Unit contract: `buy_tax`/`sell_tax` are 0–1 ratios upstream, `buyTaxPct`/`sellTaxPct` are 0–100 percentages here
+
+GMGN's raw `buy_tax`/`sell_tax` fields are **0–1 ratios** (`0.03` = 3%, `0.0899` ≈ 8.99%) — this matches GMGN's own documentation and is confirmed by the live Robinhood sample (`buy_tax: 0.0899` on a token whose displayed tax is clearly meant to read as ~9%, not 0.09%). `lib/gmgn/discovery-robinhood.ts`'s `buyTaxPct`/`sellTaxPct` fields are named — and documented — as 0–100 percentages, matching every other `*Pct` field in this codebase (`maxCreatorBuyPct`, `takeProfitPct`, etc.). The normalizer now converts at the boundary (`ratioToPct()`) so a caller reading `buyTaxPct` gets an actual percentage, not a ratio 100x too small.
+
+**Other 0–1 ratio fields (`rugRatio`, `top10HolderRate`, `bundlerRate`, `insiderHoldRate`, `creatorHoldRate`, `progress`) are deliberately NOT converted** — they're named `*Rate`/`rugRatio`/`progress`, not `*Pct`, so there's no equivalent naming contract implying 0–100. This fix is scoped to the two fields whose names actually promise a percentage.
+
+**Not applied to `lib/gmgn/discovery.ts` (Solana)** — that adapter has the identical `buyTaxPct: num(raw.buy_tax)` pattern and likely has the same unit bug, but fixing it is out of scope here: it's a separate, pre-existing issue in already-shipped Solana code, not something this Robinhood-migration PR should silently touch.
+
 ### Caveat
 
 This was a single ~60-item sample from one point in time, via a shared public demo key — strong evidence, not an exhaustive audit. No `is_honeypot: "yes"` or `owner_renounced: "no"` was observed, which doesn't mean those values never occur; safety logic (PR06) should not assume this sample was exhaustive.

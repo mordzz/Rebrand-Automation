@@ -124,8 +124,13 @@ export type RobinhoodDiscoveredToken = {
   website: string | null;
 
   isHoneypot: boolean | null;
+  /** 0–100 percentage (e.g. 8.99, not 0.0899) — GMGN's raw `buy_tax`/
+   * `sell_tax` are 0–1 ratios; see ratioToPct(). */
   buyTaxPct: number | null;
   sellTaxPct: number | null;
+  /** 0–1 ratio, NOT converted to percent — unlike buyTaxPct/sellTaxPct
+   * above. Kept as GMGN reports it; do not assume the same 0–100 scale
+   * without checking each field's own contract. */
   rugRatio: number | null;
   top10HolderRate: number | null;
   bundlerRate: number | null;
@@ -161,6 +166,17 @@ function num(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** GMGN's `buy_tax`/`sell_tax` are 0–1 ratios (0.0899 = 8.99%), live-
+ * verified against the real Robinhood payload — but this module's
+ * `buyTaxPct`/`sellTaxPct` fields are named (and documented) as 0–100
+ * percentages, matching every other `*Pct` field here. Converting at the
+ * normalization boundary keeps that contract honest instead of silently
+ * handing callers a value 100x too small. */
+function ratioToPct(v: unknown): number | null {
+  const ratio = num(v);
+  return ratio == null ? null : ratio * 100;
 }
 
 /** Handles both real booleans and GMGN's own "yes"/"no"/"unknown" string
@@ -241,8 +257,8 @@ export function normalizeRobinhoodToken(
     website,
 
     isHoneypot: bool(raw.is_honeypot),
-    buyTaxPct: num(raw.buy_tax),
-    sellTaxPct: num(raw.sell_tax),
+    buyTaxPct: ratioToPct(raw.buy_tax),
+    sellTaxPct: ratioToPct(raw.sell_tax),
     rugRatio: num(raw.rug_ratio),
     top10HolderRate: num(raw.top_10_holder_rate),
     bundlerRate: num(raw.bundler_trader_amount_rate),

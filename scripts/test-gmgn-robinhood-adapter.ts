@@ -107,6 +107,32 @@ function validRaw(overrides: Record<string, unknown> = {}) {
   assertEqual(token?.marketCapUsd, 100, "market_cap takes priority over usd_market_cap");
 }
 
+// ═══ buy_tax/sell_tax ratio→percent conversion (live-verified: GMGN
+//     reports these as 0–1 ratios, e.g. 0.0899 = 8.99% — buyTaxPct/
+//     sellTaxPct must be 0–100 to match every other *Pct field) ════════
+
+{
+  const token = normalizeRobinhoodToken(validRaw({ buy_tax: 0.03 }));
+  assertEqual(token?.buyTaxPct, 3, "buy_tax: 0.03 ratio converts to buyTaxPct: 3 percent");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ sell_tax: 0.0899 }));
+  assertEqual(token?.sellTaxPct, 8.99, "sell_tax: 0.0899 ratio converts to sellTaxPct: 8.99 percent");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ buy_tax: 0, sell_tax: 0 }));
+  assertEqual(token?.buyTaxPct, 0, "zero buy_tax stays zero, not null");
+  assertEqual(token?.sellTaxPct, 0, "zero sell_tax stays zero, not null");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({}));
+  assertEqual(token?.buyTaxPct, null, "missing buy_tax stays null");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ sell_tax: "not-a-number" }));
+  assertEqual(token?.sellTaxPct, null, "invalid sell_tax stays null, doesn't produce NaN or a garbage percent");
+}
+
 {
   const token = normalizeRobinhoodToken({ address: A, created_timestamp: 1700000000 });
   assert(token !== null, "token with only required fields still normalizes");
