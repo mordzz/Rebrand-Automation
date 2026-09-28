@@ -77,10 +77,15 @@ export const ROBINHOOD_PUBLIC_RPC_URL: string =
   process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ||
   DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
 
+/** The active network's Blockscout base URL — the single source of truth
+ * for explorer links (this module and anything built on it, e.g.
+ * `lib/chain/viem-chain.ts`'s `blockExplorers`). */
+export const ROBINHOOD_EXPLORER_BASE_URL: string =
+  EXPLORER_BASE_URLS[ROBINHOOD_NETWORK];
+
 export function explorerUrl(kind: "tx" | "address", value: string): string {
-  const base = EXPLORER_BASE_URLS[ROBINHOOD_NETWORK];
   const path = kind === "tx" ? "tx" : "address";
-  return `${base}/${path}/${value}`;
+  return `${ROBINHOOD_EXPLORER_BASE_URL}/${path}/${value}`;
 }
 
 /** All chain ids this app knows about, keyed by network — for code (e.g.

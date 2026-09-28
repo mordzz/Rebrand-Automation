@@ -1,60 +1,49 @@
 /**
- * viem `Chain` definitions for Robinhood Chain, built from the centralized
- * constants in `lib/chain/config.ts` rather than re-declaring chain id /
- * RPC / explorer values here. Consumed by Privy's `defaultChain` /
- * `supportedChains` (components/providers.tsx) and, later, by the PR03
- * RPC/read layer.
+ * viem `Chain` definition for the currently-active Robinhood Chain
+ * network, built from the centralized constants in `lib/chain/config.ts`
+ * rather than re-declaring chain id / RPC / explorer values here.
+ * Consumed by Privy's `defaultChain` / `supportedChains`
+ * (components/providers.tsx) and, later, by the PR03 RPC/read layer.
+ *
+ * Only the active network (testnet by default; mainnet only once
+ * explicitly enabled via NEXT_PUBLIC_ROBINHOOD_NETWORK, per PR01) is
+ * exposed here — the user-wallet layer must not offer a testnet/mainnet
+ * switch before the mainnet readiness gate.
  */
 import { defineChain, type Chain } from "viem";
 
 import {
-  ROBINHOOD_CHAIN_IDS,
+  ROBINHOOD_CHAIN_ID,
+  ROBINHOOD_EXPLORER_BASE_URL,
   ROBINHOOD_NATIVE_SYMBOL,
   ROBINHOOD_NETWORK,
   ROBINHOOD_PUBLIC_RPC_URL,
 } from "@/lib/chain/config";
 
-const explorerBaseUrls: Record<"mainnet" | "testnet", string> = {
-  mainnet: "https://robinhoodchain.blockscout.com",
-  testnet: "https://explorer.testnet.chain.robinhood.com",
-};
-
-function makeChain(network: "mainnet" | "testnet"): Chain {
-  // Client code (Privy's browser-side wallet flows) must only ever be
-  // handed the public RPC — never the server-only ROBINHOOD_RPC_URL,
-  // which may carry a provider API key.
-  const rpcUrl = network === ROBINHOOD_NETWORK ? ROBINHOOD_PUBLIC_RPC_URL : undefined;
-
-  return defineChain({
-    id: ROBINHOOD_CHAIN_IDS[network],
-    name: network === "mainnet" ? "Robinhood Chain" : "Robinhood Chain Testnet",
-    nativeCurrency: {
-      name: "Ether",
-      symbol: ROBINHOOD_NATIVE_SYMBOL,
-      decimals: 18,
+/** The single Robinhood Chain network this deployment is configured for.
+ * Client code (Privy's browser-side wallet flows) only ever gets the
+ * public RPC — never the server-only ROBINHOOD_RPC_URL, which may carry
+ * a provider API key. */
+export const robinhoodChain: Chain = defineChain({
+  id: ROBINHOOD_CHAIN_ID,
+  name: ROBINHOOD_NETWORK === "mainnet" ? "Robinhood Chain" : "Robinhood Chain Testnet",
+  nativeCurrency: {
+    name: "Ether",
+    symbol: ROBINHOOD_NATIVE_SYMBOL,
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: { http: [ROBINHOOD_PUBLIC_RPC_URL] },
+  },
+  blockExplorers: {
+    default: {
+      name: "Blockscout",
+      url: ROBINHOOD_EXPLORER_BASE_URL,
     },
-    rpcUrls: {
-      default: { http: rpcUrl ? [rpcUrl] : [] },
-    },
-    blockExplorers: {
-      default: {
-        name: "Blockscout",
-        url: explorerBaseUrls[network],
-      },
-    },
-    testnet: network === "testnet",
-  });
-}
+  },
+  testnet: ROBINHOOD_NETWORK === "testnet",
+});
 
-/** The network selected via NEXT_PUBLIC_ROBINHOOD_NETWORK — this is what
- * Privy should default new (embedded) wallets to and prompt external
- * wallets to switch to. */
-export const robinhoodChain: Chain = makeChain(ROBINHOOD_NETWORK);
-
-/** Both networks, so the app can offer a testnet/mainnet switch later
- * without re-deriving chain definitions. Only the active network's chain
- * gets a real RPC URL wired in above — the other is definition-only. */
-export const robinhoodChains: Chain[] = [
-  makeChain("mainnet"),
-  makeChain("testnet"),
-];
+/** Privy's `supportedChains` wants an array; this deployment supports
+ * exactly one Robinhood Chain network at a time. */
+export const robinhoodChains: Chain[] = [robinhoodChain];
