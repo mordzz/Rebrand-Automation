@@ -9,12 +9,12 @@
 import { address, type Address } from "@solana/kit";
 
 export const PERPSPAD_PROGRAM_ID: Address = address(
-  process.env.NEXT_PUBLIC_PERPSPAD_PROGRAM_ID ??
+  process.env.NEXT_PUBLIC_PERPSPAD_PROGRAM_ID ||
     "CUsgyc49DaWgRcRyLfKjrR5SnCRcDi4CAyuBuU692VQa"
 );
 
 export const PERPSPAD_RPC_URL: string =
-  process.env.NEXT_PUBLIC_PERPSPAD_RPC_URL ?? "https://api.devnet.solana.com";
+  process.env.NEXT_PUBLIC_PERPSPAD_RPC_URL || "https://api.devnet.solana.com";
 
 /** CAIP-2 chain id, which is what wallet-standard signers (Privy) expect
  * when told where to broadcast. */
