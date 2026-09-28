@@ -12,6 +12,19 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+/**
+ * One-time-migration marker table (drizzle/0001_chain_neutral_foundation.sql
+ * and any future hand-authored migration in the same style). Declared here
+ * so `drizzle-kit push` recognizes it as intentional rather than proposing
+ * to drop it as schema drift.
+ */
+export const migrations = pgTable("_migrations", {
+  name: text("name").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const trades = pgTable(
   "trades",
   {
@@ -38,6 +51,10 @@ export const trades = pgTable(
     pnlNative: numeric("pnl_native"),
     nativeSymbol: text("native_symbol"),
     chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    /* "testnet" | "mainnet" | null. Distinguishes Robinhood testnet
+     * (chain id 46630) from mainnet (4663) — `chain` alone can't. Left
+     * NULL for legacy Solana rows; never guessed. */
+    network: text("network"),
     openedAt: timestamp("opened_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true })
       .notNull()
@@ -101,6 +118,7 @@ export const positions = pgTable("positions", {
   entryTxHash: text("entry_tx_hash"),
   nativeSymbol: text("native_symbol"),
   chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+  network: text("network"), // "testnet" | "mainnet" | null — see trades.network
   openedAt: timestamp("opened_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -295,6 +313,7 @@ export const logs = pgTable(
     txHash: text("tx_hash"),
     tokenAddress: text("token_address"),
     chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    network: text("network"), // "testnet" | "mainnet" | null — see trades.network
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -450,6 +469,7 @@ export const alphaCandidates = pgTable(
      * unchanged in this PR (that's PR05/PR06). */
     tokenAddress: text("token_address"),
     chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    network: text("network"), // "testnet" | "mainnet" | null — see trades.network
     symbol: text("symbol"),
     name: text("name"),
     /* Normalized ticker (see lib/sniper/alpha-candidates.ts#symbolKeyFor),
