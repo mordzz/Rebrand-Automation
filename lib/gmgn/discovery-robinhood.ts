@@ -10,56 +10,77 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  * GMGN_API_KEY is unset in this environment, so no live authenticated
  * call to `chain=robinhood` has been made — the "mandatory first step"
  * this PR was asked to complete (inspect real Robinhood payloads) could
- * NOT be finished. What follows is the best-available baseline, not a
- * verified mapping:
+ * NOT be finished. What follows distinguishes two different kinds of
+ * claim, which must not be conflated:
  *
- *   - Field *names* below (address, symbol, created_timestamp, etc.) are
- *     copied from lib/gmgn/discovery.ts, which IS verified against real
- *     production GMGN responses for `chain=sol` (see that file's
- *     comments — "verified against live rows", "seen on is_honeypot /
- *     open_source for fresh mints"). GMGN's own docs describe one shared
- *     schema/response wrapper across the chains it indexes, so these
- *     generic analytics field names (price/liquidity/risk-signal keys)
- *     are a reasonable working hypothesis for `chain=robinhood` too.
+ *   - DOCUMENTED by GMGN for `market trenches` generally: `address`,
+ *     `symbol`, `name`, `launchpad_platform`, `usd_market_cap`,
+ *     `liquidity`, `total_supply`, `created_timestamp`, `twitter`,
+ *     `telegram`, `website`, `has_at_least_one_social` — these appear in
+ *     GMGN's own documentation for the trenches response shape in
+ *     general, not specifically confirmed for `chain=robinhood`.
+ *   - LIVE-VERIFIED against a real response: only for `chain=sol`, via
+ *     `lib/gmgn/discovery.ts` (see that file's own comments — "verified
+ *     against live rows", "measured live"). Its full field set (risk
+ *     signals like `is_honeypot`/`buy_tax`/`rug_ratio`/etc., plus the
+ *     documented fields above) is what this module's field names are
+ *     copied from, as a working hypothesis for Robinhood.
+ *
+ *   Neither of these is "live-verified for chain=robinhood specifically".
+ *   That verification requires running `npm run inspect:gmgn-robinhood`
+ *   with a real GMGN_API_KEY and reviewing the actual response — not yet
+ *   done. Do not proceed to PR06 (safety adaptation) or PR07 (paper
+ *   trading integration) against this module's field assumptions until
+ *   that inspection has happened; see that script and
+ *   GMGN_ROBINHOOD_FIELD_MAP.md.
+ *
  *   - Solana-SPL-specific fields (renounced_mint, renounced_freeze_account,
  *     standard) are NOT carried into this module's type at all — they are
- *     not EVM concepts, so inventing an "always null" field for them would
- *     misrepresent absence-of-concept as absence-of-data. Their EVM
+ *     not EVM concepts, so inventing an "always null" field for them
+ *     would misrepresent absence-of-concept as absence-of-data. Their EVM
  *     equivalents (owner-renounced, blacklist capability, etc.) are PR06's
  *     job, not this one's.
- *   - creatorAddress: GMGN's Solana response, per the same verified
- *     discovery.ts, has NO creator/deployer address field at all — this
- *     was already flagged MISSING in GMGN_ROBINHOOD_FIELD_MAP.md before
- *     this PR. Kept in this module's type (per the requested shape) but
- *     always null until a real payload proves otherwise.
+ *   - creatorAddress: not mapped by the existing (verified, chain=sol)
+ *     adapter, and not confirmed present in the documented trenches
+ *     response shape either — live Robinhood payload verification is
+ *     required before this can be populated or declared absent. Kept in
+ *     this module's type (per the requested shape) but always null for
+ *     now; do not invent a raw key name for it.
  *   - Whether `chain=robinhood` returns launchpad_platform values that
- *     match the allow-list names inspected earlier this migration (see
- *     GMGN_ROBINHOOD_FIELD_MAP.md — trench, pons, noxa, dyorswap, …) is
- *     UNVERIFIED. The allow-list mechanism below is structured to be
- *     supplied explicitly rather than hardcoded pervasively, precisely
- *     because this hasn't been confirmed against a real payload.
- *
- * Once a real GMGN_API_KEY is available, run `npm run inspect:gmgn-robinhood`
- * (scripts/inspect-gmgn-robinhood.ts) and update this file's normalize()
- * function and GMGN_ROBINHOOD_FIELD_MAP.md from the actual response before
- * this adapter is wired into any live discovery loop.
+ *     match any particular allow-list is entirely UNVERIFIED, which is
+ *     exactly why this module requires an explicit allow-list rather than
+ *     shipping a default — see resolveLaunchpadAllowlist below.
  */
 
 /**
- * Curated v1 launchpad allow-list. NOT GMGN's full Robinhood default
- * allow-list (~26 platforms) — per the migration plan, enabling every
- * GMGN-supported Robinhood launchpad would apply pump.fun-shaped safety
- * assumptions to launch mechanics that were never evaluated against.
+ * Resolves the production launchpad allow-list from an explicit caller
+ * argument or the server-only `GMGN_ROBINHOOD_LAUNCHPADS` env var
+ * (comma-separated). Deliberately has NO built-in default — choosing
+ * which Robinhood launchpads are safe enough to snipe from is a
+ * product/risk decision this adapter is not authorized to make, and a
+ * hardcoded default here would silently become the de facto answer the
+ * moment this code shipped. Returns null (fail closed) when neither
+ * source provides a non-empty list.
  *
- * `trench` and `pons` are carried over from GMGN_ROBINHOOD_FIELD_MAP.md's
- * earlier audit as the closest conceptual analogs to pump.fun's
- * permissionless bonding-curve model — but that judgment was made from
- * documentation, not a real payload, and is a PRODUCT decision pending
- * explicit sign-off, not a technical one this PR is authorized to finalize.
- * Structured as a plain override-able array specifically so it isn't
- * silently treated as final.
+ * Never read from a `NEXT_PUBLIC_*` var — this is server-only
+ * configuration, same posture as GMGN_API_KEY itself.
  */
-export const ROBINHOOD_LAUNCHPAD_ALLOWLIST: readonly string[] = ["trench", "pons"];
+export function resolveLaunchpadAllowlist(
+  explicit?: readonly string[]
+): string[] | null {
+  if (explicit && explicit.length > 0) return [...explicit];
+
+  const fromEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS?.trim();
+  if (fromEnv) {
+    const list = fromEnv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (list.length > 0) return list;
+  }
+
+  return null;
+}
 
 export type RobinhoodDiscoveredToken = {
   tokenAddress: string;
@@ -112,12 +133,6 @@ export type RobinhoodDiscoveredToken = {
   raw: Record<string, unknown>;
 };
 
-export type RobinhoodDiscoveryResult =
-  | { ok: true; tokens: RobinhoodDiscoveredToken[] }
-  | { ok: false; reason: "not_configured" }
-  | { ok: false; reason: "provider_error"; detail: string }
-  | { ok: false; reason: "malformed_payload"; detail: string };
-
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
@@ -146,6 +161,10 @@ function isEvmAddress(value: string): boolean {
  * lib/gmgn/discovery.ts already uses for Solana, extended here to also
  * reject an address that isn't EVM-shaped (a `0x...` value is a hard
  * requirement for this chain, unlike Solana's base58 addresses).
+ *
+ * A null return here means "structurally unusable" (malformed), not
+ * "policy-excluded" — launchpad allow-list filtering happens separately,
+ * in parseNewCreationPayload, on tokens that DID normalize successfully.
  */
 export function normalizeRobinhoodToken(
   raw: Record<string, unknown>,
@@ -206,31 +225,135 @@ export function normalizeRobinhoodToken(
   };
 }
 
+export type ParseOutcome =
+  | { ok: true; tokens: RobinhoodDiscoveredToken[]; malformedCount: number }
+  | { ok: false; reason: "malformed_payload"; detail: string };
+
+/**
+ * Pure parser: turns a raw `/v1/trenches` response body into normalized,
+ * allow-list-filtered, deduplicated tokens — or an explicit
+ * `malformed_payload` result. Factored out from discoverRobinhoodTokens
+ * specifically so it's testable without a network mock (see
+ * scripts/test-gmgn-robinhood-adapter.ts).
+ *
+ * Required semantics (do not weaken without re-reading the PR05 review):
+ *   - `new_creation` missing/not-an-array/response-not-an-object → malformed_payload
+ *   - `new_creation = []` → success, zero tokens (a quiet market, not a break)
+ *   - every item present but every one fails normalizeRobinhoodToken()
+ *     (missing/malformed required fields) → malformed_payload, NOT an
+ *     empty success — a provider schema change must not look identical
+ *     to "no new tokens"
+ *   - items that normalize successfully but whose launchpad isn't in
+ *     `allowlist` are filtered out — this is policy, not malformation,
+ *     and does NOT count toward malformedCount or trigger malformed_payload
+ *   - duplicate token addresses collapse to one entry
+ */
+export function parseNewCreationPayload(
+  data: unknown,
+  allowlist: readonly string[],
+  network: RobinhoodNetwork = ROBINHOOD_NETWORK
+): ParseOutcome {
+  if (typeof data !== "object" || data === null) {
+    return {
+      ok: false,
+      reason: "malformed_payload",
+      detail: `expected the trenches response to be an object, got ${typeof data}`,
+    };
+  }
+
+  const list = (data as Record<string, unknown>).new_creation;
+  if (list === undefined) {
+    return { ok: false, reason: "malformed_payload", detail: "response is missing data.new_creation" };
+  }
+  if (!Array.isArray(list)) {
+    return {
+      ok: false,
+      reason: "malformed_payload",
+      detail: `expected data.new_creation to be an array, got ${typeof list}`,
+    };
+  }
+  if (list.length === 0) {
+    return { ok: true, tokens: [], malformedCount: 0 };
+  }
+
+  const allowSet = new Set(allowlist);
+  const seen = new Set<string>();
+  const tokens: RobinhoodDiscoveredToken[] = [];
+  let malformedCount = 0;
+
+  for (const item of list) {
+    const token =
+      typeof item === "object" && item !== null
+        ? normalizeRobinhoodToken(item as Record<string, unknown>, network)
+        : null;
+
+    if (!token) {
+      malformedCount++;
+      continue;
+    }
+    if (!token.launchpad || !allowSet.has(token.launchpad)) continue; // policy exclusion, not malformed
+    if (seen.has(token.tokenAddress)) continue; // duplicate, not malformed
+    seen.add(token.tokenAddress);
+    tokens.push(token);
+  }
+
+  // Every item present, none survived normalization at all: this is a
+  // structurally broken/changed payload, not "everything got filtered by
+  // policy" (which would still show malformedCount < list.length).
+  if (malformedCount === list.length) {
+    return {
+      ok: false,
+      reason: "malformed_payload",
+      detail: `all ${list.length} item(s) in data.new_creation failed to normalize`,
+    };
+  }
+
+  return { ok: true, tokens: tokens.sort((a, b) => b.createdAt - a.createdAt), malformedCount };
+}
+
+export type RobinhoodDiscoveryResult =
+  | { ok: true; tokens: RobinhoodDiscoveredToken[] }
+  | { ok: false; reason: "not_configured" }
+  | { ok: false; reason: "launchpad_allowlist_not_configured" }
+  | { ok: false; reason: "provider_error"; detail: string }
+  | { ok: false; reason: "malformed_payload"; detail: string };
+
 /**
  * Fetches fresh Robinhood-chain launches (new_creation only — v1 scope,
- * see the plan) through GMGN's `/v1/trenches`, filtered to
- * `launchpadAllowlist`, normalized, deduplicated by token address.
+ * see the plan) through GMGN's `/v1/trenches`.
+ *
+ * Fails closed on launchpad configuration: if `launchpadAllowlist` isn't
+ * supplied and `GMGN_ROBINHOOD_LAUNCHPADS` isn't set, this returns
+ * `launchpad_allowlist_not_configured` rather than silently querying
+ * every GMGN-supported Robinhood platform or a hardcoded guess.
  *
  * Returns a discriminated result rather than an empty array on failure:
  * a provider outage, malformed response, or missing API key must not
  * read the same as "no new tokens this cycle" to a caller — see
- * lib/gmgn/client.ts's `gmgnRequest`.
+ * lib/gmgn/client.ts's `gmgnRequest` and parseNewCreationPayload above.
  */
 export async function discoverRobinhoodTokens(
-  launchpadAllowlist: readonly string[] = ROBINHOOD_LAUNCHPAD_ALLOWLIST,
+  launchpadAllowlist?: readonly string[],
   limit = 80
 ): Promise<RobinhoodDiscoveryResult> {
+  const allowlist = resolveLaunchpadAllowlist(launchpadAllowlist);
+  if (!allowlist) return { ok: false, reason: "launchpad_allowlist_not_configured" };
+
   const body: Record<string, unknown> = {
     version: "v2",
     new_creation: {
       filters: ["offchain", "onchain"],
       launchpad_platform_v2: true,
       limit,
-      launchpad_platform: [...launchpadAllowlist],
+      // Upstream filter — kept even though we also enforce the allow-list
+      // locally below. Defense in depth: an unexpected upstream response
+      // (a GMGN bug, a future API change) must not bypass the boundary
+      // just because the server-side filter usually does the work.
+      launchpad_platform: allowlist,
     },
   };
 
-  const result = await gmgnRequest<Record<string, unknown[]>>(
+  const result = await gmgnRequest<Record<string, unknown>>(
     "/v1/trenches",
     { chain: "robinhood" },
     { method: "POST", body }
@@ -250,25 +373,17 @@ export async function discoverRobinhoodTokens(
     return { ok: false, reason: "provider_error", detail };
   }
 
-  const list = result.data.new_creation;
-  if (!Array.isArray(list)) {
-    return {
-      ok: false,
-      reason: "malformed_payload",
-      detail: `expected data.new_creation to be an array, got ${typeof list}`,
-    };
+  const outcome = parseNewCreationPayload(result.data, allowlist);
+  if (!outcome.ok) return outcome;
+
+  if (outcome.malformedCount > 0) {
+    // No secrets here — just a count and the (non-secret) endpoint path.
+    console.warn(
+      `[gmgn/discovery-robinhood] ${outcome.malformedCount} of ${
+        outcome.malformedCount + outcome.tokens.length
+      } new_creation item(s) failed to normalize this cycle`
+    );
   }
 
-  const seen = new Set<string>();
-  const tokens: RobinhoodDiscoveredToken[] = [];
-  for (const item of list) {
-    if (typeof item !== "object" || item === null) continue;
-    const token = normalizeRobinhoodToken(item as Record<string, unknown>);
-    if (!token) continue;
-    if (seen.has(token.tokenAddress)) continue;
-    seen.add(token.tokenAddress);
-    tokens.push(token);
-  }
-
-  return { ok: true, tokens: tokens.sort((a, b) => b.createdAt - a.createdAt) };
+  return { ok: true, tokens: outcome.tokens };
 }

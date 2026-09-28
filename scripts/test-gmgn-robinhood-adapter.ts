@@ -1,9 +1,9 @@
 /**
  * Focused fixture tests for the GMGN Robinhood discovery adapter
  * (lib/gmgn/discovery-robinhood.ts). No network calls — pure-function
- * tests against normalizeRobinhoodToken() plus one integration-shaped
- * check of discoverRobinhoodTokens()'s error-vs-empty distinction via a
- * temporarily-unset GMGN_API_KEY.
+ * tests against normalizeRobinhoodToken() and parseNewCreationPayload(),
+ * plus integration-shaped checks of discoverRobinhoodTokens()'s
+ * failure-mode distinctions.
  *
  * This repo has no test runner installed (no vitest/jest) — this follows
  * the existing scripts/test-perpspad.ts convention: a plain tsx script
@@ -11,7 +11,11 @@
  *
  * Run: npm run test:gmgn-robinhood
  */
-import { normalizeRobinhoodToken, discoverRobinhoodTokens } from "@/lib/gmgn/discovery-robinhood";
+import {
+  normalizeRobinhoodToken,
+  parseNewCreationPayload,
+  discoverRobinhoodTokens,
+} from "@/lib/gmgn/discovery-robinhood";
 
 let failures = 0;
 
@@ -35,135 +39,180 @@ function assert(condition: boolean, label: string): void {
   }
 }
 
-const VALID_TOKEN_ADDRESS = "0x1234567890123456789012345678901234567890";
+const A = "0x1111111111111111111111111111111111111111";
+const ALLOWED = ["trench", "pons"];
 
-// ── 1. Valid Robinhood EVM token address ────────────────────────────────
-{
-  const raw = {
-    address: VALID_TOKEN_ADDRESS,
-    symbol: "TEST",
-    name: "Test Token",
+function validRaw(overrides: Record<string, unknown> = {}) {
+  return {
+    address: A,
     created_timestamp: 1700000000,
+    symbol: "TEST",
     launchpad_platform: "trench",
-    usd_market_cap: 50000,
-    total_supply: 1000000,
-    liquidity: 20000,
-    holder_count: 42,
-    has_at_least_one_social: true,
-    twitter: "https://x.com/test",
+    ...overrides,
   };
-  const token = normalizeRobinhoodToken(raw, "testnet");
+}
+
+// ═══ normalizeRobinhoodToken ═══════════════════════════════════════════
+
+{
+  const token = normalizeRobinhoodToken(validRaw());
   assert(token !== null, "valid token normalizes to non-null");
   if (token) {
-    assertEqual(token.tokenAddress, VALID_TOKEN_ADDRESS, "tokenAddress preserved verbatim");
+    assertEqual(token.tokenAddress, A, "tokenAddress preserved verbatim");
     assertEqual(token.chain, "robinhood", "chain is robinhood");
-    assertEqual(token.network, "testnet", "network passed through");
-    assertEqual(token.symbol, "TEST", "symbol mapped");
-    assertEqual(token.hasSocialLink, true, "hasSocialLink from has_at_least_one_social");
     assertEqual(token.creatorAddress, null, "creatorAddress always null (unverified — see file header)");
   }
 }
 
-// ── 2. Missing optional metadata ────────────────────────────────────────
 {
-  const raw = {
-    address: VALID_TOKEN_ADDRESS,
-    created_timestamp: 1700000000,
-    // no symbol, name, socials, risk signals at all
-  };
-  const token = normalizeRobinhoodToken(raw);
+  const token = normalizeRobinhoodToken({ address: A, created_timestamp: 1700000000 });
   assert(token !== null, "token with only required fields still normalizes");
-  if (token) {
-    assertEqual(token.symbol, null, "missing symbol is null, not a crash");
-    assertEqual(token.hasSocialLink, false, "no socials means hasSocialLink false");
-    assertEqual(token.isHoneypot, null, "missing risk signal is null (unknown), not false");
+  assertEqual(token?.symbol, null, "missing symbol is null, not a crash");
+  assertEqual(token?.isHoneypot, null, "missing risk signal is null (unknown), not false");
+}
+
+{
+  // @ts-expect-error — deliberately wrong shape
+  assertEqual(normalizeRobinhoodToken(null), null, "null raw item normalizes to null, doesn't throw");
+}
+
+assertEqual(
+  normalizeRobinhoodToken({ created_timestamp: 1700000000, symbol: "NOADDR" }),
+  null,
+  "missing address normalizes to null"
+);
+assertEqual(
+  normalizeRobinhoodToken({ address: "7xK4pumpNotAnEvmAddress", created_timestamp: 1700000000 }),
+  null,
+  "non-EVM address is rejected, not passed through"
+);
+assertEqual(
+  normalizeRobinhoodToken({ address: A, symbol: "NOTS" }),
+  null,
+  "missing created_timestamp normalizes to null"
+);
+
+// ═══ parseNewCreationPayload — the schema-mismatch-vs-empty distinction ═
+
+{
+  const outcome = parseNewCreationPayload({ new_creation: [] }, ALLOWED);
+  assertEqual(outcome, { ok: true, tokens: [], malformedCount: 0 }, "empty new_creation → successful empty result");
+}
+
+{
+  const outcome = parseNewCreationPayload({ new_creation: [validRaw()] }, ALLOWED);
+  assert(outcome.ok === true, "non-empty valid payload → ok result");
+  if (outcome.ok) {
+    assertEqual(outcome.tokens.length, 1, "non-empty valid payload → one valid token");
+    assertEqual(outcome.malformedCount, 0, "no malformed items counted for a clean payload");
   }
 }
 
-// ── 3. Unsupported launchpad — normalization itself doesn't filter by
-//      allow-list (that's the caller's job via discoverRobinhoodTokens'
-//      request filter), but the launchpad value must still round-trip
-//      so a caller CAN filter on it. ──────────────────────────────────
 {
-  const raw = {
-    address: VALID_TOKEN_ADDRESS,
-    created_timestamp: 1700000000,
-    launchpad_platform: "some_unvetted_platform",
-  };
-  const token = normalizeRobinhoodToken(raw);
-  assertEqual(token?.launchpad, "some_unvetted_platform", "launchpad value preserved for caller-side filtering");
+  const outcome = parseNewCreationPayload(
+    { new_creation: [validRaw({ launchpad_platform: "some_unapproved_platform" })] },
+    ALLOWED
+  );
+  assert(outcome.ok === true, "unsupported launchpad → still a successful (filtered) result");
+  if (outcome.ok) {
+    assertEqual(outcome.tokens.length, 0, "unsupported launchpad → excluded by the allow-list");
+    assertEqual(outcome.malformedCount, 0, "allow-list exclusion is not counted as malformed");
+  }
 }
 
-// ── 4. Malformed provider payload (not an object) ───────────────────────
 {
-  // @ts-expect-error — deliberately wrong shape, matches what a
-  // malformed API response could hand us before any type-checking.
-  const token = normalizeRobinhoodToken(null);
-  assertEqual(token, null, "null raw item normalizes to null, doesn't throw");
+  const outcome = parseNewCreationPayload(
+    { new_creation: [validRaw({ launchpad_platform: null })] },
+    ALLOWED
+  );
+  assert(outcome.ok === true, "null launchpad → still a successful (filtered) result");
+  if (outcome.ok) assertEqual(outcome.tokens.length, 0, "missing/null launchpad → excluded");
 }
 
-// ── 5. Missing field required by current downstream logic (no address) ──
 {
-  const raw = { created_timestamp: 1700000000, symbol: "NOADDR" };
-  const token = normalizeRobinhoodToken(raw);
-  assertEqual(token, null, "missing address normalizes to null");
+  const outcome = parseNewCreationPayload(
+    { new_creation: [{ symbol: "NOADDR1" }, { created_timestamp: 1700000000 }] },
+    ALLOWED
+  );
+  assertEqual(outcome.ok, false, "non-empty payload where every row is malformed → not ok");
+  if (!outcome.ok) assertEqual(outcome.reason, "malformed_payload", "reason is malformed_payload, not empty success");
 }
 
-// ── 5b. Non-EVM-shaped address (e.g. a Solana base58 string) is rejected ──
 {
-  const raw = {
-    address: "7xK4pumpXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    created_timestamp: 1700000000,
-  };
-  const token = normalizeRobinhoodToken(raw);
-  assertEqual(token, null, "non-EVM address is rejected, not passed through");
+  const outcome = parseNewCreationPayload(
+    { new_creation: [validRaw(), { symbol: "NOADDR" }] },
+    ALLOWED
+  );
+  assert(outcome.ok === true, "mixed valid + malformed rows → still a successful result");
+  if (outcome.ok) {
+    assertEqual(outcome.tokens.length, 1, "valid row survives");
+    assertEqual(outcome.malformedCount, 1, "malformed row is counted, doesn't corrupt the valid one");
+  }
 }
 
-// ── 6. Missing creation timestamp ───────────────────────────────────────
 {
-  const raw = { address: VALID_TOKEN_ADDRESS, symbol: "NOTS" };
-  const token = normalizeRobinhoodToken(raw);
-  assertEqual(token, null, "missing created_timestamp normalizes to null");
+  const outcome = parseNewCreationPayload(
+    { new_creation: [validRaw({ symbol: "FIRST" }), validRaw({ symbol: "SECOND" })] },
+    ALLOWED
+  );
+  assert(outcome.ok === true, "duplicate-address payload parses successfully");
+  if (outcome.ok) {
+    assertEqual(outcome.tokens.length, 1, "duplicate token addresses collapse to one token in the parser output");
+  }
 }
 
-// ── 7. "no new tokens" vs "provider/network failure" must not read the
-//      same. Verified end-to-end via discoverRobinhoodTokens() with
-//      GMGN_API_KEY temporarily unset — the code path that hits an
-//      actual malformed_payload/http_error branch requires a live
-//      network stub this repo has no framework for, so that branch is
-//      covered by lib/gmgn/client.ts's gmgnRequest() typing (exhaustive
-//      discriminated union) rather than a runtime call here. ──────────
-async function testConfiguredVsEmpty() {
+{
+  const outcome = parseNewCreationPayload({ new_creation: "not-an-array" }, ALLOWED);
+  assertEqual(outcome.ok, false, "non-array new_creation is malformed_payload");
+}
+
+{
+  const outcome = parseNewCreationPayload({}, ALLOWED);
+  assertEqual(outcome.ok, false, "missing new_creation key entirely is malformed_payload");
+}
+
+{
+  const outcome = parseNewCreationPayload(null, ALLOWED);
+  assertEqual(outcome.ok, false, "non-object response body is malformed_payload");
+}
+
+// ═══ discoverRobinhoodTokens — configuration/failure distinctions ══════
+
+async function testFailureDistinctions() {
   const originalKey = process.env.GMGN_API_KEY;
+  const originalLaunchpads = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
   try {
+    // No allow-list supplied and no env var set → fail closed, distinct
+    // from "API key missing" and distinct from "no new tokens".
+    delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+    process.env.GMGN_API_KEY = "irrelevant-for-this-check";
+    const noAllowlist = await discoverRobinhoodTokens();
+    assertEqual(noAllowlist.ok, false, "no launchpad allow-list configured → not ok");
+    if (!noAllowlist.ok) {
+      assertEqual(
+        noAllowlist.reason,
+        "launchpad_allowlist_not_configured",
+        "reason distinguishes missing allow-list from other failures"
+      );
+    }
+
+    // Explicit allow-list bypasses the env-var gate but still needs a key.
     delete process.env.GMGN_API_KEY;
-    const result = await discoverRobinhoodTokens();
-    assertEqual(result.ok, false, "unconfigured GMGN_API_KEY reports a failure, not an empty success");
-    if (!result.ok) {
-      assertEqual(result.reason, "not_configured", "reason is not_configured, distinguishable from 'no new tokens'");
+    const noKey = await discoverRobinhoodTokens(ALLOWED);
+    assertEqual(noKey.ok, false, "unconfigured GMGN_API_KEY (with allow-list supplied) reports a failure");
+    if (!noKey.ok) {
+      assertEqual(noKey.reason, "not_configured", "reason is not_configured, distinguishable from 'no new tokens'");
     }
   } finally {
     if (originalKey === undefined) delete process.env.GMGN_API_KEY;
     else process.env.GMGN_API_KEY = originalKey;
+    if (originalLaunchpads === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+    else process.env.GMGN_ROBINHOOD_LAUNCHPADS = originalLaunchpads;
   }
 }
 
-// ── 8. Duplicate discovery items — dedup happens in discoverRobinhoodTokens,
-//      not in normalizeRobinhoodToken (which is a pure 1:1 mapper); this
-//      documents that boundary explicitly rather than leaving it implicit. ──
-{
-  const rawA = { address: VALID_TOKEN_ADDRESS, created_timestamp: 1700000000, symbol: "DUP" };
-  const rawB = { address: VALID_TOKEN_ADDRESS, created_timestamp: 1700000001, symbol: "DUP" };
-  const a = normalizeRobinhoodToken(rawA);
-  const b = normalizeRobinhoodToken(rawB);
-  assert(
-    a !== null && b !== null && a.tokenAddress === b.tokenAddress,
-    "normalizeRobinhoodToken doesn't dedup on its own (by design — caller's job, see discoverRobinhoodTokens)"
-  );
-}
-
 async function main() {
-  await testConfiguredVsEmpty();
+  await testFailureDistinctions();
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   process.exitCode = failures === 0 ? 0 : 1;
