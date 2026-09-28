@@ -145,6 +145,51 @@ function validRaw(overrides: Record<string, unknown> = {}) {
   assertEqual(token?.buyTaxPct, 100, "boundary ratio 1 → 100 (inclusive upper bound)");
 }
 
+// ═══ ratio01: out-of-range safety-critical ratios normalize to null ═══
+// (rugRatio, top10HolderRate, bundlerRate, insiderHoldRate — kept as
+// 0-1 ratios, not converted to percent, but still range-validated so a
+// malformed value like -0.2 can't slip under a `> 0.1` threshold just
+// because it's numerically less than the limit)
+
+{
+  const token = normalizeRobinhoodToken(validRaw({ rug_ratio: -0.1 }));
+  assertEqual(token?.rugRatio, null, "rug_ratio: -0.1 → null (out of range)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ rug_ratio: 1.01 }));
+  assertEqual(token?.rugRatio, null, "rug_ratio: 1.01 → null (out of range)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ top_10_holder_rate: -1 }));
+  assertEqual(token?.top10HolderRate, null, "top_10_holder_rate: -1 → null (out of range)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ bundler_trader_amount_rate: 1.1 }));
+  assertEqual(token?.bundlerRate, null, "bundler_trader_amount_rate: 1.1 → null (out of range)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ suspected_insider_hold_rate: -0.01 }));
+  assertEqual(token?.insiderHoldRate, null, "suspected_insider_hold_rate: -0.01 → null (out of range)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ rug_ratio: 0, top_10_holder_rate: 0, bundler_trader_amount_rate: 0, suspected_insider_hold_rate: 0 }));
+  assertEqual(token?.rugRatio, 0, "ratio = 0 accepted (rugRatio)");
+  assertEqual(token?.top10HolderRate, 0, "ratio = 0 accepted (top10HolderRate)");
+  assertEqual(token?.bundlerRate, 0, "ratio = 0 accepted (bundlerRate)");
+  assertEqual(token?.insiderHoldRate, 0, "ratio = 0 accepted (insiderHoldRate)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ rug_ratio: 1, top_10_holder_rate: 1, bundler_trader_amount_rate: 1, suspected_insider_hold_rate: 1 }));
+  assertEqual(token?.rugRatio, 1, "ratio = 1 accepted (rugRatio)");
+  assertEqual(token?.top10HolderRate, 1, "ratio = 1 accepted (top10HolderRate)");
+  assertEqual(token?.bundlerRate, 1, "ratio = 1 accepted (bundlerRate)");
+  assertEqual(token?.insiderHoldRate, 1, "ratio = 1 accepted (insiderHoldRate)");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ creator_balance_rate: -0.5 }));
+  assertEqual(token?.creatorHoldRate, null, "creator_balance_rate: -0.5 → null (out of range, ratio01 applied)");
+}
+
 {
   const token = normalizeRobinhoodToken({ address: A, created_timestamp: 1700000000 });
   assert(token !== null, "token with only required fields still normalizes");

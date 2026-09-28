@@ -421,6 +421,16 @@ async function main() {
     assertEqual(security.isHoneypot, true, "valid primary takes priority over a (differently-valued) valid fallback");
   }
 
+  // ═══ security-endpoint top10HolderRate is also range-validated ═══════
+  {
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { top_10_holder_rate: -1 });
+    assertEqual(security.top10HolderRate, null, "security top_10_holder_rate: -1 → null (out of range)");
+  }
+  {
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { top_10_holder_rate: 1 });
+    assertEqual(security.top10HolderRate, 1, "security top_10_holder_rate: 1 → accepted (boundary)");
+  }
+
   // ═══ safety-critical unknown values do not silently pass ═════════════
   {
     // requireSocialLink + requireMintAuthorityRenounced + requireFreezeAuthorityRenounced

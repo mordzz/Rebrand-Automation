@@ -86,6 +86,9 @@ export type RobinhoodSecurityFacts = {
   buyTaxPct: number | null;
   sellTaxPct: number | null;
 
+  /** 0-1 ratio, range-validated via ratio01() — out-of-range normalizes
+   * to null so a malformed value can't slip past the Robinhood safety
+   * evaluator's threshold check. */
   top10HolderRate: number | null;
   burnRatio: number | null;
   burnStatus: string | null;
@@ -136,6 +139,16 @@ function ratioToPct(v: unknown): number | null {
   return ratio * 100;
 }
 
+/** Same [0,1] range guard, for a safety-critical ratio field that's kept
+ * as a ratio rather than converted to a percentage — see
+ * lib/gmgn/discovery-robinhood.ts's identical helper for the full
+ * rationale. */
+function ratio01(v: unknown): number | null {
+  const ratio = num(v);
+  if (ratio == null || ratio < 0 || ratio > 1) return null;
+  return ratio;
+}
+
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
@@ -157,7 +170,7 @@ export function normalizeRobinhoodSecurity(
     isHoneypot: bool01FirstValid(raw.is_honeypot, raw.honeypot),
     buyTaxPct: ratioToPct(raw.buy_tax),
     sellTaxPct: ratioToPct(raw.sell_tax),
-    top10HolderRate: num(raw.top_10_holder_rate),
+    top10HolderRate: ratio01(raw.top_10_holder_rate),
     burnRatio: num(raw.burn_ratio),
     burnStatus: str(raw.burn_status),
     lpLocked: lockSummary ? bool01(lockSummary.is_locked) : null,

@@ -130,7 +130,9 @@ export type RobinhoodDiscoveredToken = {
   sellTaxPct: number | null;
   /** 0–1 ratio, NOT converted to percent — unlike buyTaxPct/sellTaxPct
    * above. Kept as GMGN reports it; do not assume the same 0–100 scale
-   * without checking each field's own contract. */
+   * without checking each field's own contract. Range-validated via
+   * ratio01() — out-of-range (negative or >1) normalizes to null rather
+   * than passing a malformed value through to a safety threshold. */
   rugRatio: number | null;
   top10HolderRate: number | null;
   bundlerRate: number | null;
@@ -182,6 +184,19 @@ function ratioToPct(v: unknown): number | null {
   const ratio = num(v);
   if (ratio == null || ratio < 0 || ratio > 1) return null;
   return ratio * 100;
+}
+
+/** Same out-of-range guard as ratioToPct, for safety-critical 0–1 ratio
+ * fields that are consumed as-is (not converted to a percentage). A
+ * malformed value like `rug_ratio: -0.2` must not silently pass a
+ * `> 0.1` threshold just because `-0.2` is technically a number less
+ * than the limit — it's invalid data, not a real low-risk reading, and
+ * normalizing it to null lets the Robinhood safety evaluator's existing
+ * "unknown — fails closed" handling catch it instead. */
+function ratio01(v: unknown): number | null {
+  const ratio = num(v);
+  if (ratio == null || ratio < 0 || ratio > 1) return null;
+  return ratio;
 }
 
 /** Handles both real booleans and GMGN's own "yes"/"no"/"unknown" string
@@ -264,11 +279,11 @@ export function normalizeRobinhoodToken(
     isHoneypot: bool(raw.is_honeypot),
     buyTaxPct: ratioToPct(raw.buy_tax),
     sellTaxPct: ratioToPct(raw.sell_tax),
-    rugRatio: num(raw.rug_ratio),
-    top10HolderRate: num(raw.top_10_holder_rate),
-    bundlerRate: num(raw.bundler_trader_amount_rate),
-    insiderHoldRate: num(raw.suspected_insider_hold_rate),
-    creatorHoldRate: num(raw.creator_balance_rate),
+    rugRatio: ratio01(raw.rug_ratio),
+    top10HolderRate: ratio01(raw.top_10_holder_rate),
+    bundlerRate: ratio01(raw.bundler_trader_amount_rate),
+    insiderHoldRate: ratio01(raw.suspected_insider_hold_rate),
+    creatorHoldRate: ratio01(raw.creator_balance_rate),
     creatorLaunchCount: num(raw.creator_created_count),
     isWashTrading: bool(raw.is_wash_trading),
     imageDup: num(raw.image_dup),

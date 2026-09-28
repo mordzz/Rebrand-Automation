@@ -32,8 +32,10 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *                                     reused instead, see below)
  *   Alpha wallet buy required      → MAP TO EVM EQUIVALENT (ERC-20
  *                                     balanceOf via lib/chain/rpc.ts)
- *   Liquidity floor (minLiquiditySol) → MISSING / BLOCKER (unit mismatch,
- *                                     see below — data captured, no
+ *   Liquidity floor (minLiquiditySol) → MISSING / BLOCKER (unresolved
+ *                                     provider-unit discrepancy, not a
+ *                                     confirmed unit — see below; data
+ *                                     captured, no
  *                                     threshold enforced)
  *   GMGN honeypot/tax/rug/bundler/
  *   insider/top10/wash-trading     → KEEP EXACTLY (same thresholds as the
@@ -74,12 +76,14 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * received their allocation via direct mint/transfer at deployment
  * (typical for launchpad-minted tokens), not a recorded buy transaction.
  * With the correct endpoints now inspected and still showing zero
- * reconstructable buy/cost data for the creator, this remains genuinely
- * unavailable — not merely un-investigated.
+ * reconstructable buy/cost data for the creator, no reliable creator-initial-buy
+ * reconstruction was found in the inspected Robinhood data sources — not
+ * merely un-investigated, but this does not prove every Robinhood
+ * launchpad can never expose an initial allocation; it means this PR's
+ * inspection found none for the sample it checked.
  *
- * This cannot be reconstructed with sufficient confidence. Per explicit
- * instruction,
- * this evaluator does NOT reinterpret creator_balance_rate as the
+ * So the existing rule remains MISSING/BLOCKER and fails closed. Per
+ * explicit instruction, this evaluator does NOT reinterpret creator_balance_rate as the
  * required fact, does NOT skip the check silently, and does NOT change
  * maxCreatorBuyPct's threshold — it fails closed: every Robinhood
  * candidate is refused with this reason until a product decision
@@ -110,18 +114,28 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * reason instead.
  *
  * ── Liquidity floor — MISSING / BLOCKER (data captured, policy not) ────
- * `minLiquiditySol` is SOL-denominated. Live-verified: Robinhood's
- * `liquidity` field is on a wildly different numeric scale than
- * `market_cap` in the same items (~0.001-0.005 vs ~5,000) — confirmed via
- * `/v1/token/info`'s `pool` object, whose `quote_symbol: "ETH"` and whose
- * `liquidity` value matches the top-level field exactly: liquidity
- * appears to be native-asset(ETH)-denominated, not USD, and definitely
- * not comparable to a SOL-denominated threshold without an explicit unit
- * conversion decision. That conversion is not made here. `liquidity` is
- * carried on RobinhoodDiscoveredToken (data acquisition, done in PR05)
- * but no floor is enforced against it in this evaluator (policy
- * conversion, not done — pending an explicit decision on what the
- * Robinhood-side threshold should even mean).
+ * `minLiquiditySol` is SOL-denominated. Robinhood's `liquidity` field's
+ * actual unit is UNRESOLVED / PROVIDER SEMANTICS DISCREPANCY, not
+ * confirmed ETH-denominated — two pieces of evidence conflict and
+ * neither has been allowed to win by inference:
+ *   1. GMGN's own documentation defines token-info/pool `liquidity` as
+ *      USD-denominated (both the top-level field and `pool.liquidity`).
+ *   2. The live-sampled Robinhood values (`liquidity ~0.001-0.005`) sit
+ *      next to `market_cap ~5,000` in the SAME items and next to
+ *      `quote_symbol: "ETH"` in `/v1/token/pool_info` — a scale and
+ *      adjacency that LOOKS inconsistent with a USD contract, but
+ *      `quote_symbol` identifying the pool's quote asset does not, by
+ *      itself, prove `liquidity` is denominated in that asset rather
+ *      than USD via some other mechanism (e.g. a near-empty bonding-curve
+ *      pool that is legitimately worth a tiny USD amount pre-migration).
+ * This discrepancy — not a confirmed unit — is itself the reason for the
+ * blocker: without knowing whether "0.004" means "$0.004" (matching the
+ * docs) or "0.004 ETH" (matching the numeric adjacency), no conversion
+ * from a SOL-denominated threshold can be responsibly made. `liquidity`
+ * is carried on RobinhoodDiscoveredToken (data acquisition, done in PR05)
+ * but no floor is enforced against it in this evaluator — pending an
+ * explicit decision that first resolves which unit GMGN is actually
+ * returning for this chain, not just what threshold to use once known.
  */
 
 /** Existing GMGN safety floors, reused as-is — these are fixed operator-
@@ -300,21 +314,21 @@ export async function evaluateRobinhoodSafety(
     );
   }
 
-  // ── Liquidity floor — MISSING/BLOCKER (policy). Live-verified
-  // (2026-09-29, /v1/token/pool_info): Robinhood's `liquidity` field sits
-  // in the same object as `quote_symbol: "ETH"` and carries no `_value`/
-  // USD suffix (unlike `base_reserve_value`/`quote_reserve_value`, which
-  // do) — strong evidence it's native-ETH-denominated, not USD, and
-  // therefore not directly comparable to a SOL-denominated
-  // `minLiquiditySol` threshold without an explicit conversion decision.
-  // That decision is not made here. Data is still captured
-  // (token.liquidity, from PR05); only the threshold is withheld. If the
-  // threshold is disabled (0), there's nothing to block. ──
+  // ── Liquidity floor — MISSING/BLOCKER (policy). The unit of
+  // Robinhood's `liquidity` field is UNRESOLVED / PROVIDER SEMANTICS
+  // DISCREPANCY, not confirmed — see the module-level comment for both
+  // pieces of conflicting evidence (GMGN docs say USD; the live
+  // numeric/adjacency pattern looks ETH-like). That unresolved unit,
+  // by itself, is reason enough to withhold any threshold against a
+  // SOL-denominated config value — no conversion is made here. Data is
+  // still captured (token.liquidity, from PR05); only the threshold is
+  // withheld. If the threshold is disabled (0), there's nothing to
+  // block. ──
   if (config.minLiquiditySol > 0) {
     reasons.push(
       "liquidity policy unresolved — MISSING/BLOCKER: minLiquiditySol is SOL-denominated, " +
-        "Robinhood liquidity is ETH-denominated (live-verified via pool_info's quote_symbol), " +
-        "no approved conversion exists (see safety-robinhood.ts)"
+        "Robinhood liquidity's actual unit is an unresolved provider-semantics discrepancy " +
+        "(GMGN docs say USD; live values look ETH-like) — no approved conversion exists (see safety-robinhood.ts)"
     );
   }
 
