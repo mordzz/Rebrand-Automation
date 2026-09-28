@@ -39,29 +39,42 @@ export const ROBINHOOD_NATIVE_SYMBOL = "ETH" as const;
 /** Testnet by default and on purpose, mirroring the existing Perpspad
  * devnet-by-default convention — mainnet is a separate, explicit, later
  * decision gated on the plan's PR10/PR17 verification steps, not a UI
- * toggle. Overriding is an env-var change. */
+ * toggle. Overriding is an env-var change.
+ *
+ * Absent/empty falls back to testnet; an explicitly-set but unsupported
+ * value throws rather than silently defaulting — a typo'd network name
+ * should fail loudly, not quietly run against the wrong chain. */
 function resolveNetwork(): RobinhoodNetwork {
-  const raw = (
-    process.env.NEXT_PUBLIC_ROBINHOOD_NETWORK ?? "testnet"
-  ).toLowerCase();
-  if (raw === "mainnet") return "mainnet";
-  if (raw !== "testnet") {
-    console.warn(
-      `NEXT_PUBLIC_ROBINHOOD_NETWORK="${raw}" is not "mainnet" or "testnet" — defaulting to testnet.`
+  const raw = process.env.NEXT_PUBLIC_ROBINHOOD_NETWORK?.trim();
+  if (!raw) return "testnet";
+
+  const network = raw.toLowerCase();
+  if (network !== "mainnet" && network !== "testnet") {
+    throw new Error(
+      `Invalid NEXT_PUBLIC_ROBINHOOD_NETWORK="${raw}". Expected "mainnet" or "testnet".`
     );
   }
-  return "testnet";
+  return network;
 }
 
 export const ROBINHOOD_NETWORK: RobinhoodNetwork = resolveNetwork();
 
 export const ROBINHOOD_CHAIN_ID: number = CHAIN_IDS[ROBINHOOD_NETWORK];
 
-/** Prefers an explicit dedicated-provider URL; falls back to Robinhood's
- * own public (rate-limited) RPC so local/dev setups work with zero config. */
+/** Server-side RPC (daemons, reconciliation, private/high-volume reads).
+ * Must never be sourced from a `NEXT_PUBLIC_*` var — those are inlined
+ * into the client bundle, and a provider URL frequently carries an API
+ * key in its path/query string. `||` (not `??`) so an intentionally
+ * empty value in `.env.local` falls back to the public default instead
+ * of resolving to `""`. */
 export const ROBINHOOD_RPC_URL: string =
-  process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ??
-  process.env.ROBINHOOD_RPC_URL ??
+  process.env.ROBINHOOD_RPC_URL || DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
+
+/** Browser-side RPC. Only ever populate this with a URL that's safe to
+ * ship to every visitor's client bundle — never put provider secrets
+ * here. */
+export const ROBINHOOD_PUBLIC_RPC_URL: string =
+  process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ||
   DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
 
 export function explorerUrl(kind: "tx" | "address", value: string): string {
