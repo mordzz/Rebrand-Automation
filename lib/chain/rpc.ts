@@ -144,34 +144,59 @@ export async function getNativeBalance(
 /**
  * Transaction receipt/status lookup.
  *
- * Returns `null` only for "not yet mined" (pending) — a genuinely absent
- * hash and an RPC failure both throw, per PR03's error-handling
- * requirement not to conflate "pending" with "failed" or "unreachable".
+ * A missing receipt does not by itself mean "pending" — an unknown or
+ * malformed-but-valid-looking hash also has no receipt. So a missing
+ * receipt falls through to `getTransaction`: if the transaction itself
+ * exists, it's genuinely pending; if it doesn't, that's a `not_found`
+ * error, not a pending status. An actual transport/RPC failure at either
+ * step propagates as `rpc_unavailable`.
  */
 export async function getTransactionStatus(
   hash: string,
   client: PublicClient = getRobinhoodPublicClient()
 ): Promise<{ status: "pending" } | { status: "mined"; receipt: TransactionReceipt }> {
   const txHash = assertValidHash(hash, "transaction hash");
+
   try {
     const receipt = await client.getTransactionReceipt({ hash: txHash });
     return { status: "mined", receipt };
   } catch (error) {
-    // viem throws TransactionReceiptNotFoundError for a hash that exists
-    // but hasn't mined yet — that is "pending", not a failure. Anything
-    // else (network error, malformed response) is a real RPC failure and
-    // must propagate as one.
-    const isNotFound =
-      error instanceof Error && error.name === "TransactionReceiptNotFoundError";
-    if (isNotFound) return { status: "pending" };
+    if (!isNotFoundError(error, "TransactionReceiptNotFoundError")) {
+      throw new RobinhoodRpcError(
+        "rpc_unavailable",
+        `Failed to fetch transaction receipt for ${txHash}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error
+      );
+    }
+  }
+
+  // No receipt yet — confirm the transaction actually exists before
+  // calling it "pending".
+  try {
+    await client.getTransaction({ hash: txHash });
+    return { status: "pending" };
+  } catch (error) {
+    if (isNotFoundError(error, "TransactionNotFoundError")) {
+      throw new RobinhoodRpcError(
+        "not_found",
+        `No transaction found for hash ${txHash}.`,
+        error
+      );
+    }
     throw new RobinhoodRpcError(
       "rpc_unavailable",
-      `Failed to fetch transaction receipt for ${txHash}: ${
+      `Failed to fetch transaction ${txHash}: ${
         error instanceof Error ? error.message : String(error)
       }`,
       error
     );
   }
+}
+
+function isNotFoundError(error: unknown, viemErrorName: string): boolean {
+  return error instanceof Error && error.name === viemErrorName;
 }
 
 /** Minimal ERC-20 read ABI — `balanceOf` only. Intentionally no name/
