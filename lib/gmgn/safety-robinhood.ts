@@ -36,9 +36,13 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *                                     see below — data captured, no
  *                                     threshold enforced)
  *   GMGN honeypot/tax/rug/bundler/
- *   insider/top10/wash-trading     → KEEP EXACTLY (existing GMGN safety
- *                                     floors, same thresholds, applied to
- *                                     the equivalent Robinhood fields)
+ *   insider/top10/wash-trading     → KEEP EXACTLY (same thresholds as the
+ *                                     existing GMGN safety floors), PLUS
+ *                                     unknown now fails closed on every
+ *                                     one of these for Robinhood specifically
+ *                                     (the Solana/GMGN path's existing
+ *                                     behavior, which lets unknown pass,
+ *                                     is untouched — see below)
  *
  * ── Creator buy % — MISSING / BLOCKER ──────────────────────────────────
  * Noah's existing rule is about the creator's INITIAL buy/allocation at
@@ -46,13 +50,35 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * both live-verified) is the creator's CURRENT holding ratio — a
  * different fact entirely (a creator who bought big at launch and sold
  * everything reads 0 here; one who bought nothing but later accumulated
- * reads high). Investigated for a reconstruction path: no token-holders
- * endpoint (`/v1/token/holders`, `/v1/tokens/robinhood/top_holders/:addr`)
- * or top-traders endpoint (`/v1/token/top_traders`,
- * `/v1/tokens/robinhood/top_traders/:addr`) exists — all returned HTTP
- * 404 live. No "initial buy amount" or first-trade field was found on
- * either `/v1/token/info` or `/v1/token/security`. This cannot be
- * reconstructed with sufficient confidence. Per explicit instruction,
+ * reads high).
+ *
+ * RE-INVESTIGATED 2026-09-29 against the actual documented routes
+ * (earlier guessed paths — `/v1/token/holders`, `/v1/token/top_traders`
+ * — were wrong and 404'd; corrected to `/v1/market/token_top_holders`
+ * and `/v1/market/token_top_traders`, both of which DO exist and
+ * returned real data live for `chain=robinhood`). Per-wallet rows carry
+ * `amount_percentage` (current holding %), `balance`, `usd_value`,
+ * `cost`/`cost_cur`, `buy_amount_cur`, `buy_volume_cur`, `buy_tx_count_cur`,
+ * `history_bought_cost`, `avg_cost`, `start_holding_at`,
+ * `wallet_tag_v2`/`maker_token_tags` — a genuinely richer field set than
+ * `/v1/token/info`'s single `creator_balance_rate`.
+ *
+ * On the live-sampled token, the creator's row (matched by address) had
+ * `amount_percentage: 4.4e-7` (current holding, negligible) but EVERY
+ * buy/cost field — `cost`, `cost_cur`, `buy_amount_cur`, `buy_volume_cur`,
+ * `buy_tx_count_cur`, `history_bought_cost`, `avg_cost` — was `0` or
+ * `null`, and `start_holding_at` equaled the token's own creation
+ * timestamp exactly (same as the pool contract's own top-holder row) —
+ * there is no distinguishable "creator bought X at time T" event to
+ * compute a percentage from. This is consistent with the creator having
+ * received their allocation via direct mint/transfer at deployment
+ * (typical for launchpad-minted tokens), not a recorded buy transaction.
+ * With the correct endpoints now inspected and still showing zero
+ * reconstructable buy/cost data for the creator, this remains genuinely
+ * unavailable — not merely un-investigated.
+ *
+ * This cannot be reconstructed with sufficient confidence. Per explicit
+ * instruction,
  * this evaluator does NOT reinterpret creator_balance_rate as the
  * required fact, does NOT skip the check silently, and does NOT change
  * maxCreatorBuyPct's threshold — it fails closed: every Robinhood
@@ -157,6 +183,7 @@ export async function evaluateRobinhoodSafety(
     | "blockedKeywords"
     | "minTokenAgeSec"
     | "maxTokenAgeSec"
+    | "minLiquiditySol"
   >,
   ageSec: number
 ): Promise<RobinhoodSafetyCheckResult> {
@@ -207,43 +234,89 @@ export async function evaluateRobinhoodSafety(
   // comment). Always refuses; never substitutes creator_balance_rate. ──
   reasons.push(
     "creator initial-buy percentage unavailable on Robinhood Chain — MISSING/BLOCKER " +
-      "(creator_balance_rate is current holdings, not initial allocation; no holders/traders " +
-      "endpoint exists to reconstruct it — see safety-robinhood.ts)"
+      "(creator_balance_rate is current holdings, not initial allocation; the holders/traders " +
+      "endpoints show zero recorded buy/cost activity for the creator — see safety-robinhood.ts)"
   );
 
-  // ── Existing GMGN risk floors — KEEP EXACTLY, applied to Robinhood's
-  // equivalent fields. Prefer security-endpoint facts when available
-  // (live-verified as real booleans there); fall back to the trenches
-  // token's own fields (which use "yes"/"no"/"unknown" strings for some
-  // of these, already normalized to boolean|null by discovery-robinhood.ts). ──
+  // ── Existing GMGN risk floors — KEEP EXACTLY (same thresholds as the
+  // Solana path), applied to Robinhood's equivalent fields. Prefer
+  // security-endpoint facts when available (live-verified as real
+  // booleans there); fall back to the trenches token's own fields.
+  //
+  // Unknown (null) now fails closed on every one of these — an
+  // undetermined safety-critical fact must refuse, not silently pass.
+  // This is a change from the Solana/GMGN path's existing behavior
+  // (which lets null through) — deliberately NOT ported back there;
+  // this file only governs the Robinhood evaluator. ──
   const isHoneypot = security?.isHoneypot ?? token.isHoneypot;
-  if (isHoneypot === true) reasons.push("flagged as a honeypot");
+  if (isHoneypot !== false) {
+    reasons.push(
+      isHoneypot === true ? "flagged as a honeypot" : "honeypot status unknown — fails closed"
+    );
+  }
 
   const sellTaxPct = security?.sellTaxPct ?? token.sellTaxPct;
-  if (sellTaxPct != null && sellTaxPct > MAX_SELL_TAX_PCT) {
+  if (sellTaxPct == null) {
+    reasons.push("sell tax unknown — fails closed");
+  } else if (sellTaxPct > MAX_SELL_TAX_PCT) {
     reasons.push(`sell tax ${sellTaxPct}% over ${MAX_SELL_TAX_PCT}% limit`);
   }
+
   const buyTaxPct = security?.buyTaxPct ?? token.buyTaxPct;
-  if (buyTaxPct != null && buyTaxPct > MAX_BUY_TAX_PCT) {
+  if (buyTaxPct == null) {
+    reasons.push("buy tax unknown — fails closed");
+  } else if (buyTaxPct > MAX_BUY_TAX_PCT) {
     reasons.push(`buy tax ${buyTaxPct}% over ${MAX_BUY_TAX_PCT}% limit`);
   }
-  if (token.rugRatio != null && token.rugRatio > MAX_RUG_RATIO) {
+
+  if (token.rugRatio == null) {
+    reasons.push("deployer rug history unknown — fails closed");
+  } else if (token.rugRatio > MAX_RUG_RATIO) {
     reasons.push(`deployer rug history ${(token.rugRatio * 100).toFixed(0)}% over ${MAX_RUG_RATIO * 100}% limit`);
   }
-  if (token.bundlerRate != null && token.bundlerRate > MAX_BUNDLER_RATE) {
+
+  if (token.bundlerRate == null) {
+    reasons.push("bundler concentration unknown — fails closed");
+  } else if (token.bundlerRate > MAX_BUNDLER_RATE) {
     reasons.push(`bundled launch: ${(token.bundlerRate * 100).toFixed(0)}% bundler-held`);
   }
-  if (token.insiderHoldRate != null && token.insiderHoldRate > MAX_INSIDER_HOLD_RATE) {
+
+  if (token.insiderHoldRate == null) {
+    reasons.push("insider concentration unknown — fails closed");
+  } else if (token.insiderHoldRate > MAX_INSIDER_HOLD_RATE) {
     reasons.push(`insider concentration ${(token.insiderHoldRate * 100).toFixed(0)}%`);
   }
+
   const top10HolderRate = security?.top10HolderRate ?? token.top10HolderRate;
-  if (top10HolderRate != null && top10HolderRate > MAX_TOP10_HOLDER_RATE) {
+  if (top10HolderRate == null) {
+    reasons.push("top-10 holder concentration unknown — fails closed");
+  } else if (top10HolderRate > MAX_TOP10_HOLDER_RATE) {
     reasons.push(`top-10 hold ${(top10HolderRate * 100).toFixed(0)}% over ${MAX_TOP10_HOLDER_RATE * 100}% limit`);
   }
-  if (token.isWashTrading === true) reasons.push("wash trading detected");
 
-  // ── Liquidity floor — MISSING/BLOCKER (policy), data acquisition only.
-  // Deliberately no threshold check here — see module comment. ──
+  if (token.isWashTrading !== false) {
+    reasons.push(
+      token.isWashTrading === true ? "wash trading detected" : "wash-trading status unknown — fails closed"
+    );
+  }
+
+  // ── Liquidity floor — MISSING/BLOCKER (policy). Live-verified
+  // (2026-09-29, /v1/token/pool_info): Robinhood's `liquidity` field sits
+  // in the same object as `quote_symbol: "ETH"` and carries no `_value`/
+  // USD suffix (unlike `base_reserve_value`/`quote_reserve_value`, which
+  // do) — strong evidence it's native-ETH-denominated, not USD, and
+  // therefore not directly comparable to a SOL-denominated
+  // `minLiquiditySol` threshold without an explicit conversion decision.
+  // That decision is not made here. Data is still captured
+  // (token.liquidity, from PR05); only the threshold is withheld. If the
+  // threshold is disabled (0), there's nothing to block. ──
+  if (config.minLiquiditySol > 0) {
+    reasons.push(
+      "liquidity policy unresolved — MISSING/BLOCKER: minLiquiditySol is SOL-denominated, " +
+        "Robinhood liquidity is ETH-denominated (live-verified via pool_info's quote_symbol), " +
+        "no approved conversion exists (see safety-robinhood.ts)"
+    );
+  }
 
   // ── Alpha wallet — MAP TO EVM EQUIVALENT. ──
   const alphaWalletGateActive = config.requireAlphaWalletBuy && config.alphaWallets.length > 0;

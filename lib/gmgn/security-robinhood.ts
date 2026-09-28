@@ -109,6 +109,21 @@ function bool01(v: unknown): boolean | null {
   return null;
 }
 
+/** GMGN's security endpoint exposes paired fields (is_renounced/renounced,
+ * is_blacklist/blacklist, is_open_source/open_source, is_honeypot/honeypot)
+ * whose values are expected to agree. `a ?? b` only falls through when `a`
+ * is null/undefined — if the primary key is PRESENT but malformed (e.g. an
+ * unparseable string), `??` never reaches the fallback even though it
+ * might parse fine. This tries each candidate in order and uses the first
+ * one that actually parses, not just the first one that's non-nullish. */
+function bool01FirstValid(...candidates: unknown[]): boolean | null {
+  for (const candidate of candidates) {
+    const parsed = bool01(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
 function num(v: unknown): number | null {
   if (v === "" || v == null) return null;
   const n = Number(v);
@@ -136,10 +151,10 @@ export function normalizeRobinhoodSecurity(
 
   return {
     tokenAddress,
-    ownerRenounced: bool01(raw.is_renounced ?? raw.renounced),
-    isBlacklistCapable: bool01(raw.is_blacklist ?? raw.blacklist),
-    isOpenSource: bool01(raw.is_open_source ?? raw.open_source),
-    isHoneypot: bool01(raw.is_honeypot ?? raw.honeypot),
+    ownerRenounced: bool01FirstValid(raw.is_renounced, raw.renounced),
+    isBlacklistCapable: bool01FirstValid(raw.is_blacklist, raw.blacklist),
+    isOpenSource: bool01FirstValid(raw.is_open_source, raw.open_source),
+    isHoneypot: bool01FirstValid(raw.is_honeypot, raw.honeypot),
     buyTaxPct: ratioToPct(raw.buy_tax),
     sellTaxPct: ratioToPct(raw.sell_tax),
     top10HolderRate: num(raw.top_10_holder_rate),
