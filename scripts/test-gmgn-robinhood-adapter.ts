@@ -132,6 +132,18 @@ function validRaw(overrides: Record<string, unknown> = {}) {
   const token = normalizeRobinhoodToken(validRaw({ sell_tax: "not-a-number" }));
   assertEqual(token?.sellTaxPct, null, "invalid sell_tax stays null, doesn't produce NaN or a garbage percent");
 }
+{
+  const token = normalizeRobinhoodToken(validRaw({ buy_tax: -0.01 }));
+  assertEqual(token?.buyTaxPct, null, "out-of-range ratio -0.01 → null, not a negative percent");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ buy_tax: 1.01 }));
+  assertEqual(token?.buyTaxPct, null, "out-of-range ratio 1.01 → null, not a >100% percent");
+}
+{
+  const token = normalizeRobinhoodToken(validRaw({ buy_tax: 1 }));
+  assertEqual(token?.buyTaxPct, 100, "boundary ratio 1 → 100 (inclusive upper bound)");
+}
 
 {
   const token = normalizeRobinhoodToken({ address: A, created_timestamp: 1700000000 });

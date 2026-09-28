@@ -174,9 +174,14 @@ function num(v: unknown): number | null {
  * percentages, matching every other `*Pct` field here. Converting at the
  * normalization boundary keeps that contract honest instead of silently
  * handing callers a value 100x too small. */
+/** A tax ratio outside [0, 1] is malformed upstream data, not a real tax
+ * rate — normalizing it anyway would let a safety-critical field become
+ * a negative or >100% percentage, which is worse than just refusing to
+ * guess. Out-of-range collapses to null, same as missing/invalid. */
 function ratioToPct(v: unknown): number | null {
   const ratio = num(v);
-  return ratio == null ? null : ratio * 100;
+  if (ratio == null || ratio < 0 || ratio > 1) return null;
+  return ratio * 100;
 }
 
 /** Handles both real booleans and GMGN's own "yes"/"no"/"unknown" string
