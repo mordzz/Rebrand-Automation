@@ -9,6 +9,8 @@ const BOOLEAN_KEYS: (keyof SniperConfig)[] = [
   "requireFreezeAuthorityRenounced",
   "requireSocialLink",
   "trailingStopEnabled",
+  "requireOwnerRenounced",
+  "requireNoBlacklistCapability",
 ];
 
 const NUMBER_KEYS: (keyof SniperConfig)[] = [
@@ -34,6 +36,7 @@ const NULLABLE_NUMBER_KEYS: (keyof SniperConfig)[] = [
   "maxTokenAgeSec",
   "breakevenAfterPct",
   "maxHoldTimeSec",
+  "maxCreatorHoldPct",
 ];
 
 /** Keeps only known SniperConfig fields with the right primitive types — a

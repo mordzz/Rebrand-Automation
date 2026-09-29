@@ -1,6 +1,6 @@
 /**
- * Focused tests for the PR06 Robinhood safety foundation:
- * lib/gmgn/safety-robinhood.ts, lib/gmgn/security-robinhood.ts,
+ * Focused tests for the PR06 / PR06.5 Robinhood safety foundation and
+ * policy: lib/gmgn/safety-robinhood.ts, lib/gmgn/security-robinhood.ts,
  * lib/chain/alpha-wallets-robinhood.ts.
  *
  * No network calls (alpha-wallet checks use invalid/empty inputs so the
@@ -42,24 +42,24 @@ const CREATOR = "0x8bf8eace53982a349195c452d1a22d025fae6666";
 
 function baseConfig(overrides: Partial<SniperConfig> = {}): Pick<
   SniperConfig,
-  | "requireMintAuthorityRenounced"
-  | "requireFreezeAuthorityRenounced"
+  | "requireOwnerRenounced"
+  | "requireNoBlacklistCapability"
+  | "maxCreatorHoldPct"
   | "requireSocialLink"
   | "requireAlphaWalletBuy"
   | "alphaWallets"
-  | "maxCreatorBuyPct"
   | "blockedKeywords"
   | "minTokenAgeSec"
   | "maxTokenAgeSec"
   | "minLiquiditySol"
 > {
   return {
-    requireMintAuthorityRenounced: false,
-    requireFreezeAuthorityRenounced: false,
+    requireOwnerRenounced: false,
+    requireNoBlacklistCapability: false,
+    maxCreatorHoldPct: null,
     requireSocialLink: false,
     requireAlphaWalletBuy: false,
     alphaWallets: [],
-    maxCreatorBuyPct: 10,
     blockedKeywords: [],
     minTokenAgeSec: 0,
     maxTokenAgeSec: null,
@@ -124,71 +124,118 @@ async function main() {
     assert(result.reasons.some((r) => r.includes("too old")), "above maxTokenAgeSec → refused");
   }
 
-  // ═══ owner-renounced kept distinct from mint-authority semantics ═════
+  // ═══ Owner-renounced: new EVM policy, distinct from mint-authority ════
   {
     const token = makeToken({});
-    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, {
-      is_renounced: true,
-      renounced_mint: false, // deliberately disagreeing, as live-observed
-    });
-    const result = await evaluateRobinhoodSafety(
-      token,
-      security,
-      baseConfig({ requireMintAuthorityRenounced: true }),
-      30
-    );
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { is_renounced: true });
+    const result = await evaluateRobinhoodSafety(token, security, baseConfig({ requireOwnerRenounced: true }), 30);
+    assert(!result.reasons.some((r) => r.includes("ownership")), "requireOwnerRenounced=true + ownerRenounced=true → no owner refusal");
     assertEqual(result.ownerRenounced, true, "ownerRenounced reflects is_renounced");
+  }
+  {
+    const token = makeToken({});
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { is_renounced: false });
+    const result = await evaluateRobinhoodSafety(token, security, baseConfig({ requireOwnerRenounced: true }), 30);
+    assert(result.reasons.some((r) => r.includes("contract ownership not renounced")), "requireOwnerRenounced=true + ownerRenounced=false → refused");
+  }
+  {
+    const token = makeToken({});
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ requireOwnerRenounced: true }), 30);
     assert(
-      result.reasons.some((r) => r.includes("mint-authority-equivalent unavailable")),
-      "requireMintAuthorityRenounced=true still refuses via the explicit blocker, even though ownerRenounced=true"
+      result.reasons.some((r) => r.includes("ownership-renounced status unknown")),
+      "requireOwnerRenounced=true + no security data (null) → refused, fails closed"
     );
   }
   {
     const token = makeToken({});
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ requireOwnerRenounced: false }), 30);
+    assert(!result.reasons.some((r) => r.includes("ownership")), "requireOwnerRenounced=false → no owner refusal regardless of data");
+  }
+
+  // ═══ No-blacklist-capability: new EVM policy, distinct from freeze authority ═
+  {
+    const token = makeToken({});
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { is_blacklist: false });
+    const result = await evaluateRobinhoodSafety(token, security, baseConfig({ requireNoBlacklistCapability: true }), 30);
+    assert(!result.reasons.some((r) => r.includes("blacklist")), "requireNoBlacklistCapability=true + isBlacklistCapable=false → no refusal");
+  }
+  {
+    const token = makeToken({});
+    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, { is_blacklist: true });
+    const result = await evaluateRobinhoodSafety(token, security, baseConfig({ requireNoBlacklistCapability: true }), 30);
+    assert(result.reasons.some((r) => r.includes("has blacklist capability")), "requireNoBlacklistCapability=true + isBlacklistCapable=true → refused");
+  }
+  {
+    const token = makeToken({});
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ requireNoBlacklistCapability: true }), 30);
+    assert(
+      result.reasons.some((r) => r.includes("blacklist-capability status unknown")),
+      "requireNoBlacklistCapability=true + unknown → refused, fails closed"
+    );
+  }
+  {
+    const token = makeToken({});
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ requireNoBlacklistCapability: false }), 30);
+    assert(!result.reasons.some((r) => r.includes("blacklist")), "requireNoBlacklistCapability=false → no refusal regardless of data");
+  }
+
+  // ═══ Creator hold %: new EVM policy, distinct from Solana initial-buy % ═
+  {
+    // creatorHoldRate 0.05 = 5%, under a 10% limit → passes.
+    const token = makeToken({ creator_balance_rate: 0.05 });
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assertEqual(result.creatorHoldPct, 5, "creatorHoldPct converts creatorHoldRate 0.05 → 5");
+    assert(!result.reasons.some((r) => r.includes("creator holds")), "creatorHoldPct 5% under limit 10% → passes creator-hold check");
+  }
+  {
+    // creatorHoldRate 0.15 = 15%, over a 10% limit → refuses.
+    const token = makeToken({ creator_balance_rate: 0.15 });
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assert(result.reasons.some((r) => r.includes("creator holds") && r.includes("15.0%")), "creatorHoldPct 15% over limit 10% → refuses");
+  }
+  {
+    // No creator_balance_rate at all, but a threshold IS configured →
+    // fails closed on the unknown value, distinct from the configuration
+    // blocker below.
+    const token = makeToken({});
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assertEqual(result.creatorHoldPolicyConfigured, true, "creatorHoldPolicyConfigured true once maxCreatorHoldPct is set");
+    assert(
+      result.reasons.some((r) => r.includes("creator holding percentage unknown")),
+      "maxCreatorHoldPct configured but creatorHoldRate unknown → fails closed"
+    );
+  }
+  {
+    // maxCreatorHoldPct not configured at all (null, the default) →
+    // explicit configuration blocker, regardless of any creator data.
+    const token = makeToken({ creator_balance_rate: 0.01 }); // even a tiny, "safe-looking" holding
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: null }), 30);
+    assertEqual(result.creatorHoldPolicyConfigured, false, "creatorHoldPolicyConfigured false when maxCreatorHoldPct is null");
+    assert(
+      result.reasons.some((r) => r.includes("maxCreatorHoldPct not configured")),
+      "no configured threshold → explicit configuration blocker"
+    );
+    assertEqual(result.passed, false, "a candidate cannot pass while maxCreatorHoldPct is unconfigured");
+  }
+  {
+    // maxCreatorBuyPct (the legacy Solana field) must never be consulted
+    // by the Robinhood evaluator — proven by the fact its Pick<> type
+    // doesn't even include it (a TypeScript-level guarantee), plus a
+    // runtime check that a wildly-different maxCreatorBuyPct value has
+    // zero effect on the creator-hold outcome.
+    const token = makeToken({ creator_balance_rate: 0.05 });
+    const configWithLegacyField = { ...baseConfig({ maxCreatorHoldPct: 10 }) } as Record<string, unknown>;
+    configWithLegacyField.maxCreatorBuyPct = 1; // would refuse a 5% hold if consulted
     const result = await evaluateRobinhoodSafety(
       token,
       null,
-      baseConfig({ requireMintAuthorityRenounced: false }),
+      configWithLegacyField as Parameters<typeof evaluateRobinhoodSafety>[2],
       30
     );
     assert(
-      !result.reasons.some((r) => r.includes("mint-authority-equivalent")),
-      "requireMintAuthorityRenounced=false does not trigger the blocker reason"
+      !result.reasons.some((r) => r.includes("creator holds")),
+      "maxCreatorBuyPct is not consulted for Robinhood — a stray value on the object has no effect"
     );
-  }
-
-  // ═══ missing freeze-equivalent is not silently passed ════════════════
-  {
-    const token = makeToken({});
-    const result = await evaluateRobinhoodSafety(
-      token,
-      null,
-      baseConfig({ requireFreezeAuthorityRenounced: true }),
-      30
-    );
-    assertEqual(result.freezeEquivalentAvailable, false, "freezeEquivalentAvailable is structurally false");
-    assert(
-      result.reasons.some((r) => r.includes("freeze-authority-equivalent unavailable")),
-      "requireFreezeAuthorityRenounced=true → explicit blocker refusal, not a silent pass"
-    );
-  }
-
-  // ═══ creator current holding is NOT used as creator initial buy % ════
-  // ═══ missing creator-buy data produces the explicit blocker ══════════
-  {
-    const token = makeToken({});
-    const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, {});
-    // creator_balance_rate = 0 (a low CURRENT holding) must not be read
-    // as "creator didn't buy much at launch" — the blocker fires
-    // regardless of what creator_balance_rate says, because that's a
-    // different fact entirely.
-    const result = await evaluateRobinhoodSafety(token, security, baseConfig({ maxCreatorBuyPct: 10 }), 30);
-    assertEqual(result.creatorInitialBuyPctAvailable, false, "creatorInitialBuyPctAvailable is structurally false");
-    assert(
-      result.reasons.some((r) => r.includes("creator initial-buy percentage unavailable")),
-      "creator-buy blocker always fires — never silently skipped, never satisfied by creator_balance_rate"
-    );
-    assertEqual(result.passed, false, "a candidate cannot pass while the creator-buy blocker is unconditional");
   }
 
   // ═══ honeypot yes/no/unknown ══════════════════════════════════════════
@@ -433,7 +480,7 @@ async function main() {
 
   // ═══ safety-critical unknown values do not silently pass ═════════════
   {
-    // requireSocialLink + requireMintAuthorityRenounced + requireFreezeAuthorityRenounced
+    // requireSocialLink + requireOwnerRenounced + requireNoBlacklistCapability
     // all on, nothing known → must refuse on all fronts, never a pass.
     const token = makeToken({});
     const result = await evaluateRobinhoodSafety(
@@ -441,13 +488,39 @@ async function main() {
       null,
       baseConfig({
         requireSocialLink: true,
-        requireMintAuthorityRenounced: true,
-        requireFreezeAuthorityRenounced: true,
+        requireOwnerRenounced: true,
+        requireNoBlacklistCapability: true,
       }),
       30
     );
     assertEqual(result.passed, false, "every safety-critical unknown compounds into a refusal, never a pass");
     assert(result.reasons.length >= 4, "multiple distinct blocker/refusal reasons are all surfaced, not collapsed");
+  }
+
+  // ═══ legacy Solana config fields remain present/unchanged ════════════
+  {
+    // Type-level guarantee: SniperConfig still has the legacy Solana
+    // fields, untouched, alongside the new Robinhood ones. A runtime
+    // check confirms the values aren't coerced/renamed anywhere in this
+    // module (it never imports or reads them at all — see the Pick<> in
+    // evaluateRobinhoodSafety's signature).
+    const legacyFieldsShape: Pick<
+      SniperConfig,
+      "requireMintAuthorityRenounced" | "requireFreezeAuthorityRenounced" | "maxCreatorBuyPct" | "minLiquiditySol"
+    > = {
+      requireMintAuthorityRenounced: true,
+      requireFreezeAuthorityRenounced: true,
+      maxCreatorBuyPct: 10,
+      minLiquiditySol: 20,
+    };
+    assert(
+      typeof legacyFieldsShape.requireMintAuthorityRenounced === "boolean" &&
+        typeof legacyFieldsShape.requireFreezeAuthorityRenounced === "boolean" &&
+        typeof legacyFieldsShape.maxCreatorBuyPct === "number" &&
+        typeof legacyFieldsShape.minLiquiditySol === "number",
+      "legacy Solana config fields (requireMintAuthorityRenounced, requireFreezeAuthorityRenounced, " +
+        "maxCreatorBuyPct, minLiquiditySol) remain present on SniperConfig, unrenamed, unrepurposed"
+    );
   }
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);

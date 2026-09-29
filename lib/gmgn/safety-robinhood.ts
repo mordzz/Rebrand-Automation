@@ -4,120 +4,116 @@ import type { RobinhoodSecurityFacts } from "./security-robinhood";
 import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhood";
 
 /**
- * Robinhood/EVM safety evaluator — PR06.
+ * Robinhood/EVM safety evaluator — PR06 (data foundation) / PR06.5
+ * (explicit Robinhood-specific policy).
  *
- * NOT wired into any daemon yet (that's PR07). This is foundation:
- * given a discovered token, its security facts, and the operator's
- * config, decide pass/refuse using the same operator-configured knobs
- * pump.fun/GMGN-Solana candidates go through, adapted to what's actually
- * verifiable on Robinhood — see the check-by-check classification below
- * and PR06's report for the full mapping table.
+ * NOT wired into any daemon yet (that's PR07). Given a discovered token,
+ * its security facts, and the operator's config, decides pass/refuse.
+ *
+ * PR06.5 core rule: the legacy Solana config fields
+ * (requireMintAuthorityRenounced, requireFreezeAuthorityRenounced,
+ * maxCreatorBuyPct, minLiquiditySol) are NOT reinterpreted, renamed, or
+ * consulted here at all — they remain Solana-only, for the Solana/GMGN
+ * evaluator (lib/gmgn/safety.ts), untouched. This evaluator consumes
+ * separate, explicitly-named Robinhood/EVM fields
+ * (requireOwnerRenounced, requireNoBlacklistCapability,
+ * maxCreatorHoldPct) added additively to SniperConfig/sniper_config.
+ * Same overall workflow (Discovery → Safety → Strategy → Risk →
+ * BUY/REFUSE); different chain gets a different, explicitly-named
+ * safety policy, not a shared field with silently different meaning per
+ * chain.
  *
  * ══════════════════════════════════════════════════════════════════════
- * CHECK-BY-CHECK CLASSIFICATION (current Solana rule → Robinhood status)
+ * CHECK-BY-CHECK CLASSIFICATION
  * ══════════════════════════════════════════════════════════════════════
- *   Social link required          → KEEP EXACTLY (same intent, GMGN data)
- *   Blocked name/symbol keyword    → KEEP EXACTLY
- *   Min/max token age              → KEEP EXACTLY (source changes: GMGN
- *                                     created_timestamp instead of local
- *                                     receipt clock — thresholds unchanged)
- *   Creator buy %                  → MISSING / BLOCKER (see below —
- *                                     ALWAYS refuses right now)
- *   Mint authority renounced       → MISSING / BLOCKER (no demonstrated
- *                                     EVM equivalent; see below)
- *   Freeze authority renounced     → MISSING / BLOCKER (no demonstrated
- *                                     EVM equivalent; see below)
- *   Token-2022 extension refusal   → NOT PORTED (wrong concept for EVM;
- *                                     existing GMGN honeypot/tax floors
- *                                     reused instead, see below)
- *   Alpha wallet buy required      → MAP TO EVM EQUIVALENT (ERC-20
- *                                     balanceOf via lib/chain/rpc.ts)
- *   Liquidity floor (minLiquiditySol) → MISSING / BLOCKER (unresolved
- *                                     provider-unit discrepancy, not a
- *                                     confirmed unit — see below; data
- *                                     captured, no
- *                                     threshold enforced)
+ *   Social link required            → KEEP EXACTLY (same intent, GMGN data)
+ *   Blocked name/symbol keyword      → KEEP EXACTLY
+ *   Min/max token age                → KEEP EXACTLY (source changes: GMGN
+ *                                       created_timestamp instead of local
+ *                                       receipt clock — thresholds unchanged)
+ *   Owner renounced (requireOwnerRenounced) → NEW EVM POLICY, not a
+ *                                       translation of requireMintAuthorityRenounced
+ *                                       (Solana) — see below
+ *   No blacklist capability (requireNoBlacklistCapability) → NEW EVM
+ *                                       POLICY, not a translation of
+ *                                       requireFreezeAuthorityRenounced
+ *                                       (Solana) — see below
+ *   Creator hold % (maxCreatorHoldPct) → NEW EVM POLICY measuring CURRENT
+ *                                       holding concentration, not a
+ *                                       translation of maxCreatorBuyPct
+ *                                       (Solana, initial allocation) —
+ *                                       see below. Configuration blocker
+ *                                       until explicitly set.
+ *   Token-2022 extension refusal     → NOT PORTED (wrong concept for EVM;
+ *                                       existing GMGN honeypot/tax floors
+ *                                       reused instead, see below)
+ *   Alpha wallet buy required        → MAP TO EVM EQUIVALENT (ERC-20
+ *                                       balanceOf via lib/chain/rpc.ts)
+ *   Liquidity floor                  → MISSING / BLOCKER, unconditional
+ *                                       (unresolved provider-unit
+ *                                       discrepancy — see below). PR06.5
+ *                                       does NOT add a Robinhood
+ *                                       liquidity threshold field; there
+ *                                       is nothing to configure yet.
  *   GMGN honeypot/tax/rug/bundler/
- *   insider/top10/wash-trading     → KEEP EXACTLY (same thresholds as the
- *                                     existing GMGN safety floors), PLUS
- *                                     unknown now fails closed on every
- *                                     one of these for Robinhood specifically
- *                                     (the Solana/GMGN path's existing
- *                                     behavior, which lets unknown pass,
- *                                     is untouched — see below)
+ *   insider/top10/wash-trading       → KEEP EXACTLY (same thresholds as
+ *                                       the existing GMGN safety floors),
+ *                                       unknown fails closed on every one
+ *                                       of these for Robinhood specifically
+ *                                       (the Solana/GMGN path's existing
+ *                                       behavior, which lets unknown pass,
+ *                                       is untouched)
  *
- * ── Creator buy % — MISSING / BLOCKER ──────────────────────────────────
- * Noah's existing rule is about the creator's INITIAL buy/allocation at
- * token creation. `creator_balance_rate` (trenches and /v1/token/security,
- * both live-verified) is the creator's CURRENT holding ratio — a
- * different fact entirely (a creator who bought big at launch and sold
- * everything reads 0 here; one who bought nothing but later accumulated
- * reads high).
- *
- * RE-INVESTIGATED 2026-09-29 against the actual documented routes
- * (earlier guessed paths — `/v1/token/holders`, `/v1/token/top_traders`
- * — were wrong and 404'd; corrected to `/v1/market/token_top_holders`
- * and `/v1/market/token_top_traders`, both of which DO exist and
- * returned real data live for `chain=robinhood`). Per-wallet rows carry
- * `amount_percentage` (current holding %), `balance`, `usd_value`,
- * `cost`/`cost_cur`, `buy_amount_cur`, `buy_volume_cur`, `buy_tx_count_cur`,
- * `history_bought_cost`, `avg_cost`, `start_holding_at`,
- * `wallet_tag_v2`/`maker_token_tags` — a genuinely richer field set than
- * `/v1/token/info`'s single `creator_balance_rate`.
- *
- * On the live-sampled token, the creator's row (matched by address) had
- * `amount_percentage: 4.4e-7` (current holding, negligible) but EVERY
- * buy/cost field — `cost`, `cost_cur`, `buy_amount_cur`, `buy_volume_cur`,
- * `buy_tx_count_cur`, `history_bought_cost`, `avg_cost` — was `0` or
- * `null`, and `start_holding_at` equaled the token's own creation
- * timestamp exactly (same as the pool contract's own top-holder row) —
- * there is no distinguishable "creator bought X at time T" event to
- * compute a percentage from. This is consistent with the creator having
- * received their allocation via direct mint/transfer at deployment
- * (typical for launchpad-minted tokens), not a recorded buy transaction.
- * With the correct endpoints now inspected and still showing zero
- * reconstructable buy/cost data for the creator, no reliable creator-initial-buy
- * reconstruction was found in the inspected Robinhood data sources — not
- * merely un-investigated, but this does not prove every Robinhood
- * launchpad can never expose an initial allocation; it means this PR's
- * inspection found none for the sample it checked.
- *
- * So the existing rule remains MISSING/BLOCKER and fails closed. Per
- * explicit instruction, this evaluator does NOT reinterpret creator_balance_rate as the
- * required fact, does NOT skip the check silently, and does NOT change
- * maxCreatorBuyPct's threshold — it fails closed: every Robinhood
- * candidate is refused with this reason until a product decision
- * resolves it. That is the correct (if inconvenient) consequence of a
- * genuinely blocked required safety fact, not a bug.
- *
- * ── Mint/freeze authority — MISSING / BLOCKER ──────────────────────────
+ * ── Owner renounced — NEW EVM POLICY, not a Solana translation ─────────
  * `/v1/token/security` (live-verified) returns `is_renounced`/`renounced`
- * — a real "contract ownership renounced" fact, exposed here as
- * `security.ownerRenounced` — but this is NOT the same concept as
- * Solana's mint-authority renouncement (ownership-renounced ≠ "cannot
- * mint more supply"; an EVM token can be non-mintable by design with
- * ownership still held, or mintable with ownership renounced and a
- * still-live minting path some other role controls). The endpoint also
- * carries `renounced_mint`/`renounced_freeze_account` fields, but on the
- * one live-sampled token they read `false` while `is_renounced` for that
- * SAME token read `true` — proving they are NOT synonyms and are most
- * likely inert placeholders from GMGN's shared cross-chain schema. No
- * blacklist-freeze equivalent was demonstrated either — `is_blacklist`
- * (contract has a blacklist function) is the closest available fact in
- * *intent*, but freeze authority (issuer can freeze a specific account's
- * SPL tokens instantly) and "contract could implement a blacklist" are
- * different mechanisms; using it to satisfy `requireFreezeAuthorityRenounced`
- * without an explicit decision would be exactly the kind of unapproved
- * substitution this PR must avoid. Per instruction: if the corresponding
- * config knob is enabled, this evaluator does not pretend the requirement
- * is satisfied by a different fact — it refuses with an explicit blocker
- * reason instead.
+ * — a real "contract ownership renounced" fact, exposed as
+ * `security.ownerRenounced`. This is chosen as its own explicit Robinhood
+ * policy (`requireOwnerRenounced`) specifically BECAUSE it is not the
+ * same concept as Solana's mint-authority renouncement (ownership-
+ * renounced ≠ "cannot mint more supply"; an EVM token can be non-mintable
+ * by design with ownership still held, or mintable with ownership
+ * renounced and a still-live minting path some other role controls). The
+ * security endpoint also carries `renounced_mint`/`renounced_freeze_account`
+ * fields, but on the one live-sampled token they read `false` while
+ * `is_renounced` for that SAME token read `true` — proving they are NOT
+ * synonyms and are most likely inert placeholders from GMGN's shared
+ * cross-chain schema. Deliberately not consumed anywhere.
+ *
+ * ── No blacklist capability — NEW EVM POLICY, not a Solana translation ─
+ * `is_blacklist` (contract has a blacklist function it could invoke) is
+ * the EVM policy chosen to protect against issuer-controlled wallet
+ * blocking — NOT a claim that this is equivalent to Solana freeze
+ * authority (issuer can freeze a specific account's SPL tokens instantly
+ * — a different mechanism). `requireNoBlacklistCapability` stands on its
+ * own as a deliberate EVM-specific risk policy.
+ *
+ * ── Creator hold % — NEW EVM POLICY, not a Solana translation ──────────
+ * Noah's Solana rule (`maxCreatorBuyPct`) is about the creator's INITIAL
+ * buy/allocation at token creation. RE-INVESTIGATED 2026-09-29 against
+ * the actual documented routes (`/v1/market/token_top_holders`,
+ * `/v1/market/token_top_traders` — earlier guessed paths 404'd). On the
+ * live-sampled token, the creator's row had `amount_percentage: 4.4e-7`
+ * (current holding) but every buy/cost field (`cost`, `buy_amount_cur`,
+ * `buy_volume_cur`, `buy_tx_count_cur`, `history_bought_cost`,
+ * `avg_cost`) was `0`/`null`, and `start_holding_at` equaled the token's
+ * own creation timestamp — no distinguishable "creator bought X at time
+ * T" event exists to compute an initial-buy percentage from. No reliable
+ * creator-initial-buy reconstruction was found in the inspected Robinhood
+ * data sources — this does not prove no Robinhood launchpad could ever
+ * expose one, only that this inspection found none.
+ *
+ * `maxCreatorHoldPct` is therefore an intentionally DIFFERENT policy,
+ * using `creatorHoldRate` (current holding concentration) as its own
+ * fact — not a substitute for the unavailable initial-buy fact, and not
+ * numerically inherited from `maxCreatorBuyPct` just because both happen
+ * to be percentages. Until `maxCreatorHoldPct` is explicitly configured
+ * (non-null), this evaluator refuses with an explicit configuration
+ * blocker — it does not silently pick a default threshold.
  *
  * ── Liquidity floor — MISSING / BLOCKER (data captured, policy not) ────
- * `minLiquiditySol` is SOL-denominated. Robinhood's `liquidity` field's
- * actual unit is UNRESOLVED / PROVIDER SEMANTICS DISCREPANCY, not
- * confirmed ETH-denominated — two pieces of evidence conflict and
- * neither has been allowed to win by inference:
+ * Robinhood's `liquidity` field's actual unit is UNRESOLVED / PROVIDER
+ * SEMANTICS DISCREPANCY — two pieces of evidence conflict and neither has
+ * been allowed to win by inference:
  *   1. GMGN's own documentation defines token-info/pool `liquidity` as
  *      USD-denominated (both the top-level field and `pool.liquidity`).
  *   2. The live-sampled Robinhood values (`liquidity ~0.001-0.005`) sit
@@ -126,16 +122,11 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *      adjacency that LOOKS inconsistent with a USD contract, but
  *      `quote_symbol` identifying the pool's quote asset does not, by
  *      itself, prove `liquidity` is denominated in that asset rather
- *      than USD via some other mechanism (e.g. a near-empty bonding-curve
- *      pool that is legitimately worth a tiny USD amount pre-migration).
- * This discrepancy — not a confirmed unit — is itself the reason for the
- * blocker: without knowing whether "0.004" means "$0.004" (matching the
- * docs) or "0.004 ETH" (matching the numeric adjacency), no conversion
- * from a SOL-denominated threshold can be responsibly made. `liquidity`
- * is carried on RobinhoodDiscoveredToken (data acquisition, done in PR05)
- * but no floor is enforced against it in this evaluator — pending an
- * explicit decision that first resolves which unit GMGN is actually
- * returning for this chain, not just what threshold to use once known.
+ *      than USD via some other mechanism.
+ * PR06.5 does not resolve this and does not add any Robinhood liquidity
+ * config field — there is nothing to compare `minLiquiditySol` against,
+ * and that SOL-denominated field is not consulted here. The evaluator
+ * continues to fail closed unconditionally on this point (see below).
  */
 
 /** Existing GMGN safety floors, reused as-is — these are fixed operator-
@@ -159,13 +150,16 @@ export type RobinhoodSafetyCheckResult = {
    * those are different facts, not a chain-neutral rename of the same
    * one. */
   ownerRenounced: boolean | null;
+  isBlacklistCapable: boolean | null;
 
-  /** Structurally documents the blockers rather than omitting them —
-   * always false right now. A future PR that resolves either blocker
-   * should flip these based on an explicit, reviewed decision, not by
-   * quietly deleting the field. */
-  freezeEquivalentAvailable: false;
-  creatorInitialBuyPctAvailable: false;
+  /** Current creator holding, 0-100 (from creatorHoldRate * 100) — NOT
+   * the creator's initial buy/allocation. null when unknown or when the
+   * source data (creatorHoldRate) wasn't available. */
+  creatorHoldPct: number | null;
+  /** Whether maxCreatorHoldPct has been explicitly configured. false
+   * means the creator-hold check hit the configuration blocker rather
+   * than actually evaluating creatorHoldPct against a threshold. */
+  creatorHoldPolicyConfigured: boolean;
 
   hasSocialLink: boolean;
   metadata: {
@@ -188,12 +182,12 @@ export async function evaluateRobinhoodSafety(
   security: RobinhoodSecurityFacts | null,
   config: Pick<
     SniperConfig,
-    | "requireMintAuthorityRenounced"
-    | "requireFreezeAuthorityRenounced"
+    | "requireOwnerRenounced"
+    | "requireNoBlacklistCapability"
+    | "maxCreatorHoldPct"
     | "requireSocialLink"
     | "requireAlphaWalletBuy"
     | "alphaWallets"
-    | "maxCreatorBuyPct"
     | "blockedKeywords"
     | "minTokenAgeSec"
     | "maxTokenAgeSec"
@@ -222,20 +216,23 @@ export async function evaluateRobinhoodSafety(
     }
   }
 
-  // ── Mint-authority-equivalent — MISSING/BLOCKER. If the knob is on,
-  // do not pretend a different fact satisfies it. ──
-  if (config.requireMintAuthorityRenounced) {
+  // ── Owner renounced — NEW EVM POLICY. Unknown fails closed. ──
+  const ownerRenounced = security?.ownerRenounced ?? null;
+  if (config.requireOwnerRenounced && ownerRenounced !== true) {
     reasons.push(
-      "mint-authority-equivalent unavailable on Robinhood Chain — MISSING/BLOCKER, " +
-        "requires an explicit product decision before this check can run (see safety-robinhood.ts)"
+      ownerRenounced === false
+        ? "contract ownership not renounced"
+        : "contract ownership-renounced status unknown — fails closed"
     );
   }
 
-  // ── Freeze-authority-equivalent — MISSING/BLOCKER, same posture. ──
-  if (config.requireFreezeAuthorityRenounced) {
+  // ── No blacklist capability — NEW EVM POLICY. Unknown fails closed. ──
+  const isBlacklistCapable = security?.isBlacklistCapable ?? null;
+  if (config.requireNoBlacklistCapability && isBlacklistCapable !== false) {
     reasons.push(
-      "freeze-authority-equivalent unavailable on Robinhood Chain — MISSING/BLOCKER, " +
-        "requires an explicit product decision before this check can run (see safety-robinhood.ts)"
+      isBlacklistCapable === true
+        ? "contract has blacklist capability"
+        : "blacklist-capability status unknown — fails closed"
     );
   }
 
@@ -244,13 +241,22 @@ export async function evaluateRobinhoodSafety(
     reasons.push("no website/X/Telegram link");
   }
 
-  // ── Creator buy % — MISSING/BLOCKER, unconditional (see module
-  // comment). Always refuses; never substitutes creator_balance_rate. ──
-  reasons.push(
-    "creator initial-buy percentage unavailable on Robinhood Chain — MISSING/BLOCKER " +
-      "(creator_balance_rate is current holdings, not initial allocation; the holders/traders " +
-      "endpoints show zero recorded buy/cost activity for the creator — see safety-robinhood.ts)"
-  );
+  // ── Creator hold % — NEW EVM POLICY. Configuration blocker until an
+  // explicit threshold is set; never inherits maxCreatorBuyPct. ──
+  const creatorHoldPct = token.creatorHoldRate != null ? token.creatorHoldRate * 100 : null;
+  const creatorHoldPolicyConfigured = config.maxCreatorHoldPct != null;
+  if (!creatorHoldPolicyConfigured) {
+    reasons.push(
+      "maxCreatorHoldPct not configured — configuration blocker: an explicit product decision " +
+        "is required before the Robinhood creator-hold check can run (see safety-robinhood.ts)"
+    );
+  } else if (creatorHoldPct == null) {
+    reasons.push("creator holding percentage unknown — fails closed");
+  } else if (creatorHoldPct > config.maxCreatorHoldPct!) {
+    reasons.push(
+      `creator holds ${creatorHoldPct.toFixed(1)}% of supply (limit ${config.maxCreatorHoldPct}%)`
+    );
+  }
 
   // ── Existing GMGN risk floors — KEEP EXACTLY (same thresholds as the
   // Solana path), applied to Robinhood's equivalent fields. Prefer
@@ -314,21 +320,14 @@ export async function evaluateRobinhoodSafety(
     );
   }
 
-  // ── Liquidity floor — MISSING/BLOCKER (policy). The unit of
-  // Robinhood's `liquidity` field is UNRESOLVED / PROVIDER SEMANTICS
-  // DISCREPANCY, not confirmed — see the module-level comment for both
-  // pieces of conflicting evidence (GMGN docs say USD; the live
-  // numeric/adjacency pattern looks ETH-like). That unresolved unit,
-  // by itself, is reason enough to withhold any threshold against a
-  // SOL-denominated config value — no conversion is made here. Data is
-  // still captured (token.liquidity, from PR05); only the threshold is
-  // withheld. If the threshold is disabled (0), there's nothing to
-  // block. ──
+  // ── Liquidity floor — MISSING/BLOCKER, unconditional. PR06.5 adds no
+  // Robinhood liquidity config field; minLiquiditySol (Solana, SOL-
+  // denominated) is never consulted here. See module comment. ──
   if (config.minLiquiditySol > 0) {
     reasons.push(
-      "liquidity policy unresolved — MISSING/BLOCKER: minLiquiditySol is SOL-denominated, " +
-        "Robinhood liquidity's actual unit is an unresolved provider-semantics discrepancy " +
-        "(GMGN docs say USD; live values look ETH-like) — no approved conversion exists (see safety-robinhood.ts)"
+      "liquidity policy unresolved — MISSING/BLOCKER: Robinhood liquidity's actual unit is an " +
+        "unresolved provider-semantics discrepancy (GMGN docs say USD; live values look ETH-like), " +
+        "and no Robinhood-specific liquidity config field exists yet (see safety-robinhood.ts)"
     );
   }
 
@@ -344,9 +343,10 @@ export async function evaluateRobinhoodSafety(
   return {
     passed: reasons.length === 0,
     reasons,
-    ownerRenounced: security?.ownerRenounced ?? null,
-    freezeEquivalentAvailable: false,
-    creatorInitialBuyPctAvailable: false,
+    ownerRenounced,
+    isBlacklistCapable,
+    creatorHoldPct,
+    creatorHoldPolicyConfigured,
     hasSocialLink: token.hasSocialLink,
     metadata: {
       name: token.name ?? undefined,

@@ -247,6 +247,28 @@ export const sniperConfig = pgTable("sniper_config", {
   metadataFetchTimeoutMs: numeric("metadata_fetch_timeout_ms")
     .notNull()
     .default("3000"),
+
+  /* PR06.5 — Robinhood/EVM-specific safety policy. Additive: the legacy
+   * Solana fields above (requireMintAuthorityRenounced,
+   * requireFreezeAuthorityRenounced, maxCreatorBuyPct, minLiquiditySol)
+   * are untouched and remain Solana-only. These are deliberate new EVM
+   * policy choices, not semantic translations of the Solana fields — see
+   * lib/gmgn/safety-robinhood.ts for why mint/freeze-authority concepts
+   * don't carry over. */
+  requireOwnerRenounced: boolean("require_owner_renounced")
+    .notNull()
+    .default(true),
+  requireNoBlacklistCapability: boolean("require_no_blacklist_capability")
+    .notNull()
+    .default(true),
+  /* Robinhood equivalent of maxCreatorBuyPct — but measures CURRENT
+   * creator holding concentration (creatorHoldRate), not initial
+   * buy/allocation, which cannot be reliably reconstructed on Robinhood
+   * (see safety-robinhood.ts). Nullable with NO default: null means
+   * "not yet configured", which the Robinhood evaluator treats as an
+   * explicit configuration blocker — never silently inherits
+   * maxCreatorBuyPct's threshold just because both are percentages. */
+  maxCreatorHoldPct: numeric("max_creator_hold_pct"),
 });
 
 /**

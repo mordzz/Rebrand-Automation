@@ -47,6 +47,24 @@ export type SniperConfig = {
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
 
+  // Robinhood/EVM-specific entry filters (PR06.5, lib/gmgn/safety-robinhood.ts).
+  // Deliberate new EVM policy choices, not semantic translations of the
+  // Solana fields above — those remain Solana-only and unchanged.
+  /** Requires GMGN's `ownerRenounced` fact to be true. NOT the same
+   * concept as requireMintAuthorityRenounced (Solana). */
+  requireOwnerRenounced: boolean;
+  /** Requires GMGN's `isBlacklistCapable` fact to be false. NOT the same
+   * concept as requireFreezeAuthorityRenounced (Solana). */
+  requireNoBlacklistCapability: boolean;
+  /** Ceiling on the creator's CURRENT holding concentration
+   * (creatorHoldRate), for Robinhood only — NOT the same fact as
+   * maxCreatorBuyPct (Solana initial-buy %), which cannot be reliably
+   * reconstructed on Robinhood. `null` means "not yet configured": the
+   * Robinhood evaluator refuses with an explicit configuration blocker
+   * rather than silently inheriting maxCreatorBuyPct's threshold or any
+   * other default. */
+  maxCreatorHoldPct: number | null;
+
   // Sizing (lib/sniper/risk-limits.ts)
   maxSolPerSnipe: number;
   maxConcurrentPositions: number;
@@ -132,6 +150,10 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
     maxTokenAgeSec: numOrNull(row.maxTokenAgeSec),
     blockedKeywords: row.blockedKeywords,
 
+    requireOwnerRenounced: row.requireOwnerRenounced,
+    requireNoBlacklistCapability: row.requireNoBlacklistCapability,
+    maxCreatorHoldPct: numOrNull(row.maxCreatorHoldPct),
+
     maxSolPerSnipe: num(row.maxSolPerSnipe),
     maxConcurrentPositions: num(row.maxConcurrentPositions),
     maxTotalDeployedSol: num(row.maxTotalDeployedSol),
@@ -172,6 +194,10 @@ function envSeededDefaults(): SniperConfig {
     minTokenAgeSec: 0,
     maxTokenAgeSec: null,
     blockedKeywords: [],
+
+    requireOwnerRenounced: true,
+    requireNoBlacklistCapability: true,
+    maxCreatorHoldPct: null,
 
     maxSolPerSnipe: envNumber("SNIPER_MAX_SOL_PER_SNIPE", 0.05),
     maxConcurrentPositions: envNumber("SNIPER_MAX_CONCURRENT_POSITIONS", 3),
@@ -242,6 +268,7 @@ type ConfigPatch = Partial<SniperConfig>;
 
 const NUMERIC_KEYS = new Set<keyof SniperConfig>([
   "maxCreatorBuyPct",
+  "maxCreatorHoldPct",
   "minTokenAgeSec",
   "maxTokenAgeSec",
   "maxSolPerSnipe",
