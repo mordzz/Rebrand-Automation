@@ -49,14 +49,17 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *                                       reused instead, see below)
  *   Alpha wallet buy required        → MAP TO EVM EQUIVALENT (ERC-20
  *                                       balanceOf via lib/chain/rpc.ts)
- *   Liquidity floor                  → NOT APPLICABLE (v1 policy decision:
- *                                       Pons V2/new_creation is still
- *                                       pre-graduation with negligible
- *                                       liquidity, same rationale as the
- *                                       existing pump.fun path enforcing
- *                                       no virtual-reserve floor — see
- *                                       below). minLiquiditySol is not
- *                                       consumed by this evaluator at all.
+ *   Liquidity floor                  → MISSING / BLOCKER, unconditional
+ *                                       (REINSTATED 2026-09-29 — see below.
+ *                                       A prior commit incorrectly treated
+ *                                       GMGN `pons` new_creation tokens as
+ *                                       pre-DEX bonding-curve candidates;
+ *                                       on-chain verification proved they
+ *                                       are real, live Uniswap V3 pools
+ *                                       with genuine reserves from
+ *                                       creation). minLiquiditySol is not
+ *                                       consumed by this evaluator at all
+ *                                       — not even as an on/off signal.
  *   GMGN honeypot/tax/rug/bundler/
  *   insider/top10/wash-trading       → KEEP EXACTLY (same thresholds as
  *                                       the existing GMGN safety floors),
@@ -112,44 +115,69 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * (non-null), this evaluator refuses with an explicit configuration
  * blocker — it does not silently pick a default threshold.
  *
- * ── Liquidity floor — NOT APPLICABLE at v1's pre-graduation stage ───────
- * RESOLVED (v1 policy decision, re-verified 2026-09-29): Robinhood v1
- * discovery is restricted to `launchpad = pons` (Pons V2), `stage =
- * new_creation`. LIVE-VERIFIED: sampled Pons `new_creation` candidates
- * show `progress: 0`, `launchpad_status: 0`, `migrated_timestamp: 0`,
- * `migration_market_cap: 0` — not yet graduated, with genuinely
- * negligible pool liquidity (observed `liquidity` values as low as
- * ~0.00005). Note a real architectural difference from pump.fun/Flap:
- * Pons deploys directly onto a Uniswap V3 pool at creation
- * (`pool.exchange: "uniswap_v3"`, quoted against WETH) rather than a
- * separate custom bonding-curve contract — but the effect is the same
- * for this purpose: at `new_creation`, liquidity is not yet a meaningful
- * discriminator, exactly the situation the existing pump.fun path
- * already handles by NOT using PumpPortal's virtual SOL reserve as an
- * entry liquidity floor (see lib/sniper/safety-checks.ts's own comments
- * on `vTokensInBondingCurve`/`vSolInBondingCurve`).
+ * ── Liquidity floor — REINSTATED as an unconditional blocker ────────────
+ * CORRECTED 2026-09-29. The prior commit assumed GMGN `pons` new_creation
+ * candidates were Pons V2 pre-DEX bonding-curve tokens (by analogy to
+ * pump.fun) and therefore removed the liquidity check entirely. That
+ * assumption was WRONG and has been disproven by direct on-chain
+ * verification against Robinhood Chain MAINNET (chain id 4663; the
+ * earlier check had run against testnet by mistake, which returned no
+ * bytecode for anything and was itself a red flag, not evidence).
  *
- *   Pump.fun new bonding-curve token → no virtual-reserve liquidity floor
- *   Pons V2 new (pre-graduation) token → no pool-liquidity floor
+ * On-chain findings for the previously-sampled token
+ * (0xc65a2de34f972ab545b4c74414b42aad3e9f31b9, pool
+ * 0xea7217d61cbed34bd99352143d6bdc6ad9a8a2fb), and reproduced identically
+ * on 2 further live-sampled `pons` new_creation candidates:
+ *   - The pool is a REAL deployed contract (44KB+ bytecode) implementing
+ *     the standard Uniswap V3 pool interface (`factory()`, `token0()`,
+ *     `token1()`, `fee()`, `liquidity()` all callable and return sane
+ *     values) — this is a genuine, live, immediately-tradeable AMM pool
+ *     from the moment of token creation, not a bonding-curve stand-in.
+ *   - On-chain `balanceOf` reserves at the pool address EXACTLY match
+ *     GMGN's reported `base_reserve`/`quote_reserve` to displayed
+ *     precision — GMGN's reserve numbers are real, not synthetic/virtual.
+ *   - The pool's on-chain `factory()` (`0x1f7d7550B1b028f7571E69A784071F0205FD2EfA`)
+ *     matches NONE of the three candidate Pons factory addresses given
+ *     for classification (active/legacy direct-pool, or V2) — meaning
+ *     this token cannot be attributed to any of those three contracts at
+ *     all. The SAME factory address was also observed on `flap`-labeled
+ *     tokens in the earlier PR05/PR06 sample — GMGN's `launchpad_platform`
+ *     label does not correspond to a verifiably distinct on-chain
+ *     factory/architecture per platform; it appears to be an off-chain
+ *     attribution label layered over a shared underlying deployment path.
+ *     No bonding-curve-vs-direct-pool VERSION DISTINCTION could be
+ *     established for `pons` at all — every checked sample (3/3 with a
+ *     pool) was a live, real Uniswap V3 pool from creation.
  *
- * This is NOT a unit conversion, NOT an assumption that `liquidity` is
- * ETH or USD, and NOT a weakening of a real DEX-pool liquidity rule — the
- * concept simply isn't applicable yet at this lifecycle stage, the same
- * way it already isn't for the Solana bonding-curve path. Accordingly,
- * this evaluator no longer consumes `minLiquiditySol` (Solana,
- * SOL-denominated) at all — not in its config Pick<>, not as an on/off
- * signal, not for any purpose. The Solana evaluator and
- * `minLiquiditySol`'s existing Solana-side behavior are unchanged.
+ * Conclusion: a real DEX pool with real (if currently small) reserves
+ * exists from the moment a `pons` new_creation token is created —
+ * liquidity IS a real risk property here, unlike the pump.fun/PumpPortal
+ * virtual-bonding-curve-reserve case this evaluator was (incorrectly)
+ * modeled after. The liquidity floor is therefore REINSTATED as an
+ * unconditional blocker: every candidate refuses on this point until an
+ * explicit, reviewed threshold decision is made.
  *
- * The unresolved provider-semantics discrepancy documented in earlier
- * PR06/PR06.5 commits (GMGN docs say `liquidity` is USD; the live
- * numeric/adjacency pattern for Robinhood looked ETH-like) is NOT solved
- * by this decision and remains open — it simply doesn't need solving for
- * v1's `new_creation`-only scope. If Robinhood support later expands to
- * `near_completion`/`completed`/migrated DEX tokens or other launchpads,
- * that liquidity question returns and requires its own reviewed policy
- * (likely an explicitly USD-denominated field such as `minLiquidityUsd`,
- * not `minLiquiditySol` reused or reinterpreted). Out of scope here.
+ * Liquidity-unit investigation (numeric evidence, not inference from
+ * scale): GMGN's `liquidity` field (0.00005286778200534018 on the
+ * sampled token) is approximately 2× `pool.quote_reserve_value`
+ * (0.00002684741500033486, reported by GMGN on the same token) — a
+ * pattern consistent with "liquidity ≈ 2 × one side's USD value", which
+ * would make it USD-denominated as GMGN's documentation claims. This
+ * ratio was confirmed on exactly one token, not independently
+ * cross-checked against an external ETH/USD price feed, and not
+ * reproduced on a second sample within this investigation's time budget.
+ * That is SUGGESTIVE, not proof. Per the explicit instruction that only
+ * numeric evidence that actually matches should be marked verified, this
+ * is classified **UNRESOLVED**, not VERIFIED USD — and per "if unresolved,
+ * fail closed", the blocker below does not attempt any unit-based
+ * threshold; it refuses unconditionally instead.
+ *
+ * This does NOT use `minLiquiditySol` (Solana, SOL-denominated) in any
+ * form — not as a value, not as an on/off signal. It is not renamed or
+ * reinterpreted; it remains fully Solana-only, for the Solana evaluator.
+ * No new Robinhood liquidity config field (e.g. `minLiquidityUsd`) is
+ * added in this correction — choosing a threshold is a separate, later,
+ * explicitly-reviewed product decision, same as before.
  */
 
 /** Existing GMGN safety floors, reused as-is — these are fixed operator-
@@ -342,9 +370,18 @@ export async function evaluateRobinhoodSafety(
     );
   }
 
-  // ── Liquidity floor — NOT APPLICABLE at v1's bonding-curve stage (see
-  // module comment for the pump.fun-parity rationale). minLiquiditySol
-  // is not read anywhere in this function. ──
+  // ── Liquidity floor — MISSING/BLOCKER, unconditional. On-chain
+  // verification proved GMGN `pons` new_creation tokens have a real,
+  // live Uniswap V3 pool with real reserves from creation — liquidity is
+  // a genuine risk property here, not an inapplicable pre-DEX concept.
+  // No threshold has been chosen (unit is UNRESOLVED — see module
+  // comment), so this refuses unconditionally rather than guessing one.
+  // minLiquiditySol is still never read here, in any form. ──
+  reasons.push(
+    "liquidity policy unresolved — MISSING/BLOCKER: a real DEX pool with real reserves exists " +
+      "from token creation (on-chain verified), but no liquidity threshold has been chosen and " +
+      "GMGN's liquidity unit is unconfirmed (see safety-robinhood.ts)"
+  );
 
   // ── Alpha wallet — MAP TO EVM EQUIVALENT. ──
   const alphaWalletGateActive = config.requireAlphaWalletBuy && config.alphaWallets.length > 0;

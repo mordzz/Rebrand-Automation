@@ -477,18 +477,28 @@ async function main() {
     assert(true, "evaluator's alpha-wallet gate delegates entirely to checkAlphaWalletBuyRobinhood (see above)");
   }
 
-  // ═══ v1 policy: liquidity floor not applicable at pre-graduation stage ═
+  // ═══ liquidity floor: REINSTATED as unconditional (on-chain evidence
+  // disproved the earlier "pre-DEX bonding curve" assumption — GMGN
+  // `pons` new_creation tokens have a real, live Uniswap V3 pool with
+  // real reserves from creation) ═══════════════════════════════════════
   {
-    // A Pons V2 new_creation token with tiny/negligible raw GMGN
-    // `liquidity` (live-verified as low as ~0.00005 on real candidates)
-    // must not be refused for it — there is no liquidity check at all in
-    // this evaluator (the config type doesn't even accept minLiquiditySol
-    // — see the TypeScript signature below, a compile-time guarantee).
     const token = makeToken({ launchpad_platform: "pons", liquidity: 0.00005 });
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
-      !result.reasons.some((r) => r.includes("liquidity")),
-      "Pons V2 new_creation token with negligible liquidity is not refused for it (pre-graduation parity with pump.fun)"
+      result.reasons.some((r) => r.includes("liquidity policy unresolved")),
+      "liquidity blocker fires unconditionally — real DEX pool exists from creation, no threshold chosen yet"
+    );
+    assertEqual(result.passed, false, "liquidity blocker alone is enough to refuse a candidate");
+  }
+  {
+    // Even a token with reported liquidity that LOOKS substantial is
+    // still refused — this is not a numeric threshold check, it's an
+    // unconditional "no threshold has been decided yet" blocker.
+    const token = makeToken({ launchpad_platform: "pons", liquidity: 1000 });
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assert(
+      result.reasons.some((r) => r.includes("liquidity policy unresolved")),
+      "liquidity blocker fires regardless of the reported liquidity value — no threshold exists to compare against"
     );
   }
   {
