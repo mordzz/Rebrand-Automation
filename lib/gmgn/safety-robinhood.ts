@@ -136,18 +136,42 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *   - On-chain `balanceOf` reserves at the pool address EXACTLY match
  *     GMGN's reported `base_reserve`/`quote_reserve` to displayed
  *     precision — GMGN's reserve numbers are real, not synthetic/virtual.
- *   - The pool's on-chain `factory()` (`0x1f7d7550B1b028f7571E69A784071F0205FD2EfA`)
- *     matches NONE of the three candidate Pons factory addresses given
- *     for classification (active/legacy direct-pool, or V2) — meaning
- *     this token cannot be attributed to any of those three contracts at
- *     all. The SAME factory address was also observed on `flap`-labeled
- *     tokens in the earlier PR05/PR06 sample — GMGN's `launchpad_platform`
- *     label does not correspond to a verifiably distinct on-chain
- *     factory/architecture per platform; it appears to be an off-chain
- *     attribution label layered over a shared underlying deployment path.
- *     No bonding-curve-vs-direct-pool VERSION DISTINCTION could be
- *     established for `pons` at all — every checked sample (3/3 with a
- *     pool) was a live, real Uniswap V3 pool from creation.
+ *
+ * CORRECTION (2026-09-29, second pass): an earlier version of this
+ * comment used the pool's `factory()` result
+ * (`0x1f7d7550B1b028f7571E69A784071F0205FD2EfA`) as if it identified the
+ * *launchpad*, and concluded (wrongly) that `pons` and `flap` "share a
+ * factory" and therefore that GMGN's `launchpad_platform` label doesn't
+ * correspond to a distinct launchpad. That reasoning was invalid:
+ * `0x1f7d7550...` is the Uniswap V3 Factory itself — the DEX
+ * infrastructure contract, not a launchpad. Any two launchpads built on
+ * Uniswap V3 would produce pools whose `factory()` returns the same
+ * address; this proves nothing about which upstream launchpad initiated
+ * either launch.
+ *
+ * Re-investigated correctly by tracing the actual launch TRANSACTION
+ * (not the pool's own `factory()` getter): for the sampled `pons` token,
+ * the earliest transaction touching it was called by the creator wallet
+ * directly against `0xf4fc0cd27fc8ecf17e55ee4c3f7201897df3eb75` (function
+ * selector `0x686399cb`) — that single call atomically triggered the
+ * token's mint, the Uniswap V3 pool creation, and several other
+ * contracts' log emissions, all in one transaction. This address does
+ * NOT match any of the three previously-supplied "Pons" candidate
+ * factories (active/legacy direct-pool, or V2) — this repo has no
+ * independent source confirming `0xf4fc0cd2...`'s branding, so its
+ * identity as "Pons" specifically is UNRESOLVED against the supplied
+ * candidate list, even though a real, distinct, on-chain launch
+ * initiator was found. For comparison, the same tracing method on a
+ * `flap`-labeled token found a DIFFERENT call target
+ * (`0x8bf8eace53982a349195c452d1a22d025fae6666`) — confirming `pons` and
+ * `flap` DO route through distinct on-chain contracts (correcting the
+ * earlier "shared factory" claim, which was an artifact of both using
+ * the same underlying DEX).
+ *
+ * What remains established regardless of launchpad branding: every
+ * checked `pons`-labeled sample (3/3 with a pool) was a live, real
+ * Uniswap V3 pool with real reserves from the moment of creation — no
+ * bonding-curve intermediary was found for any of them.
  *
  * Conclusion: a real DEX pool with real (if currently small) reserves
  * exists from the moment a `pons` new_creation token is created —
@@ -157,20 +181,28 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * unconditional blocker: every candidate refuses on this point until an
  * explicit, reviewed threshold decision is made.
  *
- * Liquidity-unit investigation (numeric evidence, not inference from
- * scale): GMGN's `liquidity` field (0.00005286778200534018 on the
- * sampled token) is approximately 2× `pool.quote_reserve_value`
- * (0.00002684741500033486, reported by GMGN on the same token) — a
- * pattern consistent with "liquidity ≈ 2 × one side's USD value", which
- * would make it USD-denominated as GMGN's documentation claims. This
- * ratio was confirmed on exactly one token, not independently
- * cross-checked against an external ETH/USD price feed, and not
- * reproduced on a second sample within this investigation's time budget.
- * That is SUGGESTIVE, not proof. Per the explicit instruction that only
- * numeric evidence that actually matches should be marked verified, this
- * is classified **UNRESOLVED**, not VERIFIED USD — and per "if unresolved,
- * fail closed", the blocker below does not attempt any unit-based
- * threshold; it refuses unconditionally instead.
+ * Liquidity-unit investigation: GMGN's documentation explicitly defines
+ * `liquidity` (trenches, token/info, and pool.liquidity) as USD-
+ * denominated, computed from `base_reserve_value + quote_reserve_value`.
+ * Checking that contract against real Robinhood data: on the sampled
+ * `pons new_creation` token, `base_reserve_value` was `0` (the token has
+ * no discovered price yet, so its side of the pool can't be priced) and
+ * `quote_reserve_value` was `0.00002684741500033486` — their SUM
+ * (0.0000268...) does NOT equal the reported `liquidity`
+ * (0.00005286778200534018); `liquidity` is instead ≈2× the quote-side
+ * value alone. This is plausibly still consistent with the documented
+ * USD contract (e.g. a "value the priced side, double it" TVL estimate
+ * for a pool whose other side has no price yet) rather than a genuine
+ * implementation bug, but `new_creation` tokens structurally always have
+ * `base_reserve_value = 0` (no price discovered yet), which makes the
+ * documented sum-formula untestable on this population — every sample
+ * available for v1's scope is a degenerate case for this check. With
+ * only one usable data point and no independent ETH/USD price-feed
+ * cross-check, this does not meet "multiple samples consistently
+ * support" the documented contract. Classified **UNRESOLVED**, not
+ * VERIFIED USD — per "if unresolved, fail closed", the blocker below
+ * does not attempt any unit-based threshold; it refuses unconditionally
+ * instead.
  *
  * This does NOT use `minLiquiditySol` (Solana, SOL-denominated) in any
  * form — not as a value, not as an on/off signal. It is not renamed or
