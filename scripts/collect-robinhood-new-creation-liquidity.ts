@@ -9,6 +9,12 @@
  * endpoints and appends normalized observations to a local, gitignored
  * JSONL dataset (data/robinhood-liquidity-snapshots.jsonl).
  *
+ * Integrity contract: a provider failure, a malformed provider payload,
+ * or a corrupted/invalid existing dataset line must NEVER be treated as
+ * "empty market" or silently repaired — each aborts the run and leaves
+ * the persisted dataset byte-for-byte unchanged. See
+ * lib/gmgn/liquidity-collector.ts's parseDataset/mergeObservations.
+ *
  * Run:
  *   npm run collect:robinhood-liquidity
  *   npm run collect:robinhood-liquidity -- --interval-minutes 5 --runs 12
@@ -23,26 +29,34 @@ import {
   buildObservationFromRaw,
   mergeObservations,
   computeStats,
+  parseDataset,
+  serializeDataset,
   type LiquidityObservation,
 } from "@/lib/gmgn/liquidity-collector";
 
 const DATASET_PATH = join(process.cwd(), "data", "robinhood-liquidity-snapshots.jsonl");
 const LAUNCHPAD_ALLOWLIST = ["pons"]; // v1 scope only — see GMGN_ROBINHOOD_FIELD_MAP.md
 
-function loadExisting(): LiquidityObservation[] {
+/**
+ * Loads the persisted dataset with fail-closed integrity. A corrupted or
+ * schema-invalid line throws rather than returning a partial/repaired
+ * dataset — callers must not call saveAll() after catching this.
+ */
+function loadExistingOrThrow(): LiquidityObservation[] {
   if (!existsSync(DATASET_PATH)) return [];
   const raw = readFileSync(DATASET_PATH, "utf8");
-  const lines = raw.split("\n").filter((l) => l.trim());
-  const observations: LiquidityObservation[] = [];
-  for (const line of lines) {
-    try {
-      observations.push(JSON.parse(line) as LiquidityObservation);
-    } catch {
-      // Skip a corrupted line rather than crash the whole collector run.
-      console.warn("[collector] skipping unparseable dataset line");
+  const result = parseDataset(raw);
+  if (!result.ok) {
+    if (result.reason === "parse_error") {
+      throw new Error(
+        `dataset integrity error: line ${result.lineNumber} could not be parsed as JSON — dataset left untouched`
+      );
     }
+    throw new Error(
+      `dataset integrity error: line ${result.lineNumber} failed schema validation (${result.detail}) — dataset left untouched`
+    );
   }
-  return observations;
+  return result.observations;
 }
 
 /** Writes the full dataset via a temp-file + atomic rename, so a process
@@ -51,12 +65,22 @@ function loadExisting(): LiquidityObservation[] {
 function saveAll(observations: readonly LiquidityObservation[]): void {
   mkdirSync(dirname(DATASET_PATH), { recursive: true });
   const tmpPath = `${DATASET_PATH}.tmp-${process.pid}`;
-  const body = observations.map((o) => JSON.stringify(o)).join("\n") + (observations.length > 0 ? "\n" : "");
-  writeFileSync(tmpPath, body, "utf8");
+  writeFileSync(tmpPath, serializeDataset(observations), "utf8");
   renameSync(tmpPath, DATASET_PATH);
 }
 
-async function fetchNewCreationCandidates(): Promise<Record<string, unknown>[]> {
+type FetchNewCreationResult =
+  | { ok: true; candidates: Record<string, unknown>[] }
+  | { ok: false; reason: string };
+
+/**
+ * Fetches the current `pons new_creation` population. Returns a
+ * discriminated result — `new_creation = []` is a VALID empty-market
+ * snapshot (`ok: true, candidates: []`); a provider error, a missing
+ * `new_creation` key, or a non-array `new_creation` are all collection
+ * FAILURES (`ok: false`) and must never be treated as "no new tokens."
+ */
+async function fetchNewCreationCandidates(): Promise<FetchNewCreationResult> {
   const body: Record<string, unknown> = {
     version: "v2",
     new_creation: {
@@ -66,17 +90,33 @@ async function fetchNewCreationCandidates(): Promise<Record<string, unknown>[]> 
       launchpad_platform: LAUNCHPAD_ALLOWLIST,
     },
   };
-  const result = await gmgnRequest<Record<string, unknown[]>>(
+  const result = await gmgnRequest<Record<string, unknown>>(
     "/v1/trenches",
     { chain: "robinhood" },
     { method: "POST", body }
   );
   if (!result.ok) {
-    console.error("[collector] fetchNewCreationCandidates failed:", result);
-    return [];
+    const detail =
+      result.kind === "http_error"
+        ? `HTTP ${result.status}`
+        : result.kind === "api_error"
+          ? `API error code ${result.code}${result.msg ? `: ${result.msg}` : ""}`
+          : result.kind === "not_configured"
+            ? "GMGN_API_KEY not configured"
+            : result.kind === "malformed_payload"
+              ? `malformed_payload: ${result.detail}`
+              : result.detail;
+    return { ok: false, reason: detail };
   }
-  const list = result.data.new_creation;
-  return Array.isArray(list) ? (list as Record<string, unknown>[]) : [];
+
+  const list = (result.data as Record<string, unknown>).new_creation;
+  if (list === undefined) {
+    return { ok: false, reason: "response is missing data.new_creation" };
+  }
+  if (!Array.isArray(list)) {
+    return { ok: false, reason: `expected data.new_creation to be an array, got ${typeof list}` };
+  }
+  return { ok: true, candidates: list as Record<string, unknown>[] };
 }
 
 async function fetchTokenInfo(address: string): Promise<Record<string, unknown> | null> {
@@ -90,10 +130,22 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function runOneCollection(): Promise<{ raw: number; newCount: number; total: number }> {
+type RunOutcome =
+  | { status: "OK"; raw: number; newCount: number; total: number }
+  | { status: "PROVIDER_ERROR"; reason: string }
+  | { status: "DATASET_INTEGRITY_ERROR"; reason: string };
+
+async function runOneCollection(): Promise<RunOutcome> {
   const observedAt = new Date().toISOString();
 
-  const candidates = await fetchNewCreationCandidates();
+  const fetchResult = await fetchNewCreationCandidates();
+  if (!fetchResult.ok) {
+    console.error(`[collector] collection FAILED — provider error: ${fetchResult.reason}`);
+    console.error("[collector] collection status: PROVIDER_ERROR — dataset unchanged");
+    return { status: "PROVIDER_ERROR", reason: fetchResult.reason };
+  }
+
+  const candidates = fetchResult.candidates;
   console.log(`[collector] raw candidates fetched: ${candidates.length}`);
 
   // Per-quote-address price cache — never assume every pool uses the same
@@ -125,19 +177,35 @@ async function runOneCollection(): Promise<{ raw: number; newCount: number; tota
     if (observation) freshObservations.push(observation);
   }
 
-  const existing = loadExisting();
+  let existing: LiquidityObservation[];
+  try {
+    existing = loadExistingOrThrow();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[collector] collection FAILED — ${reason}`);
+    console.error("[collector] collection status: DATASET_INTEGRITY_ERROR — dataset unchanged");
+    return { status: "DATASET_INTEGRITY_ERROR", reason };
+  }
+
   const { merged, newCount, alreadyKnownCount } = mergeObservations(existing, freshObservations);
   saveAll(merged);
 
   console.log(
     `[collector] already-known tokens this run: ${alreadyKnownCount}, new unique launches added: ${newCount}, total unique launches: ${merged.length}`
   );
+  console.log("[collector] collection status: OK");
 
-  return { raw: candidates.length, newCount, total: merged.length };
+  return { status: "OK", raw: candidates.length, newCount, total: merged.length };
 }
 
 function printStats(): void {
-  const observations = loadExisting();
+  let observations: LiquidityObservation[];
+  try {
+    observations = loadExistingOrThrow();
+  } catch (error) {
+    console.error(`[collector] cannot print stats — ${error instanceof Error ? error.message : error}`);
+    return;
+  }
   const stats = computeStats(observations);
 
   console.log("\n=== Accumulated new_creation liquidity statistics (pons, v1 scope) ===");
@@ -188,13 +256,24 @@ async function main() {
   });
 
   const totalRuns = intervalMinutes ? runs : 1;
+  let anyDatasetIntegrityError = false;
   for (let i = 0; i < totalRuns && !stopped; i++) {
     console.log(`\n--- collection run ${i + 1}/${totalRuns} ---`);
-    await runOneCollection();
+    const outcome = await runOneCollection();
+    if (outcome.status === "DATASET_INTEGRITY_ERROR") {
+      anyDatasetIntegrityError = true;
+      break; // do not keep polling against a dataset we know is corrupted
+    }
     if (intervalMinutes && i < totalRuns - 1 && !stopped) {
       console.log(`[collector] sleeping ${intervalMinutes} minute(s) before next run...`);
       await new Promise((resolve) => setTimeout(resolve, intervalMinutes * 60_000));
     }
+  }
+
+  if (anyDatasetIntegrityError) {
+    console.error("[collector] stopped due to a dataset integrity error — fix the dataset file before re-running.");
+    process.exitCode = 1;
+    return;
   }
 
   printStats();

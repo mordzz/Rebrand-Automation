@@ -2,43 +2,90 @@
  * Pure, network-free helpers for the Robinhood `pons new_creation`
  * liquidity longitudinal collector (scripts/collect-robinhood-new-creation-liquidity.ts).
  *
- * Kept separate from the collector script so the dedup/stats logic is
- * unit-testable without a live GMGN call — see
- * scripts/test-liquidity-collector.ts.
+ * Kept separate from the collector script so the dedup/stats/dataset-
+ * integrity logic is unit-testable without a live GMGN call or real
+ * filesystem — see scripts/test-liquidity-collector.ts.
  *
  * This module does NOT decide any safety/threshold policy. It only
- * normalizes raw GMGN trench items into a stable observation shape and
- * computes descriptive statistics over an accumulated dataset.
+ * normalizes raw GMGN trench items into a stable observation shape,
+ * merges them into an accumulated dataset with fail-closed integrity
+ * semantics, and computes descriptive statistics.
  */
 
 export type LiquidityObservation = {
-  observedAt: string; // ISO timestamp of this collection run
+  observedAt: string; // ISO timestamp of the most recent sighting
   tokenAddress: string; // normalized lowercase
-  createdTimestamp: number; // unix seconds, from GMGN
+  createdTimestamp: number; // unix seconds, from GMGN — part of the launch identity
   launchpad: string | null;
   stage: "new_creation";
-  liquidityUsd: number | null; // null = unknown, never coerced to 0
-  poolAddress: string | null;
-  poolExchange: string | null;
-  quoteAddress: string | null; // normalized lowercase
-  quoteSymbol: string | null;
-  quoteReserve: number | null;
-  quoteUsdPrice: number | null; // null = price lookup failed/unavailable
-  observedQuoteSideEstimate: number | null; // 2 * quoteReserve * quoteUsdPrice, empirical only
-  holderCount: number | null;
-  marketCap: number | null;
-  creatorHoldRate: number | null;
-  symbol: string | null;
-  name: string | null;
-  progress: number | null;
-  launchpadStatus: string | null;
-  migratedTimestamp: number | null;
-  /** When this canonical record was first observed (earliest new_creation
-   * sighting) vs. this specific poll — used to prove one launch is never
-   * double-counted across repeated runs. */
+  liquidityUsd: number | null; // EARLIEST-SIGHTING measurement, immutable once set — see IMMUTABLE_MEASUREMENT_FIELDS
+  poolAddress: string | null; // descriptive metadata — may be backfilled
+  poolExchange: string | null; // descriptive metadata — may be backfilled
+  quoteAddress: string | null; // descriptive metadata — may be backfilled
+  quoteSymbol: string | null; // descriptive metadata — may be backfilled
+  quoteReserve: number | null; // EARLIEST-SIGHTING measurement, immutable
+  quoteUsdPrice: number | null; // EARLIEST-SIGHTING measurement, immutable
+  observedQuoteSideEstimate: number | null; // EARLIEST-SIGHTING measurement, immutable (derived from the two above)
+  holderCount: number | null; // EARLIEST-SIGHTING measurement, immutable
+  marketCap: number | null; // EARLIEST-SIGHTING measurement, immutable
+  creatorHoldRate: number | null; // EARLIEST-SIGHTING measurement, immutable
+  symbol: string | null; // descriptive metadata — may be backfilled
+  name: string | null; // descriptive metadata — may be backfilled
+  progress: number | null; // EARLIEST-SIGHTING measurement, immutable
+  launchpadStatus: string | null; // EARLIEST-SIGHTING measurement, immutable
+  migratedTimestamp: number | null; // EARLIEST-SIGHTING measurement, immutable
+  /** When this canonical record was FIRST observed. Never changes once set. */
   firstObservedAt: string;
   timesObserved: number;
 };
+
+/**
+ * Fields that constitute the canonical launch-liquidity MEASUREMENT.
+ * These are the actual statistical data points this dataset exists to
+ * collect. They are captured once, at the earliest sighting of a given
+ * launch identity, and are NEVER overwritten or backfilled by a later
+ * poll — a token seen again 5 minutes later with a newly non-null
+ * `liquidityUsd` does not mean the launch-time liquidity was $100; it
+ * means liquidity became measurable 5 minutes after launch, which is a
+ * different fact than what this dataset records.
+ */
+export const IMMUTABLE_MEASUREMENT_FIELDS = [
+  "liquidityUsd",
+  "quoteReserve",
+  "quoteUsdPrice",
+  "observedQuoteSideEstimate",
+  "holderCount",
+  "marketCap",
+  "creatorHoldRate",
+  "progress",
+  "launchpadStatus",
+  "migratedTimestamp",
+] as const satisfies readonly (keyof LiquidityObservation)[];
+
+/**
+ * Fields that are just descriptive identity/metadata, not a measurement
+ * whose VALUE matters for the statistics. These may be backfilled from
+ * a later sighting when previously unknown — doing so cannot change any
+ * liquidity/reserve/holder statistic.
+ */
+const BACKFILLABLE_METADATA_FIELDS = [
+  "launchpad",
+  "poolAddress",
+  "poolExchange",
+  "quoteAddress",
+  "quoteSymbol",
+  "symbol",
+  "name",
+] as const satisfies readonly (keyof LiquidityObservation)[];
+
+// Dev-time invariant: these two field lists must never overlap — a field
+// is either an immutable measurement or backfillable metadata, never both.
+const _overlap = BACKFILLABLE_METADATA_FIELDS.filter((f) =>
+  (IMMUTABLE_MEASUREMENT_FIELDS as readonly string[]).includes(f)
+);
+if (_overlap.length > 0) {
+  throw new Error(`liquidity-collector: field(s) listed as both immutable and backfillable: ${_overlap.join(", ")}`);
+}
 
 export function normalizeAddress(address: string | null | undefined): string | null {
   if (typeof address !== "string") return null;
@@ -55,6 +102,18 @@ function numOrNull(v: unknown): number | null {
 
 function strOrNull(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/**
+ * Composite launch identity: `lowercaseTokenAddress:createdTimestamp`,
+ * per the original collector requirement. A token address is normally
+ * sufficient in practice, but this dataset is meant as durable
+ * historical evidence, and GMGN already reports a creation timestamp —
+ * using both avoids silently merging two records if an address were
+ * ever seen with conflicting launch metadata.
+ */
+export function observationKey(tokenAddress: string, createdTimestamp: number): string {
+  return `${tokenAddress.toLowerCase()}:${createdTimestamp}`;
 }
 
 /**
@@ -115,56 +174,61 @@ export type MergeResult = {
 
 /**
  * Merges freshly-fetched observations into a previously-persisted
- * dataset. Deduplication key is `tokenAddress` alone (a token's
- * `createdTimestamp` is fixed at launch, so tokenAddress is already a
- * stable launch identity within the `new_creation` stage) — case-
- * normalized before comparison.
+ * dataset. Deduplication key is the composite `observationKey`
+ * (normalized-lowercase tokenAddress + createdTimestamp) — see
+ * observationKey() above.
  *
- * A token seen again on a later run:
+ * A token seen again on a later run under the SAME key:
  *   - does NOT create a second statistical sample
  *   - has `timesObserved` incremented and `observedAt` bumped
- *   - has any previously-null field backfilled from the new observation,
- *     but fields that were already known are never overwritten (the
- *     EARLIEST observed state is the canonical one for launch-liquidity
- *     analysis)
+ *   - has BACKFILLABLE_METADATA_FIELDS filled in if previously null
+ *   - NEVER has IMMUTABLE_MEASUREMENT_FIELDS overwritten or backfilled —
+ *     the earliest-sighting measurement is the canonical statistical
+ *     data point, whether it was null or a real number
+ *
+ * If the same tokenAddress appears with a DIFFERENT createdTimestamp,
+ * its observationKey differs, so it is treated as a distinct launch
+ * identity and stored as a separate entry — never silently merged into
+ * the prior record for that address.
  */
 export function mergeObservations(
   existing: readonly LiquidityObservation[],
   incoming: readonly LiquidityObservation[]
 ): MergeResult {
-  const byAddress = new Map<string, LiquidityObservation>();
-  for (const obs of existing) byAddress.set(obs.tokenAddress, obs);
+  const byKey = new Map<string, LiquidityObservation>();
+  for (const obs of existing) byKey.set(observationKey(obs.tokenAddress, obs.createdTimestamp), obs);
 
   let newCount = 0;
   let updatedCount = 0;
   let alreadyKnownCount = 0;
 
   for (const incomingObs of incoming) {
-    const prior = byAddress.get(incomingObs.tokenAddress);
+    const key = observationKey(incomingObs.tokenAddress, incomingObs.createdTimestamp);
+    const prior = byKey.get(key);
     if (!prior) {
       newCount++;
-      byAddress.set(incomingObs.tokenAddress, incomingObs);
+      byKey.set(key, incomingObs);
       continue;
     }
 
     alreadyKnownCount++;
     let changed = false;
     const backfilled: LiquidityObservation = { ...prior };
-    for (const key of Object.keys(incomingObs) as (keyof LiquidityObservation)[]) {
-      if (key === "observedAt" || key === "firstObservedAt" || key === "timesObserved") continue;
-      if (backfilled[key] == null && incomingObs[key] != null) {
-        (backfilled as Record<string, unknown>)[key] = incomingObs[key];
+    for (const field of BACKFILLABLE_METADATA_FIELDS) {
+      if (backfilled[field] == null && incomingObs[field] != null) {
+        (backfilled as Record<string, unknown>)[field] = incomingObs[field];
         changed = true;
       }
     }
+    // IMMUTABLE_MEASUREMENT_FIELDS are deliberately never touched here.
     backfilled.observedAt = incomingObs.observedAt;
     backfilled.timesObserved = prior.timesObserved + 1;
     if (changed) updatedCount++;
-    byAddress.set(incomingObs.tokenAddress, backfilled);
+    byKey.set(key, backfilled);
   }
 
   return {
-    merged: [...byAddress.values()],
+    merged: [...byKey.values()],
     newCount,
     updatedCount,
     alreadyKnownCount,
@@ -263,4 +327,92 @@ export function computeStats(observations: readonly LiquidityObservation[]): Liq
         ? "ENOUGH_DATA_FOR_POLICY_REVIEW"
         : "DATASET_TOO_SMALL",
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Dataset integrity: parsing/validating persisted JSONL lines.
+// Fails closed — a corrupted or schema-invalid line must abort loading
+// the whole dataset rather than silently drop that line and let a later
+// save rewrite history without it.
+// ─────────────────────────────────────────────────────────────────────
+
+export type DatasetLoadResult =
+  | { ok: true; observations: LiquidityObservation[] }
+  | { ok: false; reason: "parse_error"; lineNumber: number }
+  | { ok: false; reason: "invalid_schema"; lineNumber: number; detail: string };
+
+function isValidObservationShape(value: unknown): value is LiquidityObservation {
+  if (typeof value !== "object" || value === null) return false;
+  const o = value as Record<string, unknown>;
+
+  if (typeof o.tokenAddress !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(o.tokenAddress)) return false;
+  if (typeof o.createdTimestamp !== "number" || !Number.isFinite(o.createdTimestamp)) return false;
+  if (typeof o.observedAt !== "string" || !o.observedAt) return false;
+  if (typeof o.firstObservedAt !== "string" || !o.firstObservedAt) return false;
+  if (typeof o.timesObserved !== "number" || !Number.isFinite(o.timesObserved) || o.timesObserved < 1) return false;
+  if (o.stage !== "new_creation") return false;
+
+  const nullableNumberFields: (keyof LiquidityObservation)[] = [
+    "liquidityUsd",
+    "quoteReserve",
+    "quoteUsdPrice",
+    "observedQuoteSideEstimate",
+    "holderCount",
+    "marketCap",
+    "creatorHoldRate",
+    "progress",
+    "migratedTimestamp",
+  ];
+  for (const field of nullableNumberFields) {
+    const v = o[field];
+    if (v !== null && typeof v !== "number") return false;
+  }
+
+  const nullableStringFields: (keyof LiquidityObservation)[] = [
+    "launchpad",
+    "poolAddress",
+    "poolExchange",
+    "quoteAddress",
+    "quoteSymbol",
+    "symbol",
+    "name",
+    "launchpadStatus",
+  ];
+  for (const field of nullableStringFields) {
+    const v = o[field];
+    if (v !== null && typeof v !== "string") return false;
+  }
+
+  return true;
+}
+
+/**
+ * Parses and validates the full contents of a JSONL dataset file. Any
+ * unparseable or schema-invalid line aborts the whole load — this
+ * function is pure (string in, result out) so it's fixture-testable
+ * without touching the real filesystem.
+ */
+export function parseDataset(fileContents: string): DatasetLoadResult {
+  const lines = fileContents.split("\n").filter((l) => l.trim());
+  const observations: LiquidityObservation[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const lineNumber = i + 1;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(lines[i]);
+    } catch {
+      return { ok: false, reason: "parse_error", lineNumber };
+    }
+    if (!isValidObservationShape(parsed)) {
+      return { ok: false, reason: "invalid_schema", lineNumber, detail: "observation failed schema validation" };
+    }
+    observations.push(parsed);
+  }
+
+  return { ok: true, observations };
+}
+
+export function serializeDataset(observations: readonly LiquidityObservation[]): string {
+  return observations.map((o) => JSON.stringify(o)).join("\n") + (observations.length > 0 ? "\n" : "");
 }
