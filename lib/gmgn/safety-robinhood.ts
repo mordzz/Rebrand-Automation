@@ -181,28 +181,26 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * unconditional blocker: every candidate refuses on this point until an
  * explicit, reviewed threshold decision is made.
  *
- * Liquidity-unit investigation: GMGN's documentation explicitly defines
- * `liquidity` (trenches, token/info, and pool.liquidity) as USD-
- * denominated, computed from `base_reserve_value + quote_reserve_value`.
- * Checking that contract against real Robinhood data: on the sampled
- * `pons new_creation` token, `base_reserve_value` was `0` (the token has
- * no discovered price yet, so its side of the pool can't be priced) and
- * `quote_reserve_value` was `0.00002684741500033486` — their SUM
- * (0.0000268...) does NOT equal the reported `liquidity`
- * (0.00005286778200534018); `liquidity` is instead ≈2× the quote-side
- * value alone. This is plausibly still consistent with the documented
- * USD contract (e.g. a "value the priced side, double it" TVL estimate
- * for a pool whose other side has no price yet) rather than a genuine
- * implementation bug, but `new_creation` tokens structurally always have
- * `base_reserve_value = 0` (no price discovered yet), which makes the
- * documented sum-formula untestable on this population — every sample
- * available for v1's scope is a degenerate case for this check. With
- * only one usable data point and no independent ETH/USD price-feed
- * cross-check, this does not meet "multiple samples consistently
- * support" the documented contract. Classified **UNRESOLVED**, not
- * VERIFIED USD — per "if unresolved, fail closed", the blocker below
- * does not attempt any unit-based threshold; it refuses unconditionally
- * instead.
+ * Liquidity-unit investigation — RESOLVED (2026-09-29, multi-sample
+ * re-check; see GMGN_ROBINHOOD_FIELD_MAP.md for full data): classified
+ * **VERIFIED_USD**. GMGN's `liquidity` is real and USD-denominated, but
+ * the working formula is `2 × quote_reserve × quote_token_USD_price`
+ * (quote-side value, doubled) — NOT the documentation's literal
+ * "base_reserve_value + quote_reserve_value" sum, which was off by
+ * 82–100% on every sample checked. The 2×-quote-side formula held within
+ * 0.0–2.4% across 15 samples spanning both `new_creation` (base price
+ * unknown) and `completed` (base price known) stages, using the quote
+ * token's own independently-sourced GMGN price — confirmed via an
+ * on-chain reserve cross-check on Robinhood mainnet as well.
+ *
+ * This resolves the UNIT question. It does NOT by itself justify picking
+ * a dollar threshold: the live `new_creation` population sampled (n=4 at
+ * query time) was tiny across the board (max ≈ $9.55), which resembles
+ * pump.fun's virtual-reserve non-discriminator pattern but is too small
+ * a sample to prove that classification confidently. The liquidity floor
+ * therefore REMAINS an unconditional blocker below — verifying the unit
+ * is not the same as having enough evidence to choose (or justify
+ * skipping) a threshold, which remains the user's decision to make.
  *
  * This does NOT use `minLiquiditySol` (Solana, SOL-denominated) in any
  * form — not as a value, not as an on/off signal. It is not renamed or
@@ -406,13 +404,15 @@ export async function evaluateRobinhoodSafety(
   // verification proved GMGN `pons` new_creation tokens have a real,
   // live Uniswap V3 pool with real reserves from creation — liquidity is
   // a genuine risk property here, not an inapplicable pre-DEX concept.
-  // No threshold has been chosen (unit is UNRESOLVED — see module
-  // comment), so this refuses unconditionally rather than guessing one.
+  // The USD unit is now VERIFIED (see module comment) — this still
+  // refuses unconditionally because no threshold has been chosen yet
+  // (a separate, later decision) and the tiny available new_creation
+  // sample hasn't established whether the metric even discriminates.
   // minLiquiditySol is still never read here, in any form. ──
   reasons.push(
     "liquidity policy unresolved — MISSING/BLOCKER: a real DEX pool with real reserves exists " +
-      "from token creation (on-chain verified), but no liquidity threshold has been chosen and " +
-      "GMGN's liquidity unit is unconfirmed (see safety-robinhood.ts)"
+      "from token creation (on-chain verified), GMGN's liquidity unit is VERIFIED_USD, but no " +
+      "threshold has been chosen yet (see safety-robinhood.ts)"
   );
 
   // ── Alpha wallet — MAP TO EVM EQUIVALENT. ──

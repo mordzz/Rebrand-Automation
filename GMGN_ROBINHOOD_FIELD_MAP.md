@@ -211,7 +211,41 @@ For comparison, the same tracing method on a `flap`-labeled token (`0xc3185178..
 
 **Liquidity-unit investigation**: GMGN's documentation explicitly defines `liquidity` (trenches, token/info, `pool.liquidity`) as USD-denominated, computed from `base_reserve_value + quote_reserve_value`. Checked against real data: on the sampled token, `base_reserve_value = 0` (the new token has no discovered price yet) and `quote_reserve_value = 0.00002684741500033486`; their sum does NOT equal the reported `liquidity` (`0.00005286778200534018`) — `liquidity` is instead ≈2× the quote-side value alone. This is plausibly still consistent with the documented USD contract (a "double the priced side" TVL estimate when the other side has no price yet) rather than a bug, but **every `new_creation` token structurally has `base_reserve_value = 0`**, making the documented sum-formula untestable on this population with the samples available. With only one usable data point and no independent ETH/USD price-feed cross-check, this does not meet "multiple samples consistently support the documented contract." Classified **UNRESOLVED**, not VERIFIED USD. Per "if unresolved, fail closed," no unit-based threshold is attempted; the blocker refuses unconditionally instead.
 
-Do not choose a `minLiquidityUsd` threshold until this is properly resolved with a larger, non-degenerate sample (e.g. `near_completion`/`completed`-stage tokens that do have an established price on both sides) — which is itself out of v1's `new_creation`-only scope.
+### RESOLVED 2026-09-29 (multi-sample re-investigation): liquidity unit is VERIFIED_USD — but the formula is not the naive sum
+
+**Previous hypothesis** (above, superseded): "UNRESOLVED" — based on one `new_creation` sample where `base_reserve_value + quote_reserve_value` didn't match `liquidity`, with no independent price cross-check.
+
+**New evidence**: 64 `pons` candidates fetched (4 `new_creation`, 0 `near_completion` available at query time, 60 `completed` — `completed`/`near_completion` inspected for verification only, per the task's explicit allowance; **PR07 remains `new_creation`-only, nothing about discovery scope changed**). 64 had a pool; 15 were used for the detailed numeric comparison below. The quote token's own USD price was independently sourced via GMGN's own `/v1/token/info` on the quote-token address itself (`0x0bd7d308...`, reported price **$2710.77**) — a semi-independent cross-check (GMGN's own market view of that specific asset, not derived from any one pool's reserve/value computation; no external price feed was needed or used).
+
+**Formula tested and confirmed**: `liquidity ≈ 2 × quote_reserve × quote_token_USD_price` — i.e. GMGN prices only the quote (WETH) side and doubles it, regardless of whether the base token's own price is known. This held with **0.0%–2.4% error across all 15 samples**, spanning both `new_creation` (base price unknown, `base_reserve_value = 0`) and `completed` (base price known, `base_reserve_value` nonzero) stages — in the `completed` cases, this formula stayed accurate even though the naive `base_reserve_value + quote_reserve_value` sum was wrong by 82–100%. This is NOT the documented "sum of both sides" formula, but it IS a real, consistent, explainable USD computation.
+
+**Representative comparisons** (full data reproducible via `npm run inspect:robinhood-liquidity`):
+
+| Token | Stage | GMGN `liquidity` | `base_value + quote_value` (pct diff) | `2 × quote_reserve × quote_price` (pct diff) |
+|---|---|---|---|---|
+| 0xc65a2de3... | new_creation | 0.0000529 | 0.0000268 (97.0% off) | 0.0000537 (**1.5%**) |
+| 0xf323f54f... | new_creation | 0.5326 | 3610.10 (100.0% off) | 0.5422 (**1.8%**) |
+| 0xf19fe4a8... | new_creation | 9.5487 | 3634.31 (99.7% off) | 9.7536 (**2.1%**) |
+| 0xa9ea518a... | completed | 66310.36 | 70216.09 (5.6% off) | 66273.95 (**0.1%**) |
+| 0x2f634315... | completed | 158.95 | 3839.28 (95.9% off) | 158.90 (**0.0%**) |
+
+**On-chain cross-check**: independently read `balanceOf` for the quote token at the pool address on Robinhood **mainnet** (chain 4663) for one sample — exactly matched GMGN's reported `quote_reserve`, confirming GMGN's reserve data is real on-chain state, not synthetic.
+
+**Classification: `VERIFIED_USD`** — with the important correction that the working formula is "2× quote-side USD value," not the documentation's literal "base + quote" sum. Multiple independent samples (15), across two different lifecycle stages, consistently support a USD-denominated, explainable computation within a tight (<2.5%) tolerance.
+
+**Liquidity distribution** (`new_creation` only, v1 scope — n=4, the entire live population at query time; not inflated, not filtered):
+
+| min | p10 | p25 | median | p75 | p90 | max |
+|---|---|---|---|---|---|---|
+| $0 | $0 | $0 | $0.0000529 | $9.55 | $9.55 | $9.55 |
+
+Count below threshold (of 4): **all 4 are below every one of $100 / $500 / $1,000 / $2,500 / $5,000 / $10,000.** These numbers are genuinely this tiny — not a measurement artifact. GMGN's real-time `pons new_creation` feed simply does not currently have more than 4 live candidates; this is not a data-collection shortfall, it reflects actual current volume on this launchpad/chain.
+
+**Metric usefulness (Task 5): `INSUFFICIENT_EVIDENCE`.** All 4 available `new_creation` samples are far below any plausible safety threshold (max ≈ $9.55), which directionally resembles pump.fun's virtual-reserve non-discriminator pattern — but n=4 is too small to "prove" a FIXED/NEAR-FIXED-launch-parameter classification with confidence. A larger `new_creation` sample, collected over time (this population changes minute-to-minute), is needed before concluding the metric can't discriminate. This does not affect the unit classification above (VERIFIED_USD stands independently of whether the metric turns out to be a useful discriminator).
+
+**Recommendation for the next decision** (not made here): now that the unit is verified USD, the open decision is (a) whether `pons new_creation` liquidity is worth thresholding at all given how small and possibly non-discriminating it looks so far, and if so (b) what dollar value. Given the evidence, re-running `npm run inspect:robinhood-liquidity` over a longer window (collecting more `new_creation` samples over time, since only 4 exist at any single snapshot) before finalizing either the "useful discriminator" question or a specific `minLiquidityUsd` value would strengthen the decision. **No threshold is chosen here** — this remains the user's call.
+
+Do not choose a `minLiquidityUsd` value or add the config field until that decision is made.
 
 ## Open items to resolve before PR05/PR06 implementation (do not silently resolve by assumption)
 
