@@ -21,8 +21,10 @@
     "migrate:robinhood-v1-policy": "tsx scripts/apply-robinhood-v1-policy-migration.ts",
     "inspect:gmgn-robinhood": "tsx scripts/inspect-gmgn-robinhood.ts",
     "inspect:robinhood-liquidity": "tsx scripts/inspect-robinhood-liquidity.ts",
+    "collect:robinhood-liquidity": "tsx scripts/collect-robinhood-new-creation-liquidity.ts",
     "test:gmgn-robinhood": "tsx scripts/test-gmgn-robinhood-adapter.ts",
     "test:robinhood-safety": "tsx scripts/test-robinhood-safety.ts",
+    "test:liquidity-collector": "tsx scripts/test-liquidity-collector.ts",
     "deploy:perpspad": "anchor deploy --provider.cluster devnet"
   },
   "dependencies": {

@@ -258,6 +258,60 @@ Two wording overclaims in the section above are corrected here (no runtime behav
 5. **Quantile method corrected:** the earlier distribution table used a non-standard `floor(p/100 × n)` index, which is not a real quantile method and misrepresents small/even-n samples. Replaced with the standard Type-7 linear-interpolation quantile (`index = (n-1) × p`, interpolating between the floor/ceil values) — the standard method most statistics packages default to. All reported percentiles are recomputed with this method; old numbers from the prior run are superseded, not reused.
 6. **Re-run result (this pass):** the 2×quote-side formula continued to hold within **0.1%–2.6%** across 19 priced comparison samples (one new_creation + completed samples), while the naive sum was off by 78–100% on the same samples — consistent with, and reinforcing, the `VERIFIED_USD` classification (with the "2×quote-side" caveat from point 1, not the literal sum). `new_creation` population size dropped to **n=3** at this query snapshot (was n=4 previously — this population changes minute-to-minute, as noted before). Metric usefulness remains **`INSUFFICIENT_EVIDENCE`** — n=3 is, if anything, weaker evidence than the prior n=4, not stronger. No threshold is chosen. No runtime behavior changes: the liquidity blocker in `lib/gmgn/safety-robinhood.ts` remains unconditional; `minLiquidityUsd` is not added; `minLiquiditySol` remains unused for Robinhood; Solana paths, discovery scope, and launchpad allow-list are untouched; PR07 has not started.
 
+### COLLECTOR ADDED 2026-09-29: longitudinal `new_creation` liquidity dataset
+
+Status recap:
+
+```text
+USD unit                    = resolved (VERIFIED_USD, see hardening notes above)
+threshold / usefulness      = still unresolved
+```
+
+`scripts/collect-robinhood-new-creation-liquidity.ts` (helpers in
+`lib/gmgn/liquidity-collector.ts`) is a read-only, repeatable collector
+for `chain=robinhood, stage=new_creation, launchpad_platform=pons` —
+it is run over time (`npm run collect:robinhood-liquidity`, optionally
+with `--interval-minutes`/`--runs`) to build a larger unique-launch
+dataset before any liquidity threshold or usefulness decision is made.
+Observations are stored locally, gitignored, at
+`data/robinhood-liquidity-snapshots.jsonl` — this is investigation
+output, not application/runtime state, and is never committed.
+
+Deduplication is keyed on `tokenAddress` (case-normalized): a token
+re-seen on a later run does not create a second statistical sample —
+it only updates `timesObserved`/`observedAt` and backfills previously-
+null fields, while the *earliest*-observed liquidity/reserve state stays
+canonical. The collector prints `raw candidates fetched`,
+`already-known tokens`, `new unique launches added`, and
+`total unique launches` on every run so this can be audited each time.
+
+Minimum unique-launch sample size for bringing the threshold/usefulness
+question back to human review: **30** (`MIN_UNIQUE_LAUNCHES_FOR_POLICY_REVIEW`
+in `lib/gmgn/liquidity-collector.ts`). Reaching 30 does not automatically
+prove anything about usefulness — it only means there's enough data to
+review. The collector never classifies the metric as
+`USEFUL_DISCRIMINATOR` or `FIXED_PARAMETER` itself; it only reports
+`DATASET_TOO_SMALL` or `ENOUGH_DATA_FOR_POLICY_REVIEW`.
+
+**First live run (2026-09-29, `pons new_creation`, public GMGN demo
+key):** 4 raw candidates fetched, 4 new unique launches added, 4 total
+unique launches. **Immediate second live run:** 4 raw candidates
+fetched, 0 new unique launches added (all 4 already known), 4 total
+unique launches — confirming repeated polling of the same live
+population does not inflate the dataset. Current accumulated stats:
+3/4 exactly $0 liquidity, 1/4 positive (≈$0.000053), 100% below every
+threshold from $0.01 to $1,000 — consistent with, but not proof of,
+the earlier n=3/n=4 snapshots. Sample status at this point in time:
+**`DATASET_TOO_SMALL`** (4 of the 30 needed). This is a point-in-time
+snapshot as of the run above, not a permanent conclusion — re-run the
+collector periodically to grow the dataset before revisiting the
+threshold/usefulness question.
+
+No runtime safety behavior changed by this collector: the liquidity
+blocker in `lib/gmgn/safety-robinhood.ts` remains an unconditional
+blocker, no `minLiquidityUsd` field exists, `minLiquiditySol` remains
+Solana-only and unused for Robinhood, and PR07 has not started.
+
 ## Open items to resolve before PR05/PR06 implementation (do not silently resolve by assumption)
 
 1. Confirm exact `RankItem` JSON field names by pulling a live/sample `market trenches --chain robinhood --raw` response — several fields above (creator address, initial-buy amount, social links, creation timestamp) were not itemized in the documentation excerpts available and must be verified against real payloads, not assumed.
