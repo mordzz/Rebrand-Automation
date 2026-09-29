@@ -163,16 +163,18 @@ Additional GMGN security fields with **no current Noah check but available** (ca
 | Jupiter quote → build tx → sign → broadcast | `gmgn-cli order quote --chain robinhood` (quote only) and `gmgn-cli swap --chain robinhood` (quote+execute, requires `GMGN_PRIVATE_KEY`) | VERIFIED as existing — GMGN itself can serve as the Jupiter-equivalent execution provider on Robinhood Chain, subject to latency/slippage validation before committing (see PR08 in plan) |
 | TP/SL exit orders (currently Noah-side polling loop) | GMGN "condition orders" documented as supported on `sol/bsc/base/eth/robinhood` (not on `arc`/`stable`) | VERIFIED available, but brief requires **preserving Noah's own risk engine as the source of truth** — recommend continuing to use Noah's polling-based exit logic and treat GMGN condition orders as a possible future optimization, not a required migration item, to avoid ceding risk-engine authority to an external provider |
 
-## Approved v1 launchpad: Pons V2 (verified 2026-09-29, supersedes the earlier Flap decision)
+## Current v1 discovery target: GMGN `pons` (NOT proven to be "Pons V2" — read before trusting the label)
 
 Live-queried `chain=robinhood`, `new_creation`, `launchpad_platform=pons` via the public GMGN demo key: **5 real candidates returned.** For one (`0xc65a2de34f972ab545b4c74414b42aad3e9f31b9`, "zerozec"/ZZEC), verified:
 
-- `launchpad_platform: "pons"`, valid 40-hex EVM address, stage `new_creation` (from the query itself)
-- `/v1/token/security` responded fully: `is_renounced: true` (owner-renounced), `is_blacklist: false`, `is_honeypot: false` (real boolean here), `buy_tax`/`sell_tax`: `"0"`, `top_10_holder_rate: "0"`
+- `launchpad_platform: "pons"`, valid 40-hex EVM address, stage `new_creation` (from the query itself) — **live-verified**
+- `/v1/token/security` responded fully — **live-verified**: `is_renounced: true` (owner-renounced), `is_blacklist: false`, `is_honeypot: false` (real boolean here), `buy_tax`/`sell_tax`: `"0"`, `top_10_holder_rate: "0"`
 - Trenches fields: `rug_ratio: 0`, `bundler_trader_amount_rate: 0`, `suspected_insider_hold_rate: 0`, `is_wash_trading: false`, `creator_balance_rate: 0`, `twitter`/`telegram`/`website`: `""`, `created_timestamp: 1790656123` (valid Unix seconds)
-- `/v1/token/info`: `progress: 0`, `launchpad_status: 0`, `migrated_timestamp: 0`, `migration_market_cap: 0` — confirmed pre-graduation
+- `/v1/token/info`: `progress: 0`, `launchpad_status: 0`, `migrated_timestamp: 0`, `migration_market_cap: 0`
 
-`Flap` (the previously-approved v1 launchpad) is **superseded** by this decision — Flap is not GMGN's currently-documented "Robinhood Cooking"-supported launchpad; Pons has stronger current documentation support. See `lib/gmgn/safety-robinhood.ts` and `.env.example` for the current `GMGN_ROBINHOOD_LAUNCHPADS=pons` policy.
+**What is NOT proven**: the sampled launch's actual on-chain initiator is `0xf4fc0cd27fc8ecf17e55ee4c3f7201897df3eb75` (found by tracing the launch transaction — see the correction below for method). This contract has **not** been independently confirmed to be one of the previously documented Pons factory addresses (active/legacy direct-pool, or V2). Therefore **do not call the sampled mechanism "Pons V2"** — that label is unsupported by current evidence. No bonding curve was observed on any of the 3 sampled `pons` launches with a pool; all 3 had real Uniswap V3 pools with real reserves from creation.
+
+`pons` remains the current v1 discovery target for **operational reasons** — working GMGN discovery plus sufficient security-field data — **not** because Pump.fun-lifecycle parity or a "Pons V2" identity was proven. `Flap`'s evidence is lower-confidence (only its distinct call-target was re-confirmed in the most recent pass, not a full re-audit) and is not being newly declared inferior on architectural grounds — the `pons` choice is operational, not a won comparison. See `lib/gmgn/safety-robinhood.ts` and `.env.example` for the current `GMGN_ROBINHOOD_LAUNCHPADS=pons` configuration.
 
 ### CORRECTION 2026-09-29: the "no liquidity floor" conclusion above was wrong — on-chain verification against Robinhood mainnet
 
