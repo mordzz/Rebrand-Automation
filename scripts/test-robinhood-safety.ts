@@ -477,29 +477,86 @@ async function main() {
     assert(true, "evaluator's alpha-wallet gate delegates entirely to checkAlphaWalletBuyRobinhood (see above)");
   }
 
-  // ═══ liquidity floor: REINSTATED as unconditional (on-chain evidence
-  // disproved the earlier "pre-DEX bonding curve" assumption — GMGN
-  // `pons` new_creation tokens have a real, live Uniswap V3 pool with
-  // real reserves from creation) ═══════════════════════════════════════
+  // ═══ liquidity policy: OBSERVATIONAL ONLY — FINALIZED 2026-09-29 to
+  // align with the existing Solana/Pump.fun policy, where launch-time
+  // virtual liquidity is not used as a risk discriminator. A `pons
+  // new_creation` candidate must never be refused for liquidityUsd alone,
+  // regardless of its value. ═══════════════════════════════════════════
+  function knownSafeTokenFields(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      launchpad_platform: "pons",
+      has_at_least_one_social: true,
+      is_honeypot: "no",
+      buy_tax: 0.01,
+      sell_tax: 0.01,
+      rug_ratio: 0,
+      bundler_trader_amount_rate: 0,
+      suspected_insider_hold_rate: 0,
+      top_10_holder_rate: 0,
+      is_wash_trading: false,
+      creator_balance_rate: 0,
+      ...overrides,
+    };
+  }
+
   {
-    const token = makeToken({ launchpad_platform: "pons", liquidity: 0.00005 });
+    // Zero liquidity, otherwise fully known-safe → must NOT be refused for
+    // liquidity (and, with every other check also known-safe, must pass).
+    const token = makeToken(knownSafeTokenFields({ liquidity: 0 }));
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
-      result.reasons.some((r) => r.includes("liquidity policy unresolved")),
-      "liquidity blocker fires unconditionally — real DEX pool exists from creation, no threshold chosen yet"
+      !result.reasons.some((r) => r.toLowerCase().includes("liquidity")),
+      "liquidityUsd = 0 alone never contributes a refusal reason"
     );
-    assertEqual(result.passed, false, "liquidity blocker alone is enough to refuse a candidate");
+    assertEqual(result.passed, true, "otherwise-known-safe token with liquidityUsd = 0 passes");
   }
   {
-    // Even a token with reported liquidity that LOOKS substantial is
-    // still refused — this is not a numeric threshold check, it's an
-    // unconditional "no threshold has been decided yet" blocker.
-    const token = makeToken({ launchpad_platform: "pons", liquidity: 1000 });
+    // Tiny positive liquidity, otherwise fully known-safe → same result.
+    const token = makeToken(knownSafeTokenFields({ liquidity: 0.00005 }));
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
-      result.reasons.some((r) => r.includes("liquidity policy unresolved")),
-      "liquidity blocker fires regardless of the reported liquidity value — no threshold exists to compare against"
+      !result.reasons.some((r) => r.toLowerCase().includes("liquidity")),
+      "tiny positive liquidityUsd alone never contributes a refusal reason"
     );
+    assertEqual(result.passed, true, "otherwise-known-safe token with tiny positive liquidityUsd passes");
+  }
+  {
+    // Large liquidity likewise never contributes a refusal or a pass
+    // reason on its own — there is no threshold comparison at all.
+    const token = makeToken(knownSafeTokenFields({ liquidity: 1_000_000 }));
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assert(
+      !result.reasons.some((r) => r.toLowerCase().includes("liquidity")),
+      "large liquidityUsd alone never contributes a refusal reason either — no threshold exists in either direction"
+    );
+  }
+  {
+    // Zero liquidity does NOT mask a real, unrelated safety failure — a
+    // token with zero liquidity AND a blocked keyword is still refused,
+    // for the keyword, proving liquidity isn't silently short-circuiting
+    // the rest of the evaluator.
+    const token = makeToken(knownSafeTokenFields({ liquidity: 0, name: "Definitely A Scam Coin" }));
+    const result = await evaluateRobinhoodSafety(
+      token,
+      null,
+      baseConfig({ maxCreatorHoldPct: 10, blockedKeywords: ["scam"] }),
+      30
+    );
+    assertEqual(result.passed, false, "zero-liquidity token is still refused when another safety rule fails");
+    assert(result.reasons.some((r) => r.includes("blocked keyword")), "refusal reason is the blocked keyword, not liquidity");
+  }
+  {
+    // Zero liquidity + unknown honeypot status (a genuine safety-critical
+    // unknown) — still fails closed on the honeypot unknown, not on
+    // liquidity, and liquidity contributes nothing either way.
+    const token = makeToken(knownSafeTokenFields({ liquidity: 0, is_honeypot: "unknown" }));
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assertEqual(result.passed, false, "zero-liquidity token with unknown honeypot status is still refused");
+    assert(
+      result.reasons.some((r) => r.includes("honeypot") && r.includes("unknown")),
+      "refusal reason is the unknown honeypot status, not liquidity"
+    );
+    assert(!result.reasons.some((r) => r.toLowerCase().includes("liquidity")), "liquidity itself contributes no reason");
   }
   {
     // Compile-time proof minLiquiditySol is not part of the Robinhood
