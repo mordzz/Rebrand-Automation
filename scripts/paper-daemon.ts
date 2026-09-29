@@ -52,7 +52,7 @@ import { address } from "@solana/kit";
 import { recordAlphaCandidate } from "@/lib/sniper/alpha-candidates";
 import { getMintSupply } from "@/lib/sniper/market-cap";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
+import { DUST_THRESHOLD_NATIVE, DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
 import { getCurrentPrice } from "@/lib/sniper/exit-price";
 import {
   closePosition,
@@ -96,7 +96,7 @@ import {
   sizeForRobinhoodSnipe,
   type RobinhoodNativeLimits,
 } from "@/lib/sniper/risk-limits-robinhood";
-import { getOpenPositionsByChain } from "@/lib/sniper/positions";
+import { getOpenPositionsByChain, getOpenSolanaPositions } from "@/lib/sniper/positions";
 import {
   getDailyPnlNativeRobinhood,
   getLastLossAtRobinhood,
@@ -270,12 +270,17 @@ async function openPaperPosition(
   candidate: EntryCandidate
 ): Promise<void> {
   await runExclusive(bot.walletAddress, async () => {
-    const [openPositions, breakerState] = await Promise.all([
+    const [allOpenPositions, solanaOpenPositions, breakerState] = await Promise.all([
+      // Wallet-global, ALL chains — maxConcurrentPositions keeps its
+      // existing single meaning.
       getOpenPositions(bot.walletAddress),
+      // Solana-scoped (chain IS NULL or "solana") — the deployed-SOL sum
+      // must never include a Robinhood row's ETH-notional sizeSol shadow.
+      getOpenSolanaPositions(bot.walletAddress),
       getCachedBreakerState(bot.walletAddress, bot.breakerResetAt, config),
     ]);
 
-    const risk = canOpenNewPosition(openPositions, breakerState, config);
+    const risk = canOpenNewPosition(allOpenPositions, solanaOpenPositions, breakerState, config);
     if (!risk.allowed) return;
 
     const sizeSol = sizeForSnipe(config);
@@ -465,7 +470,9 @@ async function openRobinhoodPaperPosition(
   await runExclusive(bot.walletAddress, async () => {
     const limitsResult = resolveRobinhoodNativeLimits(config);
     if (!limitsResult.ok) {
-      logRefusal(bot, candidate.tokenAddress, candidate.symbol, "robinhood", [limitsResult.reason]);
+      logRobinhoodRefusal(bot, candidate.tokenAddress, candidate.symbol, "robinhood", candidate.network, [
+        limitsResult.reason,
+      ]);
       return;
     }
     const limits = limitsResult.limits;
@@ -482,7 +489,11 @@ async function openRobinhoodPaperPosition(
 
     const risk = canOpenNewRobinhoodPosition(allOpenPositions, robinhoodOpenPositions, breakerState, limits, config);
     if (!risk.allowed) {
-      if (risk.reason) logRefusal(bot, candidate.tokenAddress, candidate.symbol, "robinhood", [risk.reason]);
+      if (risk.reason) {
+        logRobinhoodRefusal(bot, candidate.tokenAddress, candidate.symbol, "robinhood", candidate.network, [
+          risk.reason,
+        ]);
+      }
       return;
     }
 
@@ -719,6 +730,33 @@ function logRefusal(
     source: "manifest",
     walletAddress: bot.walletAddress,
     tokenMint: mint,
+    message: `Refused $${symbol ?? "?"} (${source}): ${reason}`,
+  });
+}
+
+/** Robinhood counterpart to logRefusal — writes tokenAddress/chain/
+ * network instead of tokenMint, so an EVM `0x...` address is never
+ * persisted into the Solana-shaped tokenMint column, and never loses
+ * its chain/network. txHash stays null (a refusal never has a
+ * transaction). */
+function logRobinhoodRefusal(
+  bot: UserBot,
+  tokenAddress: string,
+  symbol: string | undefined,
+  source: string,
+  network: string,
+  reasons: string[]
+): void {
+  const reason = reasons[0] ?? "failed entry criteria";
+  if (reason.startsWith("too old by the time it was evaluated")) return;
+  void writeLog({
+    level: "guard",
+    source: "manifest",
+    walletAddress: bot.walletAddress,
+    tokenAddress,
+    chain: "robinhood",
+    network,
+    txHash: null,
     message: `Refused $${symbol ?? "?"} (${source}): ${reason}`,
   });
 }
@@ -1358,7 +1396,12 @@ async function checkAllExits(): Promise<void> {
         context: { ...context, triggeredTiers },
       };
 
-      if (remainingSizeSol <= DUST_THRESHOLD_SOL) {
+      // Same numeric threshold and math either way (DUST_THRESHOLD_SOL
+      // and DUST_THRESHOLD_NATIVE are the same constant — see
+      // lib/sniper/exit-logic.ts) — this line just names the concept
+      // correctly for whichever chain this position belongs to, without
+      // inventing any SOL<->ETH conversion.
+      if (remainingSizeSol <= (isRobinhood ? DUST_THRESHOLD_NATIVE : DUST_THRESHOLD_SOL)) {
         await markPositionClosed(position.id);
         break;
       }
@@ -1503,10 +1546,18 @@ type RobinhoodPending = {
   attemptedWallets: Set<string>;
   /** Fetched once per pending item (not once per wallet/tick) — same
    * "shared, not re-fetched" posture as PendingToken.tokenData above.
-   * `undefined` = not yet attempted; `null` = attempted and failed/
-   * unavailable (evaluateRobinhoodSafety already fails closed on a null
-   * security object for the checks that depend on it). */
-  security: RobinhoodSecurityFacts | null | undefined;
+   * `undefined` = not yet attempted; a real object = fetched
+   * successfully (individual facts inside it may still be null/unknown
+   * — evaluateRobinhoodSafety's existing per-fact fail-closed handling
+   * applies as before). A FAILED fetch is tracked separately via
+   * `securityFetchFailed` below, NOT by setting this to `null` — a
+   * failed fetch must unconditionally block entry, which is a stronger
+   * statement than "security object is absent/unknown" (that weaker
+   * case is exactly what a disabled requireOwnerRenounced/
+   * requireNoBlacklistCapability config could otherwise sail through). */
+  security: RobinhoodSecurityFacts | undefined;
+  securityFetchFailed: boolean;
+  securityFetchFailureReason: string | null;
   priceUsd: number | null | undefined;
 };
 
@@ -1537,6 +1588,8 @@ async function processRobinhoodCandidates(): Promise<void> {
       firstSeenAt: now,
       attemptedWallets: new Set(),
       security: undefined,
+      securityFetchFailed: false,
+      securityFetchFailureReason: null,
       priceUsd: undefined,
     });
   }
@@ -1569,12 +1622,43 @@ async function processRobinhoodCandidates(): Promise<void> {
     // as processPendingToken above.
     for (const { bot } of eligible) item.attemptedWallets.add(bot.walletAddress);
 
-    // Security fetch failure fails closed (see the field's doc comment
-    // above) rather than blocking the whole cycle — evaluateRobinhoodSafety
-    // already refuses on the unknowns a missing security object implies.
-    if (item.security === undefined) {
+    // A security fetch is attempted once per item and cached either way.
+    // A FAILURE unconditionally blocks entry for every bot below — see
+    // the loop after the price check — regardless of which optional
+    // gates (requireOwnerRenounced/requireNoBlacklistCapability) a given
+    // bot's config has disabled. This is deliberately stronger than
+    // passing `security: null` into evaluateRobinhoodSafety (which would
+    // only fail closed on the specific facts a bot's config actually
+    // requires) — an operator disabling those two gates must not be able
+    // to make a provider outage look like a safe, ungated candidate.
+    if (item.security === undefined && !item.securityFetchFailed) {
       const securityResult = await getRobinhoodTokenSecurity(item.token.tokenAddress);
-      item.security = securityResult.ok ? securityResult.security : null;
+      if (securityResult.ok) {
+        item.security = securityResult.security;
+      } else {
+        item.securityFetchFailed = true;
+        item.securityFetchFailureReason =
+          securityResult.reason === "not_configured"
+            ? "GMGN_API_KEY not configured"
+            : securityResult.reason === "provider_error"
+              ? `provider error: ${securityResult.detail}`
+              : `malformed_payload: ${securityResult.detail}`;
+      }
+    }
+    if (item.securityFetchFailed) {
+      for (const { bot } of eligible) {
+        logRobinhoodRefusal(
+          bot,
+          item.token.tokenAddress,
+          item.token.symbol ?? undefined,
+          "robinhood",
+          item.token.network,
+          [
+            `security data unavailable (${item.securityFetchFailureReason ?? "fetch failed"}) — refusing unconditionally, not treated as safe`,
+          ]
+        );
+      }
+      continue;
     }
 
     // Price fetch failure means "skip this token, never fabricate a
@@ -1594,13 +1678,20 @@ async function processRobinhoodCandidates(): Promise<void> {
 
     for (const { bot, config } of eligible) {
       try {
-        const safety = await evaluateRobinhoodSafety(item.token, item.security, config, ageSec);
+        // Robinhood discovery is GMGN — a bot configured without "gmgn"
+        // in entrySources (e.g. ["pump"] only) must not enter a Robinhood
+        // candidate, same source-gate the Solana GMGN path already
+        // applies to itself.
+        if (!config.entrySources.includes("gmgn")) continue;
+
+        const safety = await evaluateRobinhoodSafety(item.token, item.security ?? null, config, ageSec);
         if (!safety.passed) {
-          logRefusal(
+          logRobinhoodRefusal(
             bot,
             item.token.tokenAddress,
             item.token.symbol ?? undefined,
             item.token.launchpad ?? "gmgn",
+            item.token.network,
             safety.reasons
           );
           continue;
@@ -1738,6 +1829,13 @@ async function reconcileOnStart(): Promise<void> {
       );
       continue;
     }
+
+    // Explicit chain guard, independent of context.engine: a
+    // chain="robinhood" row must NEVER reach heldTokenAmount/getRpc/
+    // @solana/kit's address() below, even if a corrupt or future row
+    // somehow also carried context.engine === "live" — this check comes
+    // first and short-circuits before that one is even read.
+    if (position.chain === "robinhood") continue;
 
     const context = (position.context ?? {}) as Record<string, unknown>;
     if (context.engine !== "live" || !bot.agentPublicKey) continue;

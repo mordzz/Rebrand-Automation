@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import { trades, type Trade } from "@/lib/db/schema";
@@ -11,7 +11,15 @@ import { trades, type Trade } from "@/lib/db/schema";
  * hide that loss from a "recent N rows" list, and an active trader closing
  * more than the row limit in a day would silently undercount drawdown.
  * Backed by the trades(wallet_address, closed_at) index.
+ *
+ * Every query below is additionally scoped to Solana rows (chain IS NULL
+ * — legacy, pre-PR04 history — OR chain = "solana") — PR07 hardening. A
+ * Robinhood trade's `pnlSol` is a compatibility shadow of its real ETH
+ * PnL (see lib/sniper/positions.ts), and without this filter it would
+ * silently enter the Solana circuit breaker's recent-loss/daily-PnL
+ * derivation as if it were a real SOL result.
  */
+const SOLANA_CHAIN_FILTER = or(isNull(trades.chain), eq(trades.chain, "solana"));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,8 +44,8 @@ export async function getRecentOutcomes(
     .from(trades)
     .where(
       since
-        ? and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since))
-        : eq(trades.walletAddress, wallet)
+        ? and(eq(trades.walletAddress, wallet), SOLANA_CHAIN_FILTER, gte(trades.closedAt, since))
+        : and(eq(trades.walletAddress, wallet), SOLANA_CHAIN_FILTER)
     )
     .orderBy(desc(trades.closedAt))
     .limit(limit);
@@ -56,7 +64,7 @@ export async function getDailyPnlSol(wallet: string, since: Date | null = null):
   const rows = await db
     .select({ pnlSol: trades.pnlSol })
     .from(trades)
-    .where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, effectiveSince)));
+    .where(and(eq(trades.walletAddress, wallet), SOLANA_CHAIN_FILTER, gte(trades.closedAt, effectiveSince)));
   return rows.reduce((sum, row) => sum + Number(row.pnlSol), 0);
 }
 
@@ -72,8 +80,8 @@ export async function getLastLossAt(wallet: string, since: Date | null = null): 
     .from(trades)
     .where(
       since
-        ? and(eq(trades.walletAddress, wallet), lt(trades.pnlSol, "0"), gte(trades.closedAt, since))
-        : and(eq(trades.walletAddress, wallet), lt(trades.pnlSol, "0"))
+        ? and(eq(trades.walletAddress, wallet), SOLANA_CHAIN_FILTER, lt(trades.pnlSol, "0"), gte(trades.closedAt, since))
+        : and(eq(trades.walletAddress, wallet), SOLANA_CHAIN_FILTER, lt(trades.pnlSol, "0"))
     )
     .orderBy(desc(trades.closedAt))
     .limit(1);

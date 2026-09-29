@@ -1,8 +1,20 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
 import { positions, type Position } from "@/lib/db/schema";
+
+/**
+ * Remaining notional after selling `sold` off a `current` amount, never
+ * negative. Pure/exported so PR07's sizeNative-persistence fix (see
+ * recordPartialExit below) is directly unit-testable without a DB — the
+ * same math is used for both the legacy sizeSol column and the
+ * chain-neutral sizeNative column, since a Robinhood position's tiered
+ * partial exits must shrink both in lockstep.
+ */
+export function computeRemainingSize(current: string | number, sold: number): number {
+  return Math.max(Number(current) - sold, 0);
+}
 
 export type OpenPositionInput = {
   /** Legacy required column — for Robinhood callers this is a
@@ -106,6 +118,32 @@ export async function getOpenPositions(
     .where(
       and(
         eq(positions.status, "open"),
+        walletAddress
+          ? eq(positions.walletAddress, walletAddress)
+          : isNull(positions.walletAddress)
+      )
+    );
+}
+
+/**
+ * Like getOpenPositions, but scoped to Solana rows only — chain IS NULL
+ * (legacy, pre-PR04 history) OR chain = "solana", explicitly. Used by
+ * the Solana risk gate (lib/sniper/risk-limits.ts#canOpenNewPosition) so
+ * a Robinhood row's `sizeSol` compatibility shadow (its real ETH
+ * notional) can never be summed into Solana's deployed-SOL figure.
+ */
+export async function getOpenSolanaPositions(
+  walletAddress: string | null = null
+): Promise<Position[]> {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(positions)
+    .where(
+      and(
+        eq(positions.status, "open"),
+        or(isNull(positions.chain), eq(positions.chain, "solana")),
         walletAddress
           ? eq(positions.walletAddress, walletAddress)
           : isNull(positions.walletAddress)
@@ -223,12 +261,23 @@ export async function recordPartialExit(
   const triggeredTiers = Array.isArray(context.triggeredTiers)
     ? (context.triggeredTiers as number[])
     : [];
-  const remainingSizeSol = Math.max(Number(position.sizeSol) - exit.soldSol, 0);
+  const remainingSizeSol = computeRemainingSize(position.sizeSol, exit.soldSol);
+  /* PR07 hardening: sizeNative must shrink in lockstep with sizeSol for a
+   * Robinhood position (they hold the same ETH-notional number — see
+   * OpenPositionInput's doc comments). Previously only sizeSol was
+   * updated here, leaving sizeNative stale at its original value after
+   * the first tiered partial exit — a later risk/PnL read of sizeNative
+   * would then use the wrong (original, not remaining) amount. Solana
+   * positions never set sizeNative (it stays null), so this is a no-op
+   * for them. */
+  const remainingSizeNative =
+    position.sizeNative != null ? computeRemainingSize(position.sizeNative, exit.soldSol) : null;
 
   await db
     .update(positions)
     .set({
       sizeSol: String(remainingSizeSol),
+      ...(remainingSizeNative != null ? { sizeNative: String(remainingSizeNative) } : {}),
       context: { ...context, triggeredTiers: [...triggeredTiers, exit.tierIndex] },
     })
     .where(eq(positions.id, position.id));

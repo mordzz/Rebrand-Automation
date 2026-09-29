@@ -9,10 +9,16 @@ import type { SniperConfig } from "@/lib/sniper/config";
  * signing/selling.
  */
 
-// Below this remaining SOL, treat a tiered position as fully exited rather
-// than leaving a dust-sized "open" row behind. Shared with the tiered-ladder
-// caller loop, which stops issuing further sells once a position hits this.
-export const DUST_THRESHOLD_SOL = 1e-6;
+// Below this remaining notional, treat a tiered position as fully exited
+// rather than leaving a dust-sized "open" row behind. Shared with the
+// tiered-ladder caller loop, which stops issuing further sells once a
+// position hits this. Named _NATIVE (not _SOL) because this same numeric
+// threshold and math is reused for a Robinhood position's ETH notional
+// (PR07 hardening) — the value and Solana behavior are unchanged, this is
+// a naming fix only. DUST_THRESHOLD_SOL is kept as a backwards-compatible
+// alias for existing Solana imports (scripts/sniper-daemon.ts).
+export const DUST_THRESHOLD_NATIVE = 1e-6;
+export const DUST_THRESHOLD_SOL = DUST_THRESHOLD_NATIVE;
 
 export type FullExitInput = {
   entryPrice: number;
@@ -226,7 +232,7 @@ export function evaluateTieredExits(
   for (const tier of sortedTiers) {
     if (input.triggeredTiers.includes(tier.index)) continue;
     if (changePct < tier.atPct) continue;
-    if (remainingSizeSol <= DUST_THRESHOLD_SOL) break;
+    if (remainingSizeSol <= DUST_THRESHOLD_NATIVE) break;
 
     const soldSol = remainingSizeSol * (tier.sellPortionPct / 100);
     /* At the tier's own trigger, not wherever price reached. A ladder is a

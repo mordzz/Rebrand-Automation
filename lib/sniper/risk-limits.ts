@@ -27,21 +27,37 @@ export async function recordHeartbeat(mode: "dry_run" | "live"): Promise<void> {
     .where(eq(sniperState.id, state.id));
 }
 
+/**
+ * `allOpenPositions` must be the wallet's FULL open-position list (every
+ * chain) — `maxConcurrentPositions` is a single wallet-global cap.
+ *
+ * `solanaOpenPositions` must be pre-filtered to Solana rows only (chain
+ * IS NULL, for legacy pre-PR04 history, or chain = "solana") — the
+ * deployed-SOL sum below reads ONLY these. A Robinhood row's `sizeSol`
+ * is a compatibility shadow of its ETH notional (see
+ * lib/sniper/positions.ts's OpenPositionInput doc comments), and summing
+ * it here would silently count ETH exposure as SOL exposure. Callers
+ * (see scripts/paper-daemon.ts) are responsible for passing the correct,
+ * pre-filtered second list — this function does not re-derive it, to
+ * keep the filtering logic in exactly one place
+ * (lib/sniper/positions.ts#getOpenSolanaPositions).
+ */
 export function canOpenNewPosition(
-  openPositions: Position[],
+  allOpenPositions: Pick<Position, "id">[],
+  solanaOpenPositions: Pick<Position, "sizeSol">[],
   state: Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> | null,
   config: SniperConfig
 ): { allowed: boolean; reason?: string } {
   if (state?.tradingPaused) {
     return { allowed: false, reason: state.pauseReason ?? "trading paused" };
   }
-  if (openPositions.length >= config.maxConcurrentPositions) {
+  if (allOpenPositions.length >= config.maxConcurrentPositions) {
     return {
       allowed: false,
       reason: `max concurrent positions (${config.maxConcurrentPositions}) reached`,
     };
   }
-  const totalDeployed = openPositions.reduce(
+  const totalDeployed = solanaOpenPositions.reduce(
     (sum, p) => sum + Number(p.sizeSol),
     0
   );
