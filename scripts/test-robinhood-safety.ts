@@ -79,7 +79,7 @@ function makeToken(overrides: Record<string, unknown> = {}): RobinhoodDiscovered
     symbol: "TEST",
     name: "Test Token",
     creator: CREATOR,
-    launchpad_platform: "flap",
+    launchpad_platform: "pons",
     ...overrides,
   });
   if (!token) throw new Error("test fixture failed to normalize — fix the fixture");
@@ -477,17 +477,18 @@ async function main() {
     assert(true, "evaluator's alpha-wallet gate delegates entirely to checkAlphaWalletBuyRobinhood (see above)");
   }
 
-  // ═══ v1 policy: liquidity floor not applicable at bonding-curve stage ═
+  // ═══ v1 policy: liquidity floor not applicable at pre-graduation stage ═
   {
-    // A flap new_creation token with tiny/ambiguous raw GMGN `liquidity`
+    // A Pons V2 new_creation token with tiny/negligible raw GMGN
+    // `liquidity` (live-verified as low as ~0.00005 on real candidates)
     // must not be refused for it — there is no liquidity check at all in
     // this evaluator (the config type doesn't even accept minLiquiditySol
     // — see the TypeScript signature below, a compile-time guarantee).
-    const token = makeToken({ launchpad_platform: "flap", liquidity: 0.001 });
+    const token = makeToken({ launchpad_platform: "pons", liquidity: 0.00005 });
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
       !result.reasons.some((r) => r.includes("liquidity")),
-      "flap new_creation token with tiny liquidity is not refused for it (bonding-curve parity with pump.fun)"
+      "Pons V2 new_creation token with negligible liquidity is not refused for it (pre-graduation parity with pump.fun)"
     );
   }
   {
@@ -567,17 +568,17 @@ async function main() {
 
   // ═══ no other launchpad becomes implicitly allowed ════════════════════
   {
-    // .env.example now recommends GMGN_ROBINHOOD_LAUNCHPADS=flap, but
+    // .env.example now recommends GMGN_ROBINHOOD_LAUNCHPADS=pons, but
     // that's documentation, not a code default — the resolver must still
     // fail closed (return null) with nothing configured, exactly as
-    // before this PR. No launchpad, "flap" included, is hardcoded here.
+    // before this PR. No launchpad, "pons" included, is hardcoded here.
     const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
     try {
       delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
       assertEqual(
         resolveLaunchpadAllowlist(),
         null,
-        "resolveLaunchpadAllowlist() with nothing configured is still null — flap is not a hardcoded default"
+        "resolveLaunchpadAllowlist() with nothing configured is still null — pons is not a hardcoded default"
       );
     } finally {
       if (originalEnv === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
@@ -586,15 +587,15 @@ async function main() {
   }
   {
     // Only what's explicitly configured is allowed — e.g. an operator
-    // who sets GMGN_ROBINHOOD_LAUNCHPADS=flap does not implicitly also
-    // get flap_pve/longxyz/trench/pons/etc.
+    // who sets GMGN_ROBINHOOD_LAUNCHPADS=pons does not implicitly also
+    // get flap/flap_pve/longxyz/trench/etc.
     const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
     try {
-      process.env.GMGN_ROBINHOOD_LAUNCHPADS = "flap";
+      process.env.GMGN_ROBINHOOD_LAUNCHPADS = "pons";
       assertEqual(
         resolveLaunchpadAllowlist(),
-        ["flap"],
-        "GMGN_ROBINHOOD_LAUNCHPADS=flap resolves to exactly ['flap'], no other platform implicitly included"
+        ["pons"],
+        "GMGN_ROBINHOOD_LAUNCHPADS=pons resolves to exactly ['pons'], no other platform implicitly included"
       );
     } finally {
       if (originalEnv === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;

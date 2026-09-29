@@ -163,6 +163,19 @@ Additional GMGN security fields with **no current Noah check but available** (ca
 | Jupiter quote → build tx → sign → broadcast | `gmgn-cli order quote --chain robinhood` (quote only) and `gmgn-cli swap --chain robinhood` (quote+execute, requires `GMGN_PRIVATE_KEY`) | VERIFIED as existing — GMGN itself can serve as the Jupiter-equivalent execution provider on Robinhood Chain, subject to latency/slippage validation before committing (see PR08 in plan) |
 | TP/SL exit orders (currently Noah-side polling loop) | GMGN "condition orders" documented as supported on `sol/bsc/base/eth/robinhood` (not on `arc`/`stable`) | VERIFIED available, but brief requires **preserving Noah's own risk engine as the source of truth** — recommend continuing to use Noah's polling-based exit logic and treat GMGN condition orders as a possible future optimization, not a required migration item, to avoid ceding risk-engine authority to an external provider |
 
+## Approved v1 launchpad: Pons V2 (verified 2026-09-29, supersedes the earlier Flap decision)
+
+Live-queried `chain=robinhood`, `new_creation`, `launchpad_platform=pons` via the public GMGN demo key: **5 real candidates returned.** For one (`0xc65a2de34f972ab545b4c74414b42aad3e9f31b9`, "zerozec"/ZZEC), verified:
+
+- `launchpad_platform: "pons"`, valid 40-hex EVM address, stage `new_creation` (from the query itself)
+- `/v1/token/security` responded fully: `is_renounced: true` (owner-renounced), `is_blacklist: false`, `is_honeypot: false` (real boolean here), `buy_tax`/`sell_tax`: `"0"`, `top_10_holder_rate: "0"`
+- Trenches fields: `rug_ratio: 0`, `bundler_trader_amount_rate: 0`, `suspected_insider_hold_rate: 0`, `is_wash_trading: false`, `creator_balance_rate: 0`, `twitter`/`telegram`/`website`: `""`, `created_timestamp: 1790656123` (valid Unix seconds)
+- `/v1/token/info`: `progress: 0`, `launchpad_status: 0`, `migrated_timestamp: 0`, `migration_market_cap: 0` — confirmed pre-graduation
+
+**Architectural nuance, reported honestly**: Pons deploys directly onto a Uniswap V3 pool at creation (`pool.exchange: "uniswap_v3"`, quoted against WETH via `quote_symbol`) rather than a separate custom bonding-curve contract the way pump.fun/Flap do. The observed pool liquidity was genuinely negligible (`liquidity: 0.00005286778200534018` on the sampled token), consistent with a just-created, pre-graduation pool — so the "no liquidity floor at `new_creation`" policy rationale (parity with pump.fun's own virtual-reserve floor omission) still holds despite the underlying mechanism differing from a literal bonding curve.
+
+`Flap` (the previously-approved v1 launchpad) is **superseded** by this decision — Flap is not GMGN's currently-documented "Robinhood Cooking"-supported launchpad; Pons has stronger current documentation support. See `lib/gmgn/safety-robinhood.ts` and `.env.example` for the current `GMGN_ROBINHOOD_LAUNCHPADS=pons` policy.
+
 ## Open items to resolve before PR05/PR06 implementation (do not silently resolve by assumption)
 
 1. Confirm exact `RankItem` JSON field names by pulling a live/sample `market trenches --chain robinhood --raw` response — several fields above (creator address, initial-buy amount, social links, creation timestamp) were not itemized in the documentation excerpts available and must be verified against real payloads, not assumed.

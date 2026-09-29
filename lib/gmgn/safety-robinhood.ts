@@ -50,8 +50,9 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *   Alpha wallet buy required        → MAP TO EVM EQUIVALENT (ERC-20
  *                                       balanceOf via lib/chain/rpc.ts)
  *   Liquidity floor                  → NOT APPLICABLE (v1 policy decision:
- *                                       flap/new_creation is still
- *                                       bonding-curve stage, same as the
+ *                                       Pons V2/new_creation is still
+ *                                       pre-graduation with negligible
+ *                                       liquidity, same rationale as the
  *                                       existing pump.fun path enforcing
  *                                       no virtual-reserve floor — see
  *                                       below). minLiquiditySol is not
@@ -111,19 +112,25 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * (non-null), this evaluator refuses with an explicit configuration
  * blocker — it does not silently pick a default threshold.
  *
- * ── Liquidity floor — NOT APPLICABLE at v1's bonding-curve stage ────────
- * RESOLVED (v1 policy decision): Robinhood v1 discovery is restricted to
- * `launchpad = flap`, `stage = new_creation` — a token still in its
- * bonding-curve lifecycle, before any DEX-pool migration. This is
- * directly analogous to the existing pump.fun path in
- * lib/sniper/safety-checks.ts, which deliberately does NOT use
- * PumpPortal's virtual SOL reserve as an entry liquidity floor, because a
- * virtual bonding-curve reserve is not a meaningful discriminator for a
- * just-created token (see that file's own comments on
- * `vTokensInBondingCurve`/`vSolInBondingCurve`).
+ * ── Liquidity floor — NOT APPLICABLE at v1's pre-graduation stage ───────
+ * RESOLVED (v1 policy decision, re-verified 2026-09-29): Robinhood v1
+ * discovery is restricted to `launchpad = pons` (Pons V2), `stage =
+ * new_creation`. LIVE-VERIFIED: sampled Pons `new_creation` candidates
+ * show `progress: 0`, `launchpad_status: 0`, `migrated_timestamp: 0`,
+ * `migration_market_cap: 0` — not yet graduated, with genuinely
+ * negligible pool liquidity (observed `liquidity` values as low as
+ * ~0.00005). Note a real architectural difference from pump.fun/Flap:
+ * Pons deploys directly onto a Uniswap V3 pool at creation
+ * (`pool.exchange: "uniswap_v3"`, quoted against WETH) rather than a
+ * separate custom bonding-curve contract — but the effect is the same
+ * for this purpose: at `new_creation`, liquidity is not yet a meaningful
+ * discriminator, exactly the situation the existing pump.fun path
+ * already handles by NOT using PumpPortal's virtual SOL reserve as an
+ * entry liquidity floor (see lib/sniper/safety-checks.ts's own comments
+ * on `vTokensInBondingCurve`/`vSolInBondingCurve`).
  *
  *   Pump.fun new bonding-curve token → no virtual-reserve liquidity floor
- *   Flap new bonding-curve token     → no bonding-curve `liquidity` floor
+ *   Pons V2 new (pre-graduation) token → no pool-liquidity floor
  *
  * This is NOT a unit conversion, NOT an assumption that `liquidity` is
  * ETH or USD, and NOT a weakening of a real DEX-pool liquidity rule — the
