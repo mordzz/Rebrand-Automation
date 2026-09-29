@@ -18,6 +18,7 @@
     "verify:robinhood-rpc": "tsx scripts/verify-robinhood-rpc.ts",
     "migrate:chain-neutral": "tsx scripts/apply-chain-neutral-migration.ts",
     "migrate:robinhood-safety-policy": "tsx scripts/apply-robinhood-safety-policy-migration.ts",
+    "migrate:robinhood-v1-policy": "tsx scripts/apply-robinhood-v1-policy-migration.ts",
     "inspect:gmgn-robinhood": "tsx scripts/inspect-gmgn-robinhood.ts",
     "test:gmgn-robinhood": "tsx scripts/test-gmgn-robinhood-adapter.ts",
     "test:robinhood-safety": "tsx scripts/test-robinhood-safety.ts",

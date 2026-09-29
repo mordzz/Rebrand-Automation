@@ -13,7 +13,8 @@ import { evaluateRobinhoodSafety } from "@/lib/gmgn/safety-robinhood";
 import { normalizeRobinhoodSecurity } from "@/lib/gmgn/security-robinhood";
 import { normalizeRobinhoodToken, type RobinhoodDiscoveredToken } from "@/lib/gmgn/discovery-robinhood";
 import { checkAlphaWalletBuyRobinhood, type Erc20BalanceReader } from "@/lib/chain/alpha-wallets-robinhood";
-import { validateMaxCreatorHoldPct, type SniperConfig } from "@/lib/sniper/config";
+import { resolveLaunchpadAllowlist } from "@/lib/gmgn/discovery-robinhood";
+import { validateMaxCreatorHoldPct, envSeededDefaults, type SniperConfig } from "@/lib/sniper/config";
 import { sanitize } from "@/lib/sniper/effective-config";
 
 let failures = 0;
@@ -52,11 +53,14 @@ function baseConfig(overrides: Partial<SniperConfig> = {}): Pick<
   | "blockedKeywords"
   | "minTokenAgeSec"
   | "maxTokenAgeSec"
-  | "minLiquiditySol"
 > {
   return {
     requireOwnerRenounced: false,
     requireNoBlacklistCapability: false,
+    // Test-helper default is deliberately null (not the production
+    // default of 10) so each test is explicit about what it's checking —
+    // the actual approved-default assertion lives in its own test below,
+    // against envSeededDefaults() directly.
     maxCreatorHoldPct: null,
     requireSocialLink: false,
     requireAlphaWalletBuy: false,
@@ -64,7 +68,6 @@ function baseConfig(overrides: Partial<SniperConfig> = {}): Pick<
     blockedKeywords: [],
     minTokenAgeSec: 0,
     maxTokenAgeSec: null,
-    minLiquiditySol: 0,
     ...overrides,
   };
 }
@@ -193,6 +196,20 @@ async function main() {
     const token = makeToken({ creator_balance_rate: 0.15 });
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(result.reasons.some((r) => r.includes("creator holds") && r.includes("15.0%")), "creatorHoldPct 15% over limit 10% → refuses");
+  }
+  {
+    // Exactly at the limit (10% == 10%) → passes, per the evaluator's
+    // strict `>` comparison (not `>=`).
+    const token = makeToken({ creator_balance_rate: 0.1 });
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
+    assert(!result.reasons.some((r) => r.includes("creator holds")), "creatorHoldPct exactly 10% (== limit) → passes");
+  }
+  {
+    // Approved v1 default: a fresh install's SniperConfig (no DB row,
+    // env-seeded fallback) has maxCreatorHoldPct = 10, not null.
+    assertEqual(envSeededDefaults().maxCreatorHoldPct, 10, "envSeededDefaults(): maxCreatorHoldPct defaults to 10 (approved v1 value)");
+    // The legacy Solana field is untouched by this decision.
+    assertEqual(envSeededDefaults().maxCreatorBuyPct, 10, "envSeededDefaults(): maxCreatorBuyPct (Solana) is unaffected by the Robinhood v1 default change");
   }
   {
     // No creator_balance_rate at all, but a threshold IS configured →
@@ -460,30 +477,28 @@ async function main() {
     assert(true, "evaluator's alpha-wallet gate delegates entirely to checkAlphaWalletBuyRobinhood (see above)");
   }
 
-  // ═══ liquidity units are not assumed ═════════════════════════════════
+  // ═══ v1 policy: liquidity floor not applicable at bonding-curve stage ═
   {
-    // A token with liquidity far below any SOL-shaped threshold must not
-    // be refused by a numeric comparison — there is no unit-converting
-    // threshold check at all in this evaluator (see module comment:
-    // policy conversion not made).
-    const token = makeToken({ liquidity: 0.001 });
-    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ minLiquiditySol: 0 }), 30);
+    // A flap new_creation token with tiny/ambiguous raw GMGN `liquidity`
+    // must not be refused for it — there is no liquidity check at all in
+    // this evaluator (the config type doesn't even accept minLiquiditySol
+    // — see the TypeScript signature below, a compile-time guarantee).
+    const token = makeToken({ launchpad_platform: "flap", liquidity: 0.001 });
+    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
       !result.reasons.some((r) => r.includes("liquidity")),
-      "minLiquiditySol disabled (0) → no liquidity blocker reason at all"
+      "flap new_creation token with tiny liquidity is not refused for it (bonding-curve parity with pump.fun)"
     );
   }
   {
-    // The blocker must actually surface in evaluator output when the
-    // threshold is enabled — the unresolved rule cannot be silently
-    // absent from real behavior.
-    const token = makeToken({ liquidity: 0.001 });
-    const result = await evaluateRobinhoodSafety(token, null, baseConfig({ minLiquiditySol: 0.05 }), 30);
+    // Compile-time proof minLiquiditySol is not part of the Robinhood
+    // evaluator's config surface at all — passing it would be a type
+    // error, not just a no-op at runtime.
+    const configShape: Parameters<typeof evaluateRobinhoodSafety>[2] = baseConfig({ maxCreatorHoldPct: 10 });
     assert(
-      result.reasons.some((r) => r.includes("liquidity policy unresolved")),
-      "minLiquiditySol enabled (>0) → explicit liquidity-policy blocker reason, not silently absent"
+      !("minLiquiditySol" in configShape),
+      "evaluateRobinhoodSafety's config type does not include minLiquiditySol"
     );
-    assertEqual(result.passed, false, "liquidity blocker alone is enough to refuse when the threshold is enabled");
   }
 
   // ═══ duplicate security-field parsing: first-valid-wins, not first-non-null ═
@@ -548,6 +563,43 @@ async function main() {
     );
     assertEqual(result.passed, false, "every safety-critical unknown compounds into a refusal, never a pass");
     assert(result.reasons.length >= 4, "multiple distinct blocker/refusal reasons are all surfaced, not collapsed");
+  }
+
+  // ═══ no other launchpad becomes implicitly allowed ════════════════════
+  {
+    // .env.example now recommends GMGN_ROBINHOOD_LAUNCHPADS=flap, but
+    // that's documentation, not a code default — the resolver must still
+    // fail closed (return null) with nothing configured, exactly as
+    // before this PR. No launchpad, "flap" included, is hardcoded here.
+    const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+    try {
+      delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+      assertEqual(
+        resolveLaunchpadAllowlist(),
+        null,
+        "resolveLaunchpadAllowlist() with nothing configured is still null — flap is not a hardcoded default"
+      );
+    } finally {
+      if (originalEnv === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+      else process.env.GMGN_ROBINHOOD_LAUNCHPADS = originalEnv;
+    }
+  }
+  {
+    // Only what's explicitly configured is allowed — e.g. an operator
+    // who sets GMGN_ROBINHOOD_LAUNCHPADS=flap does not implicitly also
+    // get flap_pve/longxyz/trench/pons/etc.
+    const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+    try {
+      process.env.GMGN_ROBINHOOD_LAUNCHPADS = "flap";
+      assertEqual(
+        resolveLaunchpadAllowlist(),
+        ["flap"],
+        "GMGN_ROBINHOOD_LAUNCHPADS=flap resolves to exactly ['flap'], no other platform implicitly included"
+      );
+    } finally {
+      if (originalEnv === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
+      else process.env.GMGN_ROBINHOOD_LAUNCHPADS = originalEnv;
+    }
   }
 
   // ═══ legacy Solana config fields remain present/unchanged ════════════

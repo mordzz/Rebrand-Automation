@@ -179,8 +179,10 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
 }
 
 /** Fallback used only when DATABASE_URL isn't configured at all — the
- * daemon still runs in detect-only mode in that case (see main()). */
-function envSeededDefaults(): SniperConfig {
+ * daemon still runs in detect-only mode in that case (see main()).
+ * Exported for testability (asserting the approved v1 defaults without
+ * needing a live DB), not for use as a general-purpose config source. */
+export function envSeededDefaults(): SniperConfig {
   return {
     entrySources: defaultEntrySources(),
     minLiquiditySol: envNumber("SNIPER_MIN_LIQUIDITY_SOL", 20),
@@ -197,7 +199,11 @@ function envSeededDefaults(): SniperConfig {
 
     requireOwnerRenounced: true,
     requireNoBlacklistCapability: true,
-    maxCreatorHoldPct: null,
+    /* Approved v1 default (product decision): Robinhood creator-hold
+     * ceiling of 10%, distinct from and never derived from
+     * maxCreatorBuyPct (Solana, initial-buy %, unchanged). See
+     * drizzle/0003_robinhood_v1_policy.sql for the DB-side counterpart. */
+    maxCreatorHoldPct: 10,
 
     maxSolPerSnipe: envNumber("SNIPER_MAX_SOL_PER_SNIPE", 0.05),
     maxConcurrentPositions: envNumber("SNIPER_MAX_CONCURRENT_POSITIONS", 3),

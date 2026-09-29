@@ -49,12 +49,13 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *                                       reused instead, see below)
  *   Alpha wallet buy required        → MAP TO EVM EQUIVALENT (ERC-20
  *                                       balanceOf via lib/chain/rpc.ts)
- *   Liquidity floor                  → MISSING / BLOCKER, unconditional
- *                                       (unresolved provider-unit
- *                                       discrepancy — see below). PR06.5
- *                                       does NOT add a Robinhood
- *                                       liquidity threshold field; there
- *                                       is nothing to configure yet.
+ *   Liquidity floor                  → NOT APPLICABLE (v1 policy decision:
+ *                                       flap/new_creation is still
+ *                                       bonding-curve stage, same as the
+ *                                       existing pump.fun path enforcing
+ *                                       no virtual-reserve floor — see
+ *                                       below). minLiquiditySol is not
+ *                                       consumed by this evaluator at all.
  *   GMGN honeypot/tax/rug/bundler/
  *   insider/top10/wash-trading       → KEEP EXACTLY (same thresholds as
  *                                       the existing GMGN safety floors),
@@ -110,29 +111,38 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * (non-null), this evaluator refuses with an explicit configuration
  * blocker — it does not silently pick a default threshold.
  *
- * ── Liquidity floor — MISSING / BLOCKER (data captured, policy not) ────
- * Robinhood's `liquidity` field's actual unit is UNRESOLVED / PROVIDER
- * SEMANTICS DISCREPANCY — two pieces of evidence conflict and neither has
- * been allowed to win by inference:
- *   1. GMGN's own documentation defines token-info/pool `liquidity` as
- *      USD-denominated (both the top-level field and `pool.liquidity`).
- *   2. The live-sampled Robinhood values (`liquidity ~0.001-0.005`) sit
- *      next to `market_cap ~5,000` in the SAME items and next to
- *      `quote_symbol: "ETH"` in `/v1/token/pool_info` — a scale and
- *      adjacency that LOOKS inconsistent with a USD contract, but
- *      `quote_symbol` identifying the pool's quote asset does not, by
- *      itself, prove `liquidity` is denominated in that asset rather
- *      than USD via some other mechanism.
- * PR06.5 does not resolve this and does not add any Robinhood liquidity
- * config field. `minLiquiditySol`'s numeric SOL value is NEVER compared
- * against Robinhood's `liquidity` — that would require exactly the unit
- * conversion this evaluator refuses to invent. The evaluator does still
- * read `config.minLiquiditySol > 0`, but only as an on/off signal: "is
- * the operator's liquidity requirement enabled at all", not "what SOL
- * amount should this translate to". Because no Robinhood-specific
- * liquidity semantics or threshold exists yet, an enabled requirement
- * produces an explicit blocker rather than being silently skipped or
- * given a made-up ETH/USD equivalent (see below).
+ * ── Liquidity floor — NOT APPLICABLE at v1's bonding-curve stage ────────
+ * RESOLVED (v1 policy decision): Robinhood v1 discovery is restricted to
+ * `launchpad = flap`, `stage = new_creation` — a token still in its
+ * bonding-curve lifecycle, before any DEX-pool migration. This is
+ * directly analogous to the existing pump.fun path in
+ * lib/sniper/safety-checks.ts, which deliberately does NOT use
+ * PumpPortal's virtual SOL reserve as an entry liquidity floor, because a
+ * virtual bonding-curve reserve is not a meaningful discriminator for a
+ * just-created token (see that file's own comments on
+ * `vTokensInBondingCurve`/`vSolInBondingCurve`).
+ *
+ *   Pump.fun new bonding-curve token → no virtual-reserve liquidity floor
+ *   Flap new bonding-curve token     → no bonding-curve `liquidity` floor
+ *
+ * This is NOT a unit conversion, NOT an assumption that `liquidity` is
+ * ETH or USD, and NOT a weakening of a real DEX-pool liquidity rule — the
+ * concept simply isn't applicable yet at this lifecycle stage, the same
+ * way it already isn't for the Solana bonding-curve path. Accordingly,
+ * this evaluator no longer consumes `minLiquiditySol` (Solana,
+ * SOL-denominated) at all — not in its config Pick<>, not as an on/off
+ * signal, not for any purpose. The Solana evaluator and
+ * `minLiquiditySol`'s existing Solana-side behavior are unchanged.
+ *
+ * The unresolved provider-semantics discrepancy documented in earlier
+ * PR06/PR06.5 commits (GMGN docs say `liquidity` is USD; the live
+ * numeric/adjacency pattern for Robinhood looked ETH-like) is NOT solved
+ * by this decision and remains open — it simply doesn't need solving for
+ * v1's `new_creation`-only scope. If Robinhood support later expands to
+ * `near_completion`/`completed`/migrated DEX tokens or other launchpads,
+ * that liquidity question returns and requires its own reviewed policy
+ * (likely an explicitly USD-denominated field such as `minLiquidityUsd`,
+ * not `minLiquiditySol` reused or reinterpreted). Out of scope here.
  */
 
 /** Existing GMGN safety floors, reused as-is — these are fixed operator-
@@ -197,7 +207,6 @@ export async function evaluateRobinhoodSafety(
     | "blockedKeywords"
     | "minTokenAgeSec"
     | "maxTokenAgeSec"
-    | "minLiquiditySol"
   >,
   ageSec: number
 ): Promise<RobinhoodSafetyCheckResult> {
@@ -326,19 +335,9 @@ export async function evaluateRobinhoodSafety(
     );
   }
 
-  // ── Liquidity floor — MISSING/BLOCKER, unconditional. PR06.5 adds no
-  // Robinhood liquidity config field. `minLiquiditySol`'s numeric SOL
-  // value is NOT compared against Robinhood liquidity — this check only
-  // reads whether the operator's (Solana) liquidity requirement is
-  // enabled at all, as a signal to enforce SOME liquidity requirement,
-  // not as a threshold to convert. See module comment. ──
-  if (config.minLiquiditySol > 0) {
-    reasons.push(
-      "liquidity policy unresolved — MISSING/BLOCKER: Robinhood liquidity's actual unit is an " +
-        "unresolved provider-semantics discrepancy (GMGN docs say USD; live values look ETH-like), " +
-        "and no Robinhood-specific liquidity config field exists yet (see safety-robinhood.ts)"
-    );
-  }
+  // ── Liquidity floor — NOT APPLICABLE at v1's bonding-curve stage (see
+  // module comment for the pump.fun-parity rationale). minLiquiditySol
+  // is not read anywhere in this function. ──
 
   // ── Alpha wallet — MAP TO EVM EQUIVALENT. ──
   const alphaWalletGateActive = config.requireAlphaWalletBuy && config.alphaWallets.length > 0;

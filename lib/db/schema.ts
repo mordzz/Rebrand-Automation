@@ -264,11 +264,13 @@ export const sniperConfig = pgTable("sniper_config", {
   /* Robinhood equivalent of maxCreatorBuyPct — but measures CURRENT
    * creator holding concentration (creatorHoldRate), not initial
    * buy/allocation, which cannot be reliably reconstructed on Robinhood
-   * (see safety-robinhood.ts). Nullable with NO default: null means
-   * "not yet configured", which the Robinhood evaluator treats as an
-   * explicit configuration blocker — never silently inherits
-   * maxCreatorBuyPct's threshold just because both are percentages. */
-  maxCreatorHoldPct: numeric("max_creator_hold_pct"),
+   * (see safety-robinhood.ts). Still nullable (null continues to mean
+   * "not yet configured" → configuration blocker) but now defaults to
+   * the approved v1 value (10) for new rows — see
+   * drizzle/0003_robinhood_v1_policy.sql for the matching backfill of
+   * existing NULL rows. Never silently inherits maxCreatorBuyPct's
+   * threshold just because both are percentages. */
+  maxCreatorHoldPct: numeric("max_creator_hold_pct").default("10"),
 });
 
 /**
