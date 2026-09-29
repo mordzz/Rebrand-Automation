@@ -267,9 +267,14 @@ export async function recordPartialExit(
    * OpenPositionInput's doc comments). Previously only sizeSol was
    * updated here, leaving sizeNative stale at its original value after
    * the first tiered partial exit — a later risk/PnL read of sizeNative
-   * would then use the wrong (original, not remaining) amount. Solana
-   * positions never set sizeNative (it stays null), so this is a no-op
-   * for them. */
+   * would then use the wrong (original, not remaining) amount.
+   *
+   * This is conditioned on `position.sizeNative != null`, not on chain:
+   * a freshly-written Solana row still leaves sizeNative null (this PR
+   * doesn't change Solana writes), but a PR04-backfilled historical
+   * Solana row may have sizeNative populated (mirrored from sizeSol at
+   * migration time) — keeping that mirror in sync here is harmless and
+   * correct either way, so this branch is null-checked, not chain-checked. */
   const remainingSizeNative =
     position.sizeNative != null ? computeRemainingSize(position.sizeNative, exit.soldSol) : null;
 

@@ -36,7 +36,11 @@ export async function recordClosedTrade(
   input: ClosedTradeInput,
   walletAddress: string | null = null,
 ): Promise<RecordTradeResult> {
-  const pnl = Number(input.pnlSol);
+  // PR07 hardening: pnlNative is authoritative when present (a Robinhood
+  // trade), not the pnlSol compatibility shadow — same number/sign for a
+  // Robinhood row today, but this stops depending on that coincidence.
+  // Solana trades never set pnlNative, so this is unchanged for them.
+  const pnl = Number(input.pnlNative ?? input.pnlSol);
   const isLoss = pnl < 0;
 
   let analysis: LossAnalysis | null = null;

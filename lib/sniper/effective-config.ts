@@ -39,6 +39,33 @@ const NULLABLE_NUMBER_KEYS: (keyof SniperConfig)[] = [
   "maxHoldTimeSec",
 ];
 
+/** PR07 hardening: Robinhood-native risk limits, per-bot overridable the
+ * same way maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol already
+ * are for Solana. Validated the same way as NULLABLE_NUMBER_KEYS (null,
+ * or a finite number — anything else is dropped, not thrown, matching
+ * this function's existing "advisory input" posture) — kept as a
+ * separate list only so the intent (these are risk limits, not generic
+ * numeric knobs) is visible at the call site below.
+ *
+ * This does NOT choose any ETH value, and does NOT derive one from the
+ * SOL-denominated fields — resolveRobinhoodNativeLimits() in
+ * lib/sniper/risk-limits-robinhood.ts still fails closed unless all
+ * three (plus nativeSymbol="ETH") are explicitly configured, whether at
+ * the house level or via this overlay. */
+const ROBINHOOD_NATIVE_NUMBER_KEYS: (keyof SniperConfig)[] = [
+  "maxNativePerSnipe",
+  "maxNativeDeployed",
+  "maxDailyDrawdownNative",
+];
+
+/** Known native-symbol values this codebase actually has behavior for —
+ * "ETH" for Robinhood (lib/sniper/risk-limits-robinhood.ts requires
+ * exactly this string), "SOL" kept valid for compatibility/display even
+ * though the Solana path never reads nativeSymbol at all. An arbitrary
+ * string is rejected rather than silently accepted, since this field
+ * gates whether Robinhood risk limits are trusted at all. */
+const KNOWN_NATIVE_SYMBOLS = new Set(["ETH", "SOL"]);
+
 /** Keeps only known SniperConfig fields with the right primitive types — a
  * user's overlay can never introduce fields the daemon doesn't know. */
 export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
@@ -52,6 +79,13 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
   for (const key of NULLABLE_NUMBER_KEYS) {
     if (raw[key] === null || (typeof raw[key] === "number" && Number.isFinite(raw[key])))
       out[key] = raw[key];
+  }
+  for (const key of ROBINHOOD_NATIVE_NUMBER_KEYS) {
+    if (raw[key] === null || (typeof raw[key] === "number" && Number.isFinite(raw[key])))
+      out[key] = raw[key];
+  }
+  if (raw.nativeSymbol === null || (typeof raw.nativeSymbol === "string" && KNOWN_NATIVE_SYMBOLS.has(raw.nativeSymbol))) {
+    out.nativeSymbol = raw.nativeSymbol;
   }
   // maxCreatorHoldPct is safety-critical (gates a Robinhood refuse/pass
   // decision), so it goes through the same range validation as the

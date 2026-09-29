@@ -26,6 +26,7 @@
     "test:robinhood-safety": "tsx scripts/test-robinhood-safety.ts",
     "test:liquidity-collector": "tsx scripts/test-liquidity-collector.ts",
     "test:robinhood-paper-trading": "tsx scripts/test-robinhood-paper-trading.ts",
+    "test:analyze-loss-effective-config": "tsx scripts/test-analyze-loss-effective-config.ts",
     "deploy:perpspad": "anchor deploy --provider.cluster devnet"
   },
   "dependencies": {
