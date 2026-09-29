@@ -256,13 +256,23 @@ async function main() {
   });
 
   const totalRuns = intervalMinutes ? runs : 1;
+  const isMultiRun = intervalMinutes != null;
   let anyDatasetIntegrityError = false;
+  let anyProviderError = false;
   for (let i = 0; i < totalRuns && !stopped; i++) {
     console.log(`\n--- collection run ${i + 1}/${totalRuns} ---`);
     const outcome = await runOneCollection();
     if (outcome.status === "DATASET_INTEGRITY_ERROR") {
       anyDatasetIntegrityError = true;
       break; // do not keep polling against a dataset we know is corrupted
+    }
+    if (outcome.status === "PROVIDER_ERROR") {
+      anyProviderError = true;
+      // One-shot mode: a provider failure is the whole invocation's
+      // result — stop immediately rather than printing stats as if
+      // nothing went wrong. Multi-run mode: transient 429s are expected
+      // during development, so continue to the next scheduled run.
+      if (!isMultiRun) break;
     }
     if (intervalMinutes && i < totalRuns - 1 && !stopped) {
       console.log(`[collector] sleeping ${intervalMinutes} minute(s) before next run...`);
@@ -274,6 +284,16 @@ async function main() {
     console.error("[collector] stopped due to a dataset integrity error — fix the dataset file before re-running.");
     process.exitCode = 1;
     return;
+  }
+
+  if (anyProviderError) {
+    console.error(
+      isMultiRun
+        ? "[collector] one or more runs in this session failed with a provider error — see PROVIDER_ERROR lines above. Dataset was left unchanged for each failed run."
+        : "[collector] the collection run failed with a provider error — dataset left unchanged."
+    );
+    process.exitCode = 1;
+    if (!isMultiRun) return; // one-shot: do not print stats after the sole run failed
   }
 
   printStats();

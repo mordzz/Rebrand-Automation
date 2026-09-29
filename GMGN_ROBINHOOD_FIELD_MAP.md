@@ -277,13 +277,61 @@ Observations are stored locally, gitignored, at
 `data/robinhood-liquidity-snapshots.jsonl` — this is investigation
 output, not application/runtime state, and is never committed.
 
-Deduplication is keyed on `tokenAddress` (case-normalized): a token
-re-seen on a later run does not create a second statistical sample —
-it only updates `timesObserved`/`observedAt` and backfills previously-
-null fields, while the *earliest*-observed liquidity/reserve state stays
-canonical. The collector prints `raw candidates fetched`,
-`already-known tokens`, `new unique launches added`, and
-`total unique launches` on every run so this can be audited each time.
+Deduplication is keyed on the composite launch identity
+`lowercase tokenAddress + createdTimestamp` (`observationKey()` in
+`lib/gmgn/liquidity-collector.ts`) — not `tokenAddress` alone. A token
+re-seen on a later run under the same key does not create a second
+statistical sample; it only updates `timesObserved`/`observedAt`. If
+the same address were ever seen with a *different* `createdTimestamp`,
+it is treated as a distinct launch identity and stored separately,
+never silently merged into the prior record.
+
+Within one canonical record, fields split into two categories:
+
+```text
+Earliest statistical measurements are immutable — captured once, at
+the first sighting, and never overwritten or backfilled by a later
+poll:
+- liquidityUsd
+- quoteReserve
+- quoteUsdPrice
+- observedQuoteSideEstimate
+- holderCount
+- marketCap
+- creatorHoldRate
+- progress
+- launchpadStatus
+- migratedTimestamp
+
+Only descriptive metadata may be backfilled when previously null
+(this cannot change any liquidity/reserve/holder statistic):
+- launchpad
+- poolAddress
+- poolExchange
+- quoteAddress
+- quoteSymbol
+- symbol
+- name
+```
+
+This split matters: without it, a token polled again 5 minutes after
+launch with newly-nonzero liquidity could silently overwrite the
+canonical record and make a *later, more liquid* state look like the
+launch-time liquidity, corrupting the very measurement this dataset
+exists to collect.
+
+Collection integrity: a provider error or a malformed response (e.g.
+missing/non-array `new_creation`) is a **failed collection** — the
+dataset is left completely unchanged, never treated as an empty
+market. A corrupted or schema-invalid persisted JSONL line **fails
+closed** — the whole dataset load is aborted rather than silently
+dropping the bad line, so a corrupted record can never quietly vanish
+from history. See `lib/gmgn/liquidity-collector.ts`'s `parseDataset`/
+`mergeObservations` for the implementation.
+
+The collector prints `raw candidates fetched`, `already-known tokens`,
+`new unique launches added`, and `total unique launches` on every
+successful run so this can be audited each time.
 
 Minimum unique-launch sample size for bringing the threshold/usefulness
 question back to human review: **30** (`MIN_UNIQUE_LAUNCHES_FOR_POLICY_REVIEW`
