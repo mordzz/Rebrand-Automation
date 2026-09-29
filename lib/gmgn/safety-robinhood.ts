@@ -182,25 +182,36 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * explicit, reviewed threshold decision is made.
  *
  * Liquidity-unit investigation — RESOLVED (2026-09-29, multi-sample
- * re-check; see GMGN_ROBINHOOD_FIELD_MAP.md for full data): classified
- * **VERIFIED_USD**. GMGN's `liquidity` is real and USD-denominated, but
- * the working formula is `2 × quote_reserve × quote_token_USD_price`
- * (quote-side value, doubled) — NOT the documentation's literal
- * "base_reserve_value + quote_reserve_value" sum, which was off by
- * 82–100% on every sample checked. The 2×-quote-side formula held within
- * 0.0–2.4% across 15 samples spanning both `new_creation` (base price
+ * re-check, hardened 2026-09-29 third pass; see
+ * GMGN_ROBINHOOD_FIELD_MAP.md for full data and methodology): classified
+ * **VERIFIED_USD**. GMGN's `liquidity` is real and USD-denominated (this
+ * part is documented), but GMGN does not publish an explicit sum
+ * equation as a contractual guarantee. This investigation's own working
+ * hypothesis — `base_reserve_value + quote_reserve_value` — is what
+ * didn't match (off by 78–100% on every sample checked); it was never a
+ * documented formula to begin with. What DID match, empirically and
+ * consistently, is `2 × quote_reserve × quote_token_USD_price`
+ * (quote-side value, doubled) — an empirically-observed relationship,
+ * not something GMGN has published as guaranteed. This formula held
+ * within 0.1–2.6% across 19 priced comparison samples (across two
+ * separate live-data runs) spanning both `new_creation` (base price
  * unknown) and `completed` (base price known) stages, using the quote
- * token's own independently-sourced GMGN price — confirmed via an
- * on-chain reserve cross-check on Robinhood mainnet as well.
+ * token's own price from a separately-queried GMGN `/v1/token/info` call
+ * (independent of any single pool's own reserve/value fields, but still
+ * GMGN-sourced) — cross-checked against real on-chain reserve state on
+ * Robinhood mainnet as well. All priced samples across both runs shared
+ * the same quote token (WETH); the script now verifies this per-run via
+ * a per-quote-token price cache rather than assuming it.
  *
  * This resolves the UNIT question. It does NOT by itself justify picking
- * a dollar threshold: the live `new_creation` population sampled (n=4 at
- * query time) was tiny across the board (max ≈ $9.55), which resembles
- * pump.fun's virtual-reserve non-discriminator pattern but is too small
- * a sample to prove that classification confidently. The liquidity floor
- * therefore REMAINS an unconditional blocker below — verifying the unit
- * is not the same as having enough evidence to choose (or justify
- * skipping) a threshold, which remains the user's decision to make.
+ * a dollar threshold: the live `new_creation` population sampled (n=4,
+ * then n=3 on a later re-run) was tiny across the board (max ≈ $9.55),
+ * which resembles pump.fun's virtual-reserve non-discriminator pattern
+ * but is too small a sample to prove that classification confidently.
+ * The liquidity floor therefore REMAINS an unconditional blocker below —
+ * verifying the unit is not the same as having enough evidence to choose
+ * (or justify skipping) a threshold, which remains the user's decision
+ * to make.
  *
  * This does NOT use `minLiquiditySol` (Solana, SOL-denominated) in any
  * form — not as a value, not as an on/off signal. It is not renamed or
