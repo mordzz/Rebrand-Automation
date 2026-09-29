@@ -1,5 +1,6 @@
 import {
   getSniperConfig,
+  validateMaxCreatorHoldPct,
   type EntrySource,
   type SniperConfig,
 } from "@/lib/sniper/config";
@@ -36,7 +37,6 @@ const NULLABLE_NUMBER_KEYS: (keyof SniperConfig)[] = [
   "maxTokenAgeSec",
   "breakevenAfterPct",
   "maxHoldTimeSec",
-  "maxCreatorHoldPct",
 ];
 
 /** Keeps only known SniperConfig fields with the right primitive types — a
@@ -52,6 +52,21 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
   for (const key of NULLABLE_NUMBER_KEYS) {
     if (raw[key] === null || (typeof raw[key] === "number" && Number.isFinite(raw[key])))
       out[key] = raw[key];
+  }
+  // maxCreatorHoldPct is safety-critical (gates a Robinhood refuse/pass
+  // decision), so it goes through the same range validation as the
+  // house config write path (lib/sniper/config.ts's authoritative
+  // validateMaxCreatorHoldPct) rather than the generic "any finite
+  // number" acceptance above. An invalid value is dropped — same
+  // "ignore, keep the house default" posture sanitize() already uses for
+  // every other malformed overlay field, not a thrown error (a per-bot
+  // overlay is advisory input, unlike the house config PATCH route).
+  if ("maxCreatorHoldPct" in raw) {
+    try {
+      out.maxCreatorHoldPct = validateMaxCreatorHoldPct(raw.maxCreatorHoldPct);
+    } catch {
+      // invalid — leave unset, house default (or no override) applies
+    }
   }
   if (raw.exitMode === "fixed" || raw.exitMode === "tiered") out.exitMode = raw.exitMode;
   /* An empty list would mean "no feed may open a position", which is a

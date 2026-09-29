@@ -290,10 +290,43 @@ const NUMERIC_KEYS = new Set<keyof SniperConfig>([
 
 /** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
  * partial expected by drizzle's numeric columns. */
+/**
+ * Authoritative validation for maxCreatorHoldPct — a safety-critical
+ * Robinhood threshold, not a cosmetic display number. Exported so
+ * lib/sniper/effective-config.ts's per-bot sanitizer enforces the exact
+ * same rule rather than re-deriving it, and so this is the one place
+ * that rule lives. `null` means "unconfigured" (the Robinhood evaluator
+ * treats that as a fail-closed configuration blocker) and is always
+ * valid; a non-null value must be a finite number in [0, 100] — anything
+ * else throws rather than silently clamping, because a clamped value
+ * would misrepresent what the operator actually asked for on a check
+ * that gates real money.
+ */
+export function validateMaxCreatorHoldPct(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("maxCreatorHoldPct must be null or a finite number");
+  }
+  if (value < 0 || value > 100) {
+    throw new Error("maxCreatorHoldPct must be between 0 and 100");
+  }
+  return value;
+}
+
+/** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
+ * partial expected by drizzle's numeric columns. This is the authoritative
+ * write path — app/api/sniper/config/route.ts's PATCH handler passes an
+ * untrusted request body straight to updateSniperConfig() with no prior
+ * sanitize() call, so validation here is what actually protects the house
+ * config, not just the per-bot overlay path. */
 function patchToRow(patch: ConfigPatch): Partial<SniperConfigRow> {
   const row: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
+    if (key === "maxCreatorHoldPct") {
+      row[key] = valueToNumericColumn(validateMaxCreatorHoldPct(value));
+      continue;
+    }
     row[key] = NUMERIC_KEYS.has(key as keyof SniperConfig)
       ? value == null
         ? null
@@ -301,6 +334,10 @@ function patchToRow(patch: ConfigPatch): Partial<SniperConfigRow> {
       : value;
   }
   return row as Partial<SniperConfigRow>;
+}
+
+function valueToNumericColumn(value: number | null): string | null {
+  return value == null ? null : String(value);
 }
 
 /**

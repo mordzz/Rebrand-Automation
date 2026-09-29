@@ -124,9 +124,15 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  *      itself, prove `liquidity` is denominated in that asset rather
  *      than USD via some other mechanism.
  * PR06.5 does not resolve this and does not add any Robinhood liquidity
- * config field — there is nothing to compare `minLiquiditySol` against,
- * and that SOL-denominated field is not consulted here. The evaluator
- * continues to fail closed unconditionally on this point (see below).
+ * config field. `minLiquiditySol`'s numeric SOL value is NEVER compared
+ * against Robinhood's `liquidity` — that would require exactly the unit
+ * conversion this evaluator refuses to invent. The evaluator does still
+ * read `config.minLiquiditySol > 0`, but only as an on/off signal: "is
+ * the operator's liquidity requirement enabled at all", not "what SOL
+ * amount should this translate to". Because no Robinhood-specific
+ * liquidity semantics or threshold exists yet, an enabled requirement
+ * produces an explicit blocker rather than being silently skipped or
+ * given a made-up ETH/USD equivalent (see below).
  */
 
 /** Existing GMGN safety floors, reused as-is — these are fixed operator-
@@ -321,8 +327,11 @@ export async function evaluateRobinhoodSafety(
   }
 
   // ── Liquidity floor — MISSING/BLOCKER, unconditional. PR06.5 adds no
-  // Robinhood liquidity config field; minLiquiditySol (Solana, SOL-
-  // denominated) is never consulted here. See module comment. ──
+  // Robinhood liquidity config field. `minLiquiditySol`'s numeric SOL
+  // value is NOT compared against Robinhood liquidity — this check only
+  // reads whether the operator's (Solana) liquidity requirement is
+  // enabled at all, as a signal to enforce SOME liquidity requirement,
+  // not as a threshold to convert. See module comment. ──
   if (config.minLiquiditySol > 0) {
     reasons.push(
       "liquidity policy unresolved — MISSING/BLOCKER: Robinhood liquidity's actual unit is an " +

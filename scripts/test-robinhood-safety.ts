@@ -13,7 +13,8 @@ import { evaluateRobinhoodSafety } from "@/lib/gmgn/safety-robinhood";
 import { normalizeRobinhoodSecurity } from "@/lib/gmgn/security-robinhood";
 import { normalizeRobinhoodToken, type RobinhoodDiscoveredToken } from "@/lib/gmgn/discovery-robinhood";
 import { checkAlphaWalletBuyRobinhood, type Erc20BalanceReader } from "@/lib/chain/alpha-wallets-robinhood";
-import type { SniperConfig } from "@/lib/sniper/config";
+import { validateMaxCreatorHoldPct, type SniperConfig } from "@/lib/sniper/config";
+import { sanitize } from "@/lib/sniper/effective-config";
 
 let failures = 0;
 
@@ -236,6 +237,58 @@ async function main() {
       !result.reasons.some((r) => r.includes("creator holds")),
       "maxCreatorBuyPct is not consulted for Robinhood — a stray value on the object has no effect"
     );
+  }
+
+  // ═══ validateMaxCreatorHoldPct — authoritative write-path validation ═══
+  // (lib/sniper/config.ts, used directly by updateSniperConfig()'s
+  // patchToRow() for the house config PATCH route, and reused by
+  // lib/sniper/effective-config.ts's sanitize() for the per-bot overlay —
+  // one rule, not two independently-maintained copies)
+  {
+    assertEqual(validateMaxCreatorHoldPct(null), null, "null is accepted (means unconfigured/fail-closed)");
+  }
+  for (const value of [0, 10, 100]) {
+    assertEqual(validateMaxCreatorHoldPct(value), value, `${value} is accepted (in [0,100])`);
+  }
+  for (const value of [-1, 100.1, 500, NaN, Infinity, -Infinity]) {
+    let threw = false;
+    try {
+      validateMaxCreatorHoldPct(value);
+    } catch {
+      threw = true;
+    }
+    assert(threw, `${value} is rejected (throws), not silently clamped`);
+  }
+  for (const value of ["10", "not-a-number", {}, [], true, undefined]) {
+    let threw = false;
+    try {
+      validateMaxCreatorHoldPct(value);
+    } catch {
+      threw = true;
+    }
+    assert(threw, `${JSON.stringify(value)} (non-number) is rejected`);
+  }
+
+  // ═══ the per-bot overlay sanitizer enforces the same rule, not a
+  // separate/looser one ══════════════════════════════════════════════════
+  {
+    const overlay = sanitize({ maxCreatorHoldPct: 15 });
+    assertEqual(overlay.maxCreatorHoldPct, 15, "sanitize(): valid maxCreatorHoldPct passes through");
+  }
+  {
+    const overlay = sanitize({ maxCreatorHoldPct: null });
+    assertEqual(overlay.maxCreatorHoldPct, null, "sanitize(): null passes through (unconfigured)");
+  }
+  {
+    const overlay = sanitize({ maxCreatorHoldPct: 150 });
+    assert(
+      !("maxCreatorHoldPct" in overlay),
+      "sanitize(): out-of-range maxCreatorHoldPct is dropped (not silently clamped, not thrown to the caller)"
+    );
+  }
+  {
+    const overlay = sanitize({ maxCreatorHoldPct: -5 });
+    assert(!("maxCreatorHoldPct" in overlay), "sanitize(): negative maxCreatorHoldPct is dropped");
   }
 
   // ═══ honeypot yes/no/unknown ══════════════════════════════════════════
