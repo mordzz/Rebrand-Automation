@@ -36,6 +36,18 @@ export type ClosedTradeInput = {
   openedAt?: string | null;
   closedAt?: string | null;
   context?: Record<string, unknown> | null;
+
+  /* PR04 chain-neutral trade columns — optional, Robinhood-only (PR07).
+   * Every existing caller omits these; the post-mortem prompt below
+   * still reads pnlSol/sizeSol only (unchanged — the AI reflection
+   * workflow is out of scope for this PR), so these are persisted
+   * alongside the legacy fields but are not yet consumed by
+   * analyzeLoss(). */
+  sizeNative?: number | string | null;
+  pnlNative?: number | string | null;
+  nativeSymbol?: string | null;
+  chain?: string | null;
+  network?: string | null;
 };
 
 const ANALYSIS_SCHEMA = {

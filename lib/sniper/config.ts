@@ -89,6 +89,22 @@ export type SniperConfig = {
   cooldownAfterLossSec: number;
 
   metadataFetchTimeoutMs: number;
+
+  // PR04 chain-neutral risk fields (schema foundation), now exposed here
+  // for PR07's Robinhood paper trading to actually consume — see
+  // lib/sniper/risk-limits-robinhood.ts. Deliberately nullable and
+  // NOT seeded with any default value: choosing an ETH risk number is a
+  // product decision this PR does not make. `null` (or nativeSymbol not
+  // exactly "ETH") means "not yet configured", and
+  // resolveRobinhoodNativeLimits() fails closed on that rather than
+  // silently reinterpreting maxSolPerSnipe/maxTotalDeployedSol/
+  // maxDailyDrawdownSol as ETH, or treating a historical Solana
+  // nativeSymbol="SOL" backfill as ETH. Solana behavior never reads these
+  // fields at all. */
+  maxNativePerSnipe: number | null;
+  maxNativeDeployed: number | null;
+  maxDailyDrawdownNative: number | null;
+  nativeSymbol: string | null;
 };
 
 /** Master switches — deliberately NOT in sniper_config. Restart-gated by
@@ -175,6 +191,11 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
     cooldownAfterLossSec: num(row.cooldownAfterLossSec),
 
     metadataFetchTimeoutMs: num(row.metadataFetchTimeoutMs),
+
+    maxNativePerSnipe: numOrNull(row.maxNativePerSnipe),
+    maxNativeDeployed: numOrNull(row.maxNativeDeployed),
+    maxDailyDrawdownNative: numOrNull(row.maxDailyDrawdownNative),
+    nativeSymbol: row.nativeSymbol,
   };
 }
 
@@ -233,6 +254,14 @@ export function envSeededDefaults(): SniperConfig {
     cooldownAfterLossSec: 0,
 
     metadataFetchTimeoutMs: envNumber("SNIPER_METADATA_TIMEOUT_MS", 3000),
+
+    /* No ETH risk numbers are chosen in PR07 — Robinhood paper entries
+     * fail closed via resolveRobinhoodNativeLimits() until an operator
+     * explicitly sets all three plus nativeSymbol="ETH". */
+    maxNativePerSnipe: null,
+    maxNativeDeployed: null,
+    maxDailyDrawdownNative: null,
+    nativeSymbol: null,
   };
 }
 
@@ -292,6 +321,9 @@ const NUMERIC_KEYS = new Set<keyof SniperConfig>([
   "maxDailyDrawdownSol",
   "cooldownAfterLossSec",
   "metadataFetchTimeoutMs",
+  "maxNativePerSnipe",
+  "maxNativeDeployed",
+  "maxDailyDrawdownNative",
 ]);
 
 /** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed

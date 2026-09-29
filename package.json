@@ -25,6 +25,7 @@
     "test:gmgn-robinhood": "tsx scripts/test-gmgn-robinhood-adapter.ts",
     "test:robinhood-safety": "tsx scripts/test-robinhood-safety.ts",
     "test:liquidity-collector": "tsx scripts/test-liquidity-collector.ts",
+    "test:robinhood-paper-trading": "tsx scripts/test-robinhood-paper-trading.ts",
     "deploy:perpspad": "anchor deploy --provider.cluster devnet"
   },
   "dependencies": {
