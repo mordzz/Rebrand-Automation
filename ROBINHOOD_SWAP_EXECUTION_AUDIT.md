@@ -375,25 +375,32 @@ because the node discards the resulting state changes after computing the
 call's return value/gas, rather than rejecting the call for attempting
 them.
 
-Router-level ETH semantics (native ETH accepted directly vs. wrap-first,
-`multicall`/`refundETH` requirement, Universal Router's command-based
-model vs. classic `exactInputSingle`) are all **Uniswap SwapRouter02 /
-UniversalRouter behaviors that cannot be verified on testnet, because
-neither contract's swap-capable form exists there** (UniversalRouter's
-bytecode is present but has no pools to route through). This is recorded
-as `UNRESOLVED — blocked on §5`, not assumed from Ethereum-mainnet Uniswap
-documentation, per the task's explicit instruction not to infer from
-Ethereum/Arbitrum defaults.
+**Corrected in the §20 pass:** the statement above ("no swap-capable form
+exists") is now **stale and superseded**. A real, deployed v4 Quoter was
+directly exercised via `eth_call` against a real, liquid testnet pool and
+returned successful, non-zero quotes in both directions — see §20. Router-
+level ETH semantics specifically (native ETH accepted directly by
+`UniversalRouter`'s v4 commands vs. wrap-first, `V4_SWAP` command
+encoding, `settle`/`take` action semantics) remain `UNRESOLVED` — not
+because no swap-capable contract exists (one does — the v4 Quoter/
+PoolManager), but because a full `UniversalRouter.execute()` simulation
+was not completed in this pass, and a serious, concrete wiring concern was
+found for `UniversalRouter` specifically — see §20's WETH9-wiring finding,
+which is a reason to be cautious about this router instance, not evidence
+that v4 itself is unusable.
 
 ## 8. ERC-20 approval / Permit2
 
 `Permit2` (`0x000000000022D473030F116dDEE9F6B43aC78BA3`) is confirmed
 deployed with identical bytecode on both mainnet and testnet — this is
 expected, since Permit2 is a universal CREATE2 deployment independent of
-any particular DEX being live on a chain. Its **presence on testnet does
-not mean it is usable for a real swap flow there**, since the router it
-would authorize (UniversalRouter, non-functional without pools) has
-nothing to execute.
+any particular DEX being live on a chain. **Corrected in the §20 pass:**
+it is no longer accurate to say the router "has nothing to execute" — a
+real, liquid v4 pool exists and quotes successfully (§20). Whether
+`UniversalRouter`'s specific testnet instance is correctly wired to accept
+Permit2-authorized transfers remains unverified (its `permit2()`/`PERMIT2()`
+getters both revert — no public accessor was found), and is a genuinely
+separate question from whether Permit2 itself is deployed.
 
 Design guidance for whenever a real venue exists (Uniswap SwapRouter02 or
 UniversalRouter, per whichever mainnet uses): prefer the **minimum safe
@@ -406,12 +413,17 @@ task's own instruction ("do not authorize unlimited approval by default").
 ## 9. Slippage / minimum-output mapping (design, pending a real venue)
 
 Noah's existing conceptual shape (strategy/risk decides trade parameters;
-execution adapter receives token/side/amount/slippage) maps directly onto
-Uniswap v3's `exactInputSingle`/`exactInput` `amountOutMinimum` parameter,
-or UniversalRouter's equivalent command parameters, **once a real Quoter
-and pool exist to compute the quote `amountOutMinimum` is derived from**.
-No slippage value, formula, or risk threshold was changed or proposed to
-change in this audit, per the task's explicit instruction.
+execution adapter receives token/side/amount/slippage) maps onto v4's
+`amountOutMinimum`-equivalent (the `SWAP_EXACT_IN_SINGLE` action's minimum
+output field in `UniversalRouter`'s v4 command encoding, or a direct
+`PoolManager.swap()` minimum-out check). **Corrected in the §20 pass:** a
+real Quoter and a real, liquid pool now do exist and were successfully
+queried (§20), so the "once a real Quoter and pool exist" conditional is
+partly resolved — the quote side works today. The exact
+`amountOutMinimum` wiring into a `UniversalRouter` command remains
+unimplemented and unverified end-to-end. No slippage value, formula, or
+risk threshold was changed or proposed to change in this audit, per the
+task's explicit instruction.
 
 ## 10. Token decimals / base units
 
@@ -553,21 +565,19 @@ contract deployed:
 |---|---|---|---|---|---|---|---|---|
 | Uniswap v2 | **No** | No — empty bytecode on testnet | N/A | N/A | N/A | No | N/A | Blocked entirely on deployment gap |
 | Uniswap v3 (SwapRouter02) | **No** | No — empty bytecode on testnet | N/A | N/A | N/A | No | N/A | Blocked entirely on deployment gap |
-| **Uniswap v4** (PoolManager/Quoter/StateView) | **Yes — core contracts deployed with real bytecode** | **Yes — real, initialized, liquid WETH pool confirmed on-chain** | `StateView` reads confirmed working; `Quoter` deployed but not exercised end-to-end | `UniversalRouter` has bytecode on testnet, but its wiring to this `PoolManager` for a v4 swap command was **not verified** | No (public RPC sufficient for all reads performed) | **Unverified** — the confirmed pool pairs WETH with `NEONTR`, not a token this audit can confirm was ever discovered via GMGN's `pons` feed | Elevated — the confirmed pool uses a custom hook contract (non-zero `hooks` address), meaning standard vanilla-V4 swap math may not directly apply | Router/quote path not proven end-to-end; hook behavior unknown; pons-compatibility unverified; full pool history unknown (non-archive RPC) |
+| **Uniswap v4** (PoolManager/Quoter/StateView) | **Yes — core contracts deployed with real bytecode** | **Yes — real, initialized, liquid, hookless WETH pool confirmed on-chain (§20d)** | **Confirmed working — real successful `Quoter.quoteExactInputSingle` calls both directions, §20e** | `Quoter`↔`PoolManager` wiring confirmed via getter (§20a). `UniversalRouter`↔`PoolManager` wiring also confirmed via getter (§20b), but `UniversalRouter`'s WETH9 wiring decodes to Robinhood **mainnet** WETH (no code on testnet) — a concrete, unresolved concern for any native-ETH-input route through this router (§20c) | No (public RPC sufficient for all reads performed) | `GMGN_PONS_TESTNET_COMPATIBILITY_DEFERRED` — deferred per PR08A's narrower scope, not required to pass this task; `NO_TESTNET_PONS_ACTIVITY_VERIFIED` still stands separately (§17) | Low for the Quoter-only path (proven working); elevated for the full router-mediated path pending §20c | Router-mediated native-ETH swap path has a concrete wiring concern (§20c); full pool-history scan still bounded by non-archive RPC |
 | Uniswap trading API / 0x API | No | N/A (API layer, not on-chain) | Would be HTTP quote | Possibly, but unverified | Likely yes | No | N/A | Third-party evidence + Uniswap's own supported-chains docs agree: testnet is not supported by the hosted API |
 | "Hoodex" (community-referenced testnet DEX) | Unverified | Unverified | Unverified | Unverified | Unverified | Unknown | Unknown | `INSUFFICIENT_EVIDENCE` — no official docs, GitHub, or on-chain check found in either audit pass |
 | "Loxley" (community-referenced testnet DEX) | Unverified | Unverified | Unverified | Unverified | Unverified | Unknown | Unknown | `INSUFFICIENT_EVIDENCE` — name collides across unrelated projects; no single authoritative deployment identified |
 
-**`EXECUTION_PROVIDER_UNRESOLVED`** — Uniswap v4 is the only candidate with
-verified testnet deployment AND verified real liquidity, clearing two of
-the four evidence-bar requirements (§8 of the task: verified contracts,
-real liquidity, quote path, router path). It has **not** cleared the
-quote-path (not exercised end-to-end) or router-path (wiring unverified)
-bars, and pons-compatibility is unverified for any candidate. Per the
-task's explicit instruction, this status means **"no execution venue
-satisfying the full evidence bar has been verified" — not "no execution
-venue exists."** Uniswap v4 is the clear front-runner for follow-up
-verification work, not a rejected candidate.
+**Updated per §20:** Uniswap v4 now clears **three** of the original four
+evidence-bar requirements — verified contracts, real liquidity, AND a
+working quote path (§20e, directly proven). Only the router-mediated
+swap-simulation bar remains open, and specifically because of a concrete
+wiring concern (§20c), not a lack of any deployed swap-capable contract.
+See §20g for the full, precisely-scoped status:
+**`EXECUTION_PROVIDER_VERIFIED` for the Quoter/quote-path,
+`EXECUTION_PROVIDER_UNRESOLVED` for the full router-mediated path.**
 
 ## 17. Unresolved questions
 
@@ -615,15 +625,35 @@ verification work, not a rejected candidate.
   evidence found in either audit pass
 - "Loxley" — `INSUFFICIENT_EVIDENCE`, name collides across at least two
   unrelated GitHub projects; no single authoritative deployment identified
+- **New in PR08A (§20):** `UniversalRouter`'s WETH9 wiring — decoded from
+  raw constructor bytecode (no getter available) as Robinhood **mainnet**
+  WETH, which has no code on testnet. High confidence in the byte
+  position (5 corroborating exact-address matches at other positions) but
+  not independently getter-confirmed, and the exact field *name* (vs.
+  `permit2` or another field) was not confirmed. `UNRESOLVED` — this is
+  the single most important open item before any router-mediated
+  native-ETH swap simulation is attempted.
+- **New in PR08A:** whether a WETH-input (not native-ETH-input) swap
+  through `UniversalRouter` would sidestep the WETH9-wiring concern
+  entirely (since it wouldn't need the router to wrap ETH itself) —
+  plausible but not tested in this pass.
+- **New in PR08A:** `UniversalRouter.execute()` was not simulated at all
+  in this pass (§20f) — the only end-to-end-proven execution path so far
+  is the direct `Quoter` quote, not a router-mediated swap.
 
 ## 18. Proposed PR08 implementation boundary (not yet started)
 
-Uniswap v4 on testnet is the leading candidate to build this against, once
-its remaining open items are closed (§16/§17: end-to-end quote
-verification, router-wiring confirmation, hook-behavior review, and —
-separately — actual pons-token compatibility, which is unresolved for
-every candidate including v4). Once a real, verified venue is confirmed
-usable for the specific tokens PR08 needs to trade:
+Uniswap v4 on testnet is now the confirmed venue for the **quote** side of
+PR08 (§20e — end-to-end verified, working today). The **router-mediated
+swap** side still has one concrete open item (§20c's WETH9-wiring
+concern) before it can be called usable. Separately, and per this pass's
+explicit scope change, **pons/GMGN-token compatibility is deferred, not
+required**, for testnet execution verification
+(`GMGN_PONS_TESTNET_COMPATIBILITY_DEFERRED`) — GMGN remains the
+production discovery source and PR08's execution layer is validated
+independently against any real, verified testnet pool/token, per this
+pass's instructions. Once the router-wiring concern is resolved (or
+sidestepped via a WETH-input rather than native-ETH-input path):
 
 - `quoteSwap()` — read-only `eth_call` against a real Quoter contract
 - `buildSwapTransaction()` — unsigned `{ to, data, value }` construction
@@ -644,3 +674,197 @@ are exclusively PR09's responsibility. Nothing in this audit or in the
 proposed PR08 interface (§11, §18) crosses into that territory. No
 autonomous EVM key was created, requested, or referenced anywhere in this
 audit.
+
+## 20. PR08A — testnet execution verification (2026-09-30, second hardening pass)
+
+**Scope change for this pass, per explicit instruction:** GMGN/`pons`
+compatibility is **deferred**, not required, for this specific
+verification. GMGN remains the production discovery source and was not
+touched, modified, or investigated in this pass. Status label:
+**`GMGN_PONS_TESTNET_COMPATIBILITY_DEFERRED`** — this is independent of,
+and does not resolve, `NO_TESTNET_PONS_ACTIVITY_VERIFIED` (§17), which
+still stands. The evidence bar for *this* pass was: verified contracts +
+real testnet liquidity + working v4 quote + verified router wiring +
+successful non-persistent swap simulation.
+
+### 20a. Quoter/PoolManager wiring — CONFIRMED via exposed getter
+
+```
+Quoter.poolManager() → 0x8366a39CC670B4001A1121B8F6A443A643e40951
+```
+
+This is the exact, correctly-checksummed testnet `PoolManager` address.
+Confirmed via a real `eth_call` to the `Quoter` contract's own exposed
+`poolManager()` view function — not inferred from bytecode size or
+address similarity, per the task's explicit requirement.
+
+### 20b. UniversalRouter/PoolManager wiring — CONFIRMED via exposed getter
+
+```
+UniversalRouter.poolManager() → 0x8366a39CC670B4001A1121B8F6A443A643e40951
+```
+
+Same exact address, confirmed via a real `eth_call` to `UniversalRouter`'s
+own `poolManager()` getter. `UniversalRouter` on testnet **is** correctly
+wired to the same `PoolManager` that has the real, liquid pools found in
+§4d/§20d.
+
+`UniversalRouter.WETH9()`, `.weth9()`, `.PERMIT2()`, and `.permit2()` all
+**reverted** — no public getter for these was found on this deployment.
+WETH/Permit2 wiring could not be confirmed via getter and required a
+different method (§20c).
+
+### 20c. UniversalRouter WETH9 wiring — SERIOUS CONCERN, not fully resolved
+
+No public getter exists for the router's configured WETH9/Permit2
+addresses, so this audit decoded the contract's **raw creation bytecode's
+constructor arguments** (fetched from the testnet Blockscout API's
+`creation_bytecode` field for `0x8876789976decbfcbbbe364623c63652db8c0904`)
+as a fallback deterministic method, per the task's explicit instruction to
+use "verified source/deployment constructor data" when no getter exists.
+
+The trailing 288 bytes (9 × 32-byte words) of the creation bytecode decode
+as 9 addresses/bytes32 values. Five of the nine values were cross-checked
+against already-independently-confirmed addresses and matched exactly:
+
+| Word | Decoded value | Cross-check |
+|---|---|---|
+| 2 | `0x8bceAA40B9AcDfAedf85AdF4Ff01F5Ad6517937f` | matches task-supplied Uniswap v2 Factory exactly |
+| 3 | `0x1f7d7550B1b028f7571E69A784071F0205FD2Efa` | matches this repo's independently-confirmed v3 Factory exactly |
+| 6 | `0x8366a39CC670B4001A1121B8F6A443A643e40951` | matches the confirmed testnet v4 PoolManager exactly |
+| 7 | `0x73991A25C818BF1f1128DeaaB1492D45638dE0D3` | matches this repo's independently-confirmed v3 NonfungiblePositionManager exactly |
+| 8 | `0x58daEC3116aae6D93017bAAea7749052E8A04fA7` | matches the task-supplied v4 PositionManager exactly |
+
+These 5 exact matches give high confidence the decoding/field-position
+approach is correct for this specific deployment. **Word 1** — the field
+immediately preceding the confirmed v2 Factory position — decodes to:
+
+```
+0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
+```
+
+**This is Robinhood MAINNET's WETH address** (independently confirmed
+earlier in this audit, §5), **not** testnet WETH
+(`0x7943e237c7F95DA44E0301572D358911207852Fa`). Direct `eth_getCode`
+confirms this mainnet-WETH address has **NO CODE on testnet**.
+
+**Caveat on certainty:** the 9-field position was matched by address
+value, not by an independently-confirmed field *name* — this audit did
+not obtain a getter or verified ABI stating word 1 is specifically named
+`weth9` (common `RouterParameters` layouts used by Uniswap's
+`universal-router` put either `permit2` or `weth9` in this position
+depending on version; this audit could not distinguish which without
+further ABI verification). What is **not** in doubt: this specific 32-byte
+constructor argument is a real address, it is Robinhood mainnet's WETH,
+and that address has no bytecode on testnet.
+
+**Per the task's explicit instruction: this is reported and this audit
+STOPS short of claiming the router usable for a native-ETH-input swap on
+testnet.** If this field is in fact `weth9`, any `UniversalRouter` command
+path that wraps native ETH via `WETH9.deposit()` would call a
+non-existent contract on testnet and fail. This does not affect the
+already-proven Quoter-level quote path (§20d), which does not go through
+`UniversalRouter` at all.
+
+### 20d. Selected pool — hookless, liquid, WETH-paired
+
+Per the task's stated preference, a **hookless** (not the previously-found
+hooked `NEONTR` pool) WETH-paired pool with real liquidity was located by
+re-scanning `PoolManager`'s `Initialize` events (same 8,000,000-block
+window as the original hardening pass) and filtering for `hooks =
+0x0000000000000000000000000000000000000000`. Six hookless WETH pools were
+found; the one with the largest confirmed liquidity was selected:
+
+```
+Pool ID:      0x523137dcab540b3848f27bded2ae8e1aef2d807f1589f00676af20c8f0c88277
+currency0:    0x7943e237c7F95DA44E0301572D358911207852Fa (testnet WETH)
+currency1:    0xbc5996b31547d6c7BEE0a4e971eA86D3e78293d2 (symbol "BOOM", 18 decimals)
+fee:          15000  (1.5%)
+tickSpacing:  60
+hooks:        0x0000000000000000000000000000000000000000  (hookless)
+Initialized:  block 119,674,354
+```
+
+`StateView` reads (real, non-persistent `eth_call`s):
+
+```
+getLiquidity(poolId) → 1,947,133,175,862,476,838,511
+getSlot0(poolId)     → sqrtPriceX96 = 4,765,990,380,846,519,690,838,122,587,968
+                        tick = 81,942
+                        protocolFee = 0
+                        lpFee = 15,000  (matches the pool's static fee — consistent with a non-dynamic-fee pool, unlike the earlier hooked pool)
+```
+
+### 20e. Real V4 quote — SUCCESSFUL, both directions
+
+Called the deployed v4 `Quoter`
+(`0x8dc178efb8111bb0973dd9d722ebeff267c98f94`) directly via a
+non-persistent `eth_call` (`quoteExactInputSingle`), against the pool in
+§20d, with `hookData = "0x"` (empty — the pool is hookless, so no hook
+data was invented, per the task's instruction):
+
+**WETH → BOOM (`zeroForOne = true`):**
+
+```
+PoolKey:      { currency0: WETH, currency1: BOOM, fee: 15000, tickSpacing: 60, hooks: 0x0…0 }
+exactAmount:  100,000,000,000,000  (0.0001 WETH, integer base units)
+hookData:     0x
+Result:       SUCCESS
+amountOut:    356,436,412,905,620,885  (≈0.356436 BOOM)
+gasEstimate:  37,409
+```
+
+**BOOM → WETH (`zeroForOne = false`):**
+
+```
+exactAmount:  100,000,000,000,000,000  (0.1 BOOM, integer base units)
+hookData:     0x
+Result:       SUCCESS
+amountOut:    27,220,036,912,634  (≈0.0000272200 WETH)
+gasEstimate:  54,059
+```
+
+**Both quotes succeeded on the first attempt, no revert, no invented
+parameters.** This is the core proof requested: the EVM execution layer
+(read-only Quoter + PoolManager state) can genuinely compute a real,
+non-trivial swap quote against a real Robinhood testnet pool with real
+liquidity, in both directions, using integer base units throughout (no
+floating point).
+
+### 20f. UniversalRouter execute() simulation — NOT ATTEMPTED, per §20c
+
+Per the task's explicit instruction ("If the deployed router points
+somewhere else, report it and STOP before claiming it usable"), a full
+`UniversalRouter.execute()` simulation (`V4_SWAP` command, native
+ETH-in) was **not attempted** in this pass. The WETH9-wiring concern in
+§20c is a concrete, on-chain-decoded reason to distrust this specific
+router instance for a native-ETH-input path specifically, and constructing
+real command calldata against it would either (a) require guessing around
+the concern, which the task prohibits, or (b) require first resolving
+whether word 1 is actually `weth9` or something else via further
+verification (e.g. locating verified source for this exact deployment, or
+testing a WETH-input rather than ETH-input path, which does not depend on
+the router's native-ETH-wrapping logic at all). **This is the concrete,
+scoped follow-up for the next pass**, not a dead end — the Quoter/
+PoolManager path proven in §20e does not depend on this router at all and
+remains fully valid.
+
+### 20g. Revised provider status for PR08A's narrower evidence bar
+
+Evidence bar for this pass: verified contracts + real liquidity + working
+quote + verified router wiring + successful swap simulation.
+
+| Requirement | Status |
+|---|---|
+| Verified contracts | **Met** — Quoter, PoolManager, StateView, UniversalRouter all confirmed with real bytecode and, for Quoter/PoolManager wiring, confirmed via getter |
+| Real testnet liquidity | **Met** — pool in §20d confirmed with real, substantial, non-zero liquidity |
+| Working v4 quote | **Met** — §20e, both directions, real `eth_call`, no invented data |
+| Verified router wiring | **Partially met** — `poolManager()` wiring confirmed via getter; `WETH9`/`Permit2` wiring only inferred from decoded constructor bytes (high confidence given 5 corroborating matches, but not getter-confirmed) and surfaces a genuine mainnet/testnet address mismatch concern |
+| Successful swap simulation | **Not attempted** — deferred per §20c/§20f |
+
+**`EXECUTION_PROVIDER_VERIFIED` for the Quoter/quote-path specifically —
+`EXECUTION_PROVIDER_UNRESOLVED` for the full router-mediated swap path**,
+pending the WETH9-wiring concern being resolved (or a WETH-input, non-ETH
+path being verified instead, which sidesteps it). This is a genuine
+upgrade from the prior pass's blanket `EXECUTION_PROVIDER_UNRESOLVED` — a
+real, working, on-chain quote mechanism now has direct, successful proof.
