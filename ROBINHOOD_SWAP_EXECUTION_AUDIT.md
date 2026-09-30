@@ -7,43 +7,59 @@ state-changing transaction was performed. No runtime code was added.
 
 ## 1. Executive summary
 
-**`UNISWAP_TESTNET_DEPLOYMENT_NOT_VERIFIED`**
+**REVISED 2026-09-30 (hardening pass).** The original audit concluded "no
+AMM exists on testnet." That was **too broad and is corrected here**:
+Uniswap **v4** core contracts (PoolManager, PositionManager, Quoter,
+StateView) ARE deployed on Robinhood testnet with real bytecode, and this
+audit found **real, actively-initialized pools with non-zero liquidity**,
+including pools paired against testnet WETH. Uniswap **v2 and v3** remain
+confirmed absent on testnet (empty bytecode at every official mainnet
+address). The precise, evidence-supported conclusion is:
 
-Uniswap v2/v3/v4/UniswapX are confirmed live on Robinhood Chain **mainnet**
-(chain 4663) via Uniswap's own blog and official deployments docs. Direct
-on-chain verification in this audit (`eth_getCode` against the testnet RPC)
-confirms the Uniswap v3 **core AMM contracts do not exist on testnet**:
-Factory, QuoterV2, SwapRouter02, NonfungiblePositionManager,
-UniswapInterfaceMulticall, and TickLens all return empty bytecode at their
-official mainnet addresses when queried on testnet (chain 46630). Only
-`Permit2` and `UniversalRouter` have bytecode on testnet, and this is
-explained by both being deployed via chain-agnostic deterministic (CREATE2)
-factories used across many EVM chains — their presence does **not** imply a
-working swap venue, since `UniversalRouter` has nothing to route through
-without a Factory/pools behind it.
+**`NO_VERIFIED_UNISWAP_V2_V3_SWAP_VENUE_ON_TESTNET`, but `Uniswap v4 core
+infrastructure IS deployed and actively used on testnet, including
+WETH-paired pools with real liquidity.`**
 
-Separately, and just as importantly: the `pons`-launched tokens and pools
-this codebase has been discovering and safety-checking since PR05/PR06
-were re-verified in this audit and **only exist on Robinhood mainnet**.
-The specific pool and token addresses previously used as reference examples
-(`GMGN_ROBINHOOD_FIELD_MAP.md`) return empty bytecode on testnet. No pons
-(or any GMGN-discovered) pool or token was found to exist on testnet during
-this audit.
+Overall provider status remains **`EXECUTION_PROVIDER_UNRESOLVED`** — not
+because no venue exists, but because no venue has yet been verified against
+this audit's full evidence bar (verified contracts + real liquidity +
+working quote path + working router path + confirmed pons compatibility).
+V4 clears the first two bars; the router-wiring and pons-compatibility bars
+remain open — see §4b/§16.
 
-**Net conclusion: there is currently no verified, usable execution venue on
-Robinhood testnet for tokens discovered through GMGN's `pons` allow-list.**
-PR08 cannot yet implement a testnet swap against real pons-launched tokens,
-because those tokens/pools do not exist on testnet. This is reported as a
-gap, not papered over — see §17.
+**What changed from the original pass:**
 
-What testnet *does* have, verified on-chain: a real WETH9-style contract
-(symbol `WETH`, 18 decimals, real bytecode) and a fully responsive public
-RPC supporting every read/estimate method this audit checked. The
-transaction-construction, quote-mechanism, approval-model, and
-receipt-verification design work in this document is still valid and
-directly reusable the moment a real testnet AMM deployment (Uniswap or
-otherwise) is confirmed, or once pons activity appears on testnet, or once
-mainnet-with-real-funds is authorized as a later, separate decision.
+- Uniswap v2 (`Factory`, `V2Router02`): confirmed **NO CODE** on testnet —
+  original conclusion stands, now explicitly checked (was previously
+  inferred, not directly tested).
+- Uniswap v4 (`PoolManager`, `PositionManager`, `Quoter`, `StateView`):
+  **all four have real, non-trivial bytecode on testnet.** This directly
+  contradicts the original "no AMM on testnet" framing and is the single
+  most important correction in this pass.
+- A live `eth_getLogs` scan of `PoolManager`'s `Initialize` event (bounded
+  to the most recent 8,000,000 blocks — see §4b for why a full historical
+  scan isn't feasible on this RPC) found **8,982 pool-initialization
+  events**, of which **49 involve testnet WETH** as one side of the pair.
+  One WETH pool was independently confirmed via `StateView.getLiquidity()`
+  to hold real, non-zero liquidity (`28,827,723,878,388,956,017,854` units)
+  and a real, non-zero `sqrtPriceX96`/`tick` via `getSlot0()`.
+- `UniversalRouter` (original mainnet address) still has bytecode on
+  testnet, as found previously. Uniswap's own hosted API/frontend uses a
+  **different, newer** address, "Universal Router 2.1.2"
+  (`0x204FAca1764B154221e35c0d20aBb3c525710498`) on mainnet — that specific
+  address has **NO CODE on testnet**, confirmed both on-chain and by
+  Uniswap's own supported-chains documentation (§6).
+- The pons-token question is narrowed per the task's instruction: this
+  audit did **not** prove no pons launch has ever existed on testnet — it
+  only re-confirmed that the *specific sample addresses* this repo
+  previously documented are mainnet-only. See §5 revision below.
+
+**What is still true and unchanged:** testnet has a real, verified WETH9
+contract, a fully responsive public RPC for every read/estimate method
+tested, and the transaction-construction/quote/approval/receipt design in
+this document remains valid and directly reusable — now with a
+substantially better on-chain foundation (a real, liquid V4 pool) to build
+against, once the remaining open items (§16, §17) are resolved.
 
 ## 2. Sources
 
@@ -54,10 +70,11 @@ Priority order, per task instructions:
 3. Robinhood official docs — [Protocol Contracts](https://docs.robinhood.com/chain/protocol-contracts/)
 4. Direct on-chain verification (this audit): `eth_getCode`, `eth_chainId`, `eth_getTransactionCount`, `eth_estimateGas`, `eth_getLogs`, `symbol()`/`decimals()` reads against both `https://rpc.mainnet.chain.robinhood.com` and `https://rpc.testnet.chain.robinhood.com`, via viem, from inside this repo's own dev container
 5. This repo's own prior live-verified findings — `GMGN_ROBINHOOD_FIELD_MAP.md` (pool/token addresses re-checked in this audit)
-6. Secondary/corroborating, NOT treated as authoritative on their own:
+6. Uniswap official developer docs — [Supported Chains (Swapping API)](https://developers.uniswap.org/docs/trading/swapping-api/supported-chains) — confirms 4663 listed, 46630 absent, and the "Universal Router 2.1.2" address used by the hosted API
+7. Secondary/corroborating, NOT treated as authoritative on their own:
    - [dwellir.com — What Is Robinhood Chain?](https://www.dwellir.com/blog/what-is-robinhood-chain) (testnet launch date, chain id)
    - GitHub PR note (rainlanguage/sushiswap, awizardxch/Spellbook) — third-party observation that Uniswap's/0x's trading APIs explicitly refuse Robinhood testnet requests ("does not serve") — corroborates, does not by itself prove, the on-chain finding above
-   - Search-result mentions of "Hoodex" / "Loxley" as testnet-native DEX projects — **unverified**, no official documentation or on-chain confirmation performed in this audit; not used as evidence for any conclusion below
+   - Search-result mentions of "Hoodex" / "Loxley" as testnet-native DEX projects — **unverified**, re-investigated in this pass (§4c), still no official documentation or on-chain confirmation found; not used as evidence for any conclusion below
 
 No blog post, AI summary, or unverified label was treated as authoritative
 on its own — every address-level claim below is either from Robinhood's or
@@ -102,7 +119,8 @@ PR08 decision, per §5.
 
 ### 4b. Uniswap v3 — TESTNET (chain 46630)
 
-**`UNISWAP_TESTNET_DEPLOYMENT_NOT_VERIFIED`**
+**`NO_VERIFIED_UNISWAP_V3_SWAP_VENUE_ON_TESTNET`** (v3-specific — see §4d
+for the corrected, broader picture once v4 is included)
 
 The same 8 addresses above were queried on testnet via `eth_getCode`:
 
@@ -117,73 +135,225 @@ The same 8 addresses above were queried on testnet via `eth_getCode`:
 | UniversalRouter | code present (49,094 bytes — identical size to mainnet) |
 | Permit2 | code present (18,306 bytes — identical to mainnet) |
 
-`Permit2` and `UniversalRouter` being present is explained by both being
-canonical, chain-agnostic CREATE2 deployments used on dozens of EVM chains
-regardless of whether Uniswap's own AMM is deployed there — their presence
-is **not evidence of a working Uniswap venue on testnet**. `UniversalRouter`
-with no Factory/pools behind it cannot execute a swap.
+`Permit2`'s presence is explained by it being a canonical, chain-agnostic
+CREATE2 deployment used on dozens of EVM chains regardless of whether any
+particular DEX is deployed there. **For v3 specifically**, `UniversalRouter`
+has nothing to route through: the v3 Factory and every v3 pool-dependent
+contract (Quoter, SwapRouter02, NonfungiblePositionManager) are absent, so
+a v3-flavored swap through this router on testnet is not possible.
 
-Corroborating third-party evidence (not authoritative alone, but
-consistent): a public GitHub PR (rainlanguage/sushiswap tooling) notes that
-Robinhood testnet (46630) "is still refused at request time with 'does not
-serve'" by Uniswap's and 0x's own trading APIs — i.e. even the API layer
-that fronts the mainnet deployment explicitly does not support testnet.
+**Correction from the original audit pass:** it is NOT correct to
+generalize this to "`UniversalRouter` cannot swap on testnet" — that claim
+was too broad. `UniversalRouter` is a multi-protocol router whose usable
+routes depend on which protocol commands it's configured for and which of
+those protocols actually have deployed, initialized pools behind them. As
+§4d establishes, Uniswap **v4** core infrastructure — a different pool
+system from the v3 Factory this router lacks here — is genuinely deployed
+and has real, liquid pools on testnet. Whether `UniversalRouter`'s v4
+command path is actually wired to route through that testnet `PoolManager`
+was not verified in this audit (see §16/§17) — but it is not ruled out
+either, and should not have been implied to be ruled out by the v3-only
+finding in this section.
 
-Official Uniswap docs list **no testnet addresses at all** — the deployments
-page covers chain 4663 only.
+Corroborating third-party evidence for v3/hosted-API specifically (not
+authoritative alone, but consistent): a public GitHub PR (rainlanguage/
+sushiswap tooling) notes that Robinhood testnet (46630) "is still refused
+at request time with 'does not serve'" by Uniswap's and 0x's own trading
+APIs — i.e. even the API layer that fronts the mainnet deployment
+explicitly does not support testnet. This is evidence about the **hosted
+API/frontend**, not proof that no on-chain AMM of any kind is deployed —
+see §6.
 
-### 4c. Other candidate testnet DEXes — not verified
+Official Uniswap v3 deployments docs list **no testnet addresses at all**
+— that specific page covers chain 4663 only. (Uniswap does document v4
+testnet-adjacent infrastructure differently — see §4d.)
 
-Search results surfaced community/hackathon references to projects named
-"Hoodex" and "Loxley" described as testnet-native DEXes for Robinhood
-Chain. **No official documentation, verified contract address, or on-chain
-confirmation was performed for either in this audit.** Per the task's
-evidence bar, these are recorded as leads only, not conclusions:
-`INSUFFICIENT_EVIDENCE`. If PR08 is to proceed against a non-Uniswap
-testnet venue, evaluating one of these (or a fresh search closer to
-implementation time, since testnet ecosystems change quickly) is separate
-follow-up work, not concluded here.
+### 4c. Uniswap v2 — TESTNET (chain 46630)
+
+Official mainnet v2 addresses (task-supplied, corroborated by the same
+class of source as v3):
+
+| Contract | Mainnet address | Testnet bytecode |
+|---|---|---|
+| Factory | `0x8bceaa40b9acdfaedf85adf4ff01f5ad6517937f` | **NO CODE** |
+| V2Router02 | `0x89e5db8b5aa49aa85ac63f691524311aeb649eba` | **NO CODE** |
+
+Both confirmed empty via direct `eth_getCode` against the testnet RPC.
+**`NO_VERIFIED_UNISWAP_V2_SWAP_VENUE_ON_TESTNET`** — this specific
+conclusion stands, and unlike the original audit pass, it is now the
+product of a direct check rather than an inference carried over from the
+v3 finding.
+
+### 4d. Uniswap v4 — TESTNET (chain 46630) — CORRECTED FINDING
+
+Official mainnet v4 addresses (task-supplied):
+
+| Contract | Address | Testnet bytecode |
+|---|---|---|
+| PoolManager | `0x8366a39cc670b4001a1121b8f6a443a643e40951` | **present — 48,020 bytes** |
+| PositionManager | `0x58daec3116aae6d93017baaea7749052e8a04fa7` | **present — 47,756 bytes** |
+| Quoter | `0x8dc178efb8111bb0973dd9d722ebeff267c98f94` | **present — 12,238 bytes** |
+| StateView | `0xf3334192d15450cdd385c8b70e03f9a6bd9e673b` | **present — 7,064 bytes** |
+| UniversalRouter | `0x8876789976decbfcbbbe364623c63652db8c0904` | present — 49,094 bytes (identical to mainnet; same address already noted for v3) |
+| Universal Router 2.1.2 | `0x204FAca1764B154221e35c0d20aBb3c525710498` | **NO CODE** |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | present — 18,306 bytes (identical to mainnet) |
+
+**This is a real, non-trivial, functioning-shaped deployment** — these
+bytecode sizes are consistent with genuine v4 core contracts, not stub or
+placeholder code, and are corroborated by the pool activity found below.
+
+**Pool activity (read-only `eth_getLogs` on `PoolManager`'s `Initialize`
+event):**
+
+The public testnet RPC is **not an archive node** — `eth_getCode`/state
+queries at arbitrary historical block heights fail with "historical state
+... is not available", and an unbounded `eth_getLogs` from block 0 times
+out server-side ("log query timed out"). This bounds what a full-history
+scan can prove: this audit could not scan from genesis, and a full
+from-inception picture of pool creation is `INSUFFICIENT_EVIDENCE`, not
+established either way. Bounded, working scans were performed instead:
+
+| Window (most recent N blocks) | Total `Initialize` events | Unique WETH-paired pools |
+|---|---|---|
+| 10,000 | 3 | not separately counted |
+| 100,000 | 25 | not separately counted |
+| 1,000,000 | 212 | not separately counted |
+| 3,000,000 | 2,031 | 11 |
+| 8,000,000 | 8,982 | 49 |
+
+(Testnet's current block height is ~126.6 million; an 8,000,000-block
+window covers roughly the most recent ~6% of chain history and was the
+largest window this audit could query without hitting the RPC's timeout.)
+
+One WETH-paired pool was independently verified in full:
+
+- Pool ID: `0x28ea2541ad0802c4303c96ea88f8d28f48473a08fceeafee6a8c201752dca2f8`
+- `currency0`: `0x4AC7609512baF4bc88BC1D35a8483be52E08D271` (symbol `NEONTR`, confirmed via `symbol()`)
+- `currency1`: `0x7943e237c7F95DA44E0301572D358911207852Fa` (testnet WETH)
+- `fee`: `0` (static field — non-zero `hooks` address below means the
+  effective fee is very likely hook-controlled/dynamic, not literally
+  zero; this audit did not decode the hook contract's logic)
+- `tickSpacing`: `200`
+- `hooks`: `0xf2FA76cc1466b0a59209e4D5f9087EFb6c726acc` (a hook contract is
+  attached — this is **not** a vanilla, hookless pool, which adds
+  execution complexity: a real swap against it must account for whatever
+  the hook does, not just standard V4 AMM math)
+- `StateView.getSlot0(poolId)`: `sqrtPriceX96 = 2173610576973822006512262`, `tick = -210085`, `protocolFee = 0`, `lpFee = 0`
+- `StateView.getLiquidity(poolId)`: `28827723878388956017854` (real, non-zero)
+- Initialized at block `126309939`, tx `0xc91c1f24f27a2be29cea202e7303ee2847f5cd8c05eaeee656e1d16bca8798cd`
+
+**Conclusion for v4:** a real, initialized, liquid pool involving testnet
+WETH exists on Robinhood testnet today. This directly falsifies the
+original audit's blanket "no AMM on testnet" framing. What remains
+unverified (see §16/§17): whether `UniversalRouter` at the address present
+on testnet is actually wired to route through this `PoolManager` instance
+for a V4 command (this audit did not attempt a swap simulation through the
+router — only confirmed the underlying pool state directly via
+`StateView`, and confirmed the `Quoter` contract has real bytecode without
+exercising it against this specific hooked pool), and whether this or any
+other WETH pool involves a token that was ever discovered through GMGN's
+`pons` feed (unverifiable from this environment — see §5).
+
+### 4e. Other candidate testnet DEXes — re-investigated, still unverified
+
+**Hoodex:** described in multiple search results as "the first DEX native
+to Robinhood Chain for tokenized US equity spot swaps and perps," built
+with Solidity and Chainlink oracles. No official website, no official
+GitHub repository, and no contract address was found in this pass either.
+Every source repeats the same marketing description without a verifiable
+technical reference. **`INSUFFICIENT_EVIDENCE`** — unchanged from the
+original audit.
+
+**Loxley:** this pass found the name is **ambiguous/collides across
+unrelated projects** — search results surfaced at least two different
+GitHub repositories both named "loxley" with materially different
+descriptions (one described as "the x402 rail for Robinhood Chain" for
+USDG payments, another as "the exit desk for Robinhood Chain"), neither
+matching the "flagship DEX" description used in the original audit and
+the task's own framing. A specific repository path attributed to Loxley by
+the search tool's own summary text did **not** actually appear in the raw
+search results list — that attribution is unconfirmed and is explicitly
+**not** repeated here as fact, per the task's instruction not to trust
+AI-summary claims. No official docs, no verified contract address, no
+on-chain confirmation. **`INSUFFICIENT_EVIDENCE`** — if anything, weaker
+evidence than the original pass, once the name-collision problem is
+accounted for.
+
+**No other currently-documented Robinhood testnet DEX was found** in this
+pass beyond Hoodex and Loxley (both unverified) and the Uniswap
+deployments already covered in §4a–§4d.
 
 ## 5. Testnet vs. mainnet — explicit separation
 
 | | Mainnet (4663) | Testnet (46630) |
 |---|---|---|
+| Uniswap v2 core deployed | not checked in this audit (out of scope for mainnet) | **No**, verified on-chain (empty bytecode) |
 | Uniswap v3 core deployed | **Yes**, verified on-chain | **No**, verified on-chain (empty bytecode) |
-| Permit2 / UniversalRouter present | Yes | Yes (but non-functional alone, no Factory) |
-| WETH contract | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` (verified — matches this repo's existing mainnet WETH usage) | `0x7943e237c7F95DA44E0301572D358911207852Fa` (verified on-chain: real bytecode, `symbol()` returns `WETH`, `decimals()` returns `18`) |
-| Pons pools/tokens observed | Yes (real, live, by prior PR05/PR06 investigation) | **No** — the specific pool/token addresses this repo previously documented return empty bytecode on testnet |
-| Public RPC read/estimate methods | not re-tested (out of scope; mainnet is informational only here) | Verified working: `eth_chainId`, `eth_getCode`, `eth_call`, `eth_getTransactionCount`, `eth_estimateGas`, `eth_getLogs` |
+| Uniswap v4 core deployed | not checked in this audit (out of scope for mainnet) | **Yes**, verified on-chain — real bytecode for PoolManager/PositionManager/Quoter/StateView, plus real `Initialize` events and a confirmed liquid WETH pool |
+| Permit2 / UniversalRouter present | Yes | Yes (chain-agnostic deployments; UniversalRouter's v3 routes are unusable, v4 routing not verified) |
+| WETH contract | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` (verified — matches this repo's existing mainnet WETH usage) | `0x7943e237c7F95DA44E0301572D358911207852Fa` (verified on-chain: real bytecode, `symbol()` returns `WETH`, `decimals()` returns `18`, and participates in at least 49 initialized v4 pools within the last 8M blocks) |
+| Pons pools/tokens observed | Yes (real, live, by prior PR05/PR06 investigation) | `NO_TESTNET_PONS_ACTIVITY_VERIFIED` — the specific sample pool/token addresses this repo previously documented are mainnet-only; whether any *other* pons launch has ever occurred on testnet is genuinely unresolved (see §17) |
+| Public RPC read/estimate methods | not re-tested (out of scope; mainnet is informational only here) | Verified working: `eth_chainId`, `eth_getCode`, `eth_call`, `eth_getTransactionCount`, `eth_estimateGas`, `eth_getLogs` (non-archive: historical state/full-history logs beyond a bounded recent window are not servable — see §4d) |
 
 **No mainnet activation, and no mainnet transaction, occurred or is
 proposed by this audit.** Mainnet facts above are recorded strictly for
 comparison, per the task's own instructions.
 
-**Explicit gap statement (per §5 of the task):** mainnet has a real,
-verified Uniswap v3 deployment with real pons liquidity; testnet has
-neither. PR08 as originally scoped ("swap testnet tokens discovered via
-GMGN pons") cannot be implemented against testnet today, because the
-tokens it would need to trade don't exist there.
+**Revised gap statement:** mainnet has a real, verified Uniswap v3
+deployment with real pons liquidity. Testnet does **not** have a verified
+v2 or v3 deployment, but **does** have a real, actively-used v4
+deployment with real WETH-paired liquidity — the original blanket "testnet
+has neither" statement was incorrect and is retracted. What remains
+genuinely open is (a) whether that v4 liquidity is reachable through a
+working router/quote path, and (b) whether any pons-launched token
+specifically has ever traded on testnet at all — see §16/§17.
 
 ## 6. Quote mechanism
 
-Evaluated against the options listed in the task:
+**Revised.** The original conclusion ("no quote mechanism is viable,
+because there is no deployed AMM") no longer holds in general — a real,
+liquid v4 pool exists (§4d). Re-evaluated per-option:
 
 | Option | Status on Robinhood testnet |
 |---|---|
-| A. On-chain Quoter/QuoterV2 | **Unusable** — QuoterV2 contract has no bytecode on testnet |
-| B. Direct pool simulation/read | **Unusable** — no pons (or any) pool exists on testnet to read |
-| C. DEX/aggregator HTTP quote API | **Unusable for testnet** — corroborating evidence (§4b) that Uniswap's/0x's own trading APIs refuse Robinhood testnet requests |
-| D. Router-specific quote endpoint | Same as C — no known working endpoint for testnet |
+| A. On-chain Quoter/QuoterV2 (v3) | **Unusable for v3** — v3 QuoterV2 has no bytecode on testnet. **v4's `Quoter` contract DOES have real bytecode on testnet** (12,238 bytes) — this audit confirmed its deployment but did not exercise it with a live `quoteExactInputSingle`-equivalent `eth_call` against the confirmed WETH pool (the pool's non-zero `hooks` address means a naive quote call may need hook-aware calldata this audit did not construct) — `UNRESOLVED`, not `Unusable` |
+| B. Direct pool simulation/read | **Usable for v4** — `StateView.getSlot0()`/`getLiquidity()` were successfully read for a real pool in this audit (§4d); this is itself a form of option B and is the strongest-evidence path found so far, though it gives pool state, not a computed swap quote |
+| C. DEX/aggregator HTTP quote API | **Unusable for testnet** — corroborating evidence (§4b, §6-Uniswap-API) that Uniswap's/0x's own trading APIs refuse Robinhood testnet requests; unaffected by the v4 finding, since this is about the hosted API layer, not the chain itself |
+| D. Router-specific quote endpoint | Same as C for any hosted endpoint. Unverified for an on-chain router-integrated quote path (e.g. via `UniversalRouter`) — not attempted in this pass |
 
-None of the four quote-mechanism options are currently viable against
-Robinhood testnet, because there is no deployed AMM to quote against.
-**This entire section is blocked on §5's gap**, not on a design choice.
-The preference stated in the task (a deterministic, independently-verifiable
-on-chain read path, i.e. option A) remains the right target architecture
-for whenever a real testnet AMM exists — QuoterV2's `quoteExactInputSingle`
-(a static/non-mutating call, safe to simulate via `eth_call`) is the
-correct primitive to design PR08's `quoteSwap()` around, once there's a
-deployed Quoter to call.
+**Revised status: partially viable, not fully verified.** Option B (direct
+`StateView` reads) is proven to work today against a real pool. Option A
+for v4 specifically is a strong candidate — the `Quoter` contract exists —
+but was not exercised end-to-end in this pass and should not yet be
+called "usable" without that follow-up `eth_call`. The task's stated
+preference (a deterministic, independently-verifiable on-chain read path)
+is now concretely closer to available than the original pass found, via
+v4's `StateView`/`Quoter`, not v3's `QuoterV2`.
+
+### 6a. Uniswap hosted API/frontend chain support
+
+Verified against Uniswap's own [Supported Chains documentation](https://developers.uniswap.org/docs/trading/swapping-api/supported-chains):
+
+- Robinhood **mainnet, chain `4663`**, is listed as a supported mainnet
+  chain, with "Universal Router 2.1.2" at
+  `0x204FAca1764B154221e35c0d20aBb3c525710498` as the address the hosted
+  API/frontend uses there.
+- Robinhood **testnet, chain `46630`, does not appear anywhere** in that
+  documentation's testnet-chains list (which currently covers only
+  Unichain Sepolia, Base Sepolia, and Ethereum Sepolia).
+- This "Universal Router 2.1.2" address was independently confirmed via
+  `eth_getCode` to have **NO CODE on Robinhood testnet** — consistent with
+  it simply never having been deployed there, not merely being
+  unsupported by the API layer.
+
+**This is evidence about Uniswap's hosted API/interface product, not
+proof that no on-chain AMM of any kind exists on testnet** — per the
+task's explicit instruction, API absence alone is not treated as proof of
+on-chain absence. In this case the two happen to agree for v3 (no API
+support, no on-chain deployment) but diverge for v4 (no API support, yet
+genuine on-chain deployment with real liquidity — §4d). The hosted API's
+chain list should not be used as a stand-in for on-chain verification
+going forward.
 
 ## 7. ETH/WETH handling (design, pending a real venue)
 
@@ -194,9 +364,16 @@ bytecode (4,406 bytes, a WETH9-sized contract), `symbol()` → `"WETH"`,
 contract of this shape, but the exact deposit/withdraw function selectors
 were not individually round-trip-tested in this audit (no state-changing
 call was made, per task constraints) — flagged as `UNRESOLVED` pending a
-`eth_call` against `deposit()`/`withdraw()` selectors (a `staticcall`-safe
-check that doesn't require holding a balance) in a future, still read-only,
-verification pass.
+non-persistent `eth_call` simulation against the `deposit()`/`withdraw()`
+selectors in a future, still read-only, verification pass. Note the
+precise terminology: `eth_call` can simulate a state-changing (non-`view`)
+function without persisting any state change to the chain, but that is not
+strictly the same guarantee as Solidity's `STATICCALL` opcode (which
+reverts if the callee itself attempts a state-changing operation) —
+`eth_call`'s simulation succeeds even for functions that mutate state,
+because the node discards the resulting state changes after computing the
+call's return value/gas, rather than rejecting the call for attempting
+them.
 
 Router-level ETH semantics (native ETH accepted directly vs. wrap-first,
 `multicall`/`refundETH` requirement, Universal Router's command-based
@@ -319,70 +496,134 @@ All methods checked against the public testnet RPC
 | `eth_call` (`symbol`, `decimals`) | OK |
 | `eth_getTransactionCount` | OK (once the queried address is properly EIP-55 checksummed — an unchecksummed/malformed address is correctly rejected as an invalid parameter, not a method-support gap) |
 | `eth_estimateGas` | OK (simulated a real WETH `deposit()` call, no transaction sent) |
-| `eth_getLogs` | OK (queried WETH's Transfer logs over the last 100 blocks) |
+| `eth_getLogs` | OK (queried WETH's Transfer logs over the last 100 blocks; later reused successfully at much larger scale — up to an 8,000,000-block window — for `PoolManager`'s `Initialize` events, §4d) |
 
 **No paid RPC provider is required for the read/estimate side of PR08.**
-This conclusion is unaffected by the deployment gap in §5 — the RPC itself
-is healthy and fully responsive; there is simply no AMM deployed there yet
-to query.
+The RPC itself is healthy and fully responsive for every method tested.
+
+**New limitation found in this pass: the public RPC is not an archive
+node.** `eth_getCode` (and by extension any state read) at an arbitrary
+historical block height fails with `"historical state ... is not
+available"`, and an unbounded `eth_getLogs` from genesis times out
+server-side (`"log query timed out"`). Bounded, recent-window queries
+(tested up to 8,000,000 blocks, out of a current chain height of ~126.6
+million) work reliably. This means: this audit **cannot** rule out pool
+activity, deployments, or events older than the RPC's retention window —
+any "not found" conclusion in this document that relies on `eth_getLogs`
+is scoped to the window actually queried, not to the chain's full
+history. A paid archive-node provider would be needed to remove this
+specific limitation, though it is not needed for any of the read/estimate
+calls PR08's adapter itself would make at swap time (those are always
+against current/recent state).
 
 ## 15. Read-only live verification performed
 
 All performed via `eth_getCode`, `eth_chainId`, `eth_call`,
-`eth_getTransactionCount`, `eth_estimateGas`, `eth_getLogs` — no
-state-changing call, no approval, no swap, no signing, no ETH sent, no
-token transfer, no contract deployed:
+`eth_getTransactionCount`, `eth_estimateGas`, `eth_getLogs`, and
+`readContract` (view-function calls) — no state-changing call, no
+approval, no swap, no signing, no ETH sent, no token transfer, no
+contract deployed:
 
 - confirmed both mainnet (4663) and testnet (46630) RPC endpoints respond
   with their correct respective chain IDs
 - confirmed bytecode presence/absence for 8 Uniswap v3 contracts on both
   networks (§4a/§4b)
+- confirmed bytecode absence for both Uniswap v2 contracts on testnet (§4c)
+- confirmed bytecode **presence** for all 4 Uniswap v4 core contracts on
+  testnet, plus `UniversalRouter` and `Permit2` (§4d)
 - confirmed a previously-documented real pons pool and its token exist on
   mainnet (44,286 and 10,514 bytes of bytecode respectively) and do **not**
-  exist on testnet
+  exist on testnet (the specific sample addresses only — see §17 for the
+  scope of this claim)
 - confirmed testnet WETH's bytecode, `symbol()`, and `decimals()`
 - confirmed `eth_getTransactionCount`, `eth_estimateGas`, and `eth_getLogs`
   all function against the testnet public RPC
+- **new in this pass:** scanned `PoolManager`'s `Initialize` event over
+  bounded recent windows up to 8,000,000 blocks, finding 8,982 pool
+  initializations and 49 unique WETH-paired pools
+- **new in this pass:** read `StateView.getSlot0()` and
+  `StateView.getLiquidity()` for one specific WETH-paired pool, confirming
+  real, non-zero liquidity and price state
+- **new in this pass:** confirmed the "Universal Router 2.1.2" address
+  used by Uniswap's hosted API has no bytecode on testnet
 
 ## 16. Provider comparison
 
 | Provider/route | Testnet support verified? | Deployment confirmed? | Quote mechanism | Router/calldata available | API key required | Pons-compatible on testnet | Complexity | Unresolved risk |
 |---|---|---|---|---|---|---|---|---|
-| Uniswap v3 (SwapRouter02/UniversalRouter) | **No** | No — empty bytecode on testnet | N/A | N/A | N/A | No (no pons pools exist on testnet) | N/A | Blocked entirely on deployment gap |
-| Uniswap trading API / 0x API | No | N/A (API layer, not on-chain) | Would be HTTP quote | Possibly, but unverified | Likely yes | No | N/A | Third-party evidence says testnet requests are explicitly refused |
-| "Hoodex" / "Loxley" (community-referenced testnet DEXes) | Unverified | Unverified | Unverified | Unverified | Unverified | Unknown | Unknown | `INSUFFICIENT_EVIDENCE` — no official docs or on-chain check performed |
+| Uniswap v2 | **No** | No — empty bytecode on testnet | N/A | N/A | N/A | No | N/A | Blocked entirely on deployment gap |
+| Uniswap v3 (SwapRouter02) | **No** | No — empty bytecode on testnet | N/A | N/A | N/A | No | N/A | Blocked entirely on deployment gap |
+| **Uniswap v4** (PoolManager/Quoter/StateView) | **Yes — core contracts deployed with real bytecode** | **Yes — real, initialized, liquid WETH pool confirmed on-chain** | `StateView` reads confirmed working; `Quoter` deployed but not exercised end-to-end | `UniversalRouter` has bytecode on testnet, but its wiring to this `PoolManager` for a v4 swap command was **not verified** | No (public RPC sufficient for all reads performed) | **Unverified** — the confirmed pool pairs WETH with `NEONTR`, not a token this audit can confirm was ever discovered via GMGN's `pons` feed | Elevated — the confirmed pool uses a custom hook contract (non-zero `hooks` address), meaning standard vanilla-V4 swap math may not directly apply | Router/quote path not proven end-to-end; hook behavior unknown; pons-compatibility unverified; full pool history unknown (non-archive RPC) |
+| Uniswap trading API / 0x API | No | N/A (API layer, not on-chain) | Would be HTTP quote | Possibly, but unverified | Likely yes | No | N/A | Third-party evidence + Uniswap's own supported-chains docs agree: testnet is not supported by the hosted API |
+| "Hoodex" (community-referenced testnet DEX) | Unverified | Unverified | Unverified | Unverified | Unverified | Unknown | Unknown | `INSUFFICIENT_EVIDENCE` — no official docs, GitHub, or on-chain check found in either audit pass |
+| "Loxley" (community-referenced testnet DEX) | Unverified | Unverified | Unverified | Unverified | Unverified | Unknown | Unknown | `INSUFFICIENT_EVIDENCE` — name collides across unrelated projects; no single authoritative deployment identified |
 
-**`EXECUTION_PROVIDER_UNRESOLVED`** — no candidate currently has both (a)
-verified testnet deployment and (b) verified pons-token compatibility.
-Evidence does not clearly demonstrate any provider can execute the
-required testnet swaps today.
+**`EXECUTION_PROVIDER_UNRESOLVED`** — Uniswap v4 is the only candidate with
+verified testnet deployment AND verified real liquidity, clearing two of
+the four evidence-bar requirements (§8 of the task: verified contracts,
+real liquidity, quote path, router path). It has **not** cleared the
+quote-path (not exercised end-to-end) or router-path (wiring unverified)
+bars, and pons-compatibility is unverified for any candidate. Per the
+task's explicit instruction, this status means **"no execution venue
+satisfying the full evidence bar has been verified" — not "no execution
+venue exists."** Uniswap v4 is the clear front-runner for follow-up
+verification work, not a rejected candidate.
 
 ## 17. Unresolved questions
 
-- `UNISWAP_TESTNET_DEPLOYMENT_NOT_VERIFIED` (core finding — see §1, §4b)
-- No pons pool or token found to exist on Robinhood testnet in this audit
-  (checked against the specific previously-documented mainnet examples;
-  a broader testnet-wide pons discovery sweep via GMGN with a
-  testnet-scoped query was not performed in this audit and is itself
-  `INSUFFICIENT_EVIDENCE` — GMGN's `chain=robinhood` parameter does not
-  appear to expose a network selector distinguishing testnet from mainnet
-  in the endpoints this codebase already uses; this should be explicitly
-  re-checked before concluding testnet pons activity can never exist)
+- `NO_VERIFIED_UNISWAP_V2_V3_SWAP_VENUE_ON_TESTNET` — confirmed for v2 and
+  v3 specifically; **not** a claim that no AMM of any kind exists on
+  testnet (v4 is confirmed deployed and active — §4d)
+- `NO_TESTNET_PONS_ACTIVITY_VERIFIED` — **precise scope of this claim**:
+  - **OBSERVED**: the specific sample pons pool and token addresses this
+    repo previously documented (from mainnet investigation) return empty
+    bytecode on testnet.
+  - **UNRESOLVED**: whether GMGN exposes any testnet-specific or
+    network-scoped view of `pons` (or any other launchpad) activity. This
+    audit did **not** invent or test a hypothetical GMGN network
+    parameter, per the task's explicit instruction. This codebase's
+    existing GMGN integration (`lib/gmgn/discovery-robinhood.ts` and
+    related) calls `chain=robinhood` with no separate network selector,
+    and all of this project's prior live-verified GMGN payloads have been
+    mainnet data — but this audit did not exhaustively prove GMGN could
+    never surface testnet-specific results under some other call shape.
+  - **UNRESOLVED**: whether any pons-branded (or any other) launch has
+    ever occurred anywhere on Robinhood testnet, independent of GMGN —
+    this audit's on-chain search was scoped to Uniswap v2/v3/v4 core
+    contracts and one specific WETH pool's pair (`NEONTR`), not a
+    general-purpose scan for pons-style launch transactions.
 - WETH `deposit()`/`withdraw()` selectors not individually round-trip
   verified (only `symbol()`/`decimals()` and raw bytecode presence)
-- Router-level ETH-handling semantics (native-ETH-accepting vs.
-  wrap-first, multicall/refundETH, exactInputSingle vs. Universal Router
-  command model) — `UNRESOLVED`, cannot be verified without a deployed,
-  swap-capable router on testnet
+- Router-level ETH-handling semantics for v4 specifically (native-ETH
+  accepted directly by `UniversalRouter`'s v4 commands vs. wrap-first,
+  hook-aware calldata requirements) — `UNRESOLVED`, not exercised in this
+  pass
+- Whether `UniversalRouter` (the testnet-present address) is actually
+  configured/wired to route through the confirmed testnet `PoolManager` —
+  `UNRESOLVED`, no swap or quote simulation was attempted through the
+  router in this pass
+- The confirmed WETH pool's hook contract (`0xf2FA76cc...`) behavior is
+  entirely unexamined — `UNRESOLVED`; a "dynamic fee" or other custom hook
+  logic could materially change execution semantics versus a vanilla pool
 - Fee-on-transfer/tax-token router compatibility — `UNRESOLVED`, depends
-  on whichever router version is eventually targeted
-- "Hoodex" and "Loxley" — `INSUFFICIENT_EVIDENCE`, not verified at all in
-  this audit
+  on whichever router/version PR08 eventually targets
+- Full historical pool-creation picture beyond the most recent ~6% of
+  chain history (8,000,000 of ~126,600,000 blocks) — `INSUFFICIENT_EVIDENCE`,
+  the public RPC is not an archive node and could not serve a full-history
+  scan (§14)
+- "Hoodex" — `INSUFFICIENT_EVIDENCE`, no official docs/GitHub/on-chain
+  evidence found in either audit pass
+- "Loxley" — `INSUFFICIENT_EVIDENCE`, name collides across at least two
+  unrelated GitHub projects; no single authoritative deployment identified
 
 ## 18. Proposed PR08 implementation boundary (not yet started)
 
-Once a real, verified testnet (or explicitly-authorized mainnet) AMM
-deployment exists for pons-launched tokens:
+Uniswap v4 on testnet is the leading candidate to build this against, once
+its remaining open items are closed (§16/§17: end-to-end quote
+verification, router-wiring confirmation, hook-behavior review, and —
+separately — actual pons-token compatibility, which is unresolved for
+every candidate including v4). Once a real, verified venue is confirmed
+usable for the specific tokens PR08 needs to trade:
 
 - `quoteSwap()` — read-only `eth_call` against a real Quoter contract
 - `buildSwapTransaction()` — unsigned `{ to, data, value }` construction
