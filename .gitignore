@@ -50,3 +50,6 @@ test-ledger
 # investigation-output datasets (not application state — see
 # scripts/collect-robinhood-new-creation-liquidity.ts)
 /data/robinhood-liquidity-snapshots.jsonl
+# PR10 testnet canary: encrypted canary wallet + broadcast ledger
+/data/robinhood-testnet-canary.wallet.json
+/data/robinhood-testnet-canary.ledger.jsonl
