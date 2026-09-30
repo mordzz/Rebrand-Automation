@@ -7,7 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { CharacterAvatar } from "@/components/deploy/character-avatar";
 import type { CharacterMood } from "@/components/dashboard/character-canvas";
 import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
-import { formatSignedSol } from "@/components/dashboard/trade-history-table";
+import { formatSignedNative } from "@/components/dashboard/trade-history-table";
+import { formatNative, nativeSymbolFor, rowSize } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 import type { AgentDto } from "./atelier-fleet";
@@ -222,8 +223,8 @@ export function AgentDetailModal({
                     Balance
                   </p>
                   <p className="mt-2 text-lg font-medium tabular-nums sm:text-xl">
-                    {agent.agentBalanceSol != null
-                      ? `${agent.agentBalanceSol.toFixed(3)} SOL`
+                    {agent.agentBalanceNative != null
+                      ? `${agent.agentBalanceNative.toFixed(4)} ${agent.nativeSymbol}`
                       : "—"}
                   </p>
                 </div>
@@ -235,11 +236,11 @@ export function AgentDetailModal({
                 <p
                   className={cn(
                     "mt-2 text-lg font-medium tabular-nums sm:text-xl",
-                    agent.pnl24hSol > 0 && "text-sol-green-ink",
-                    agent.pnl24hSol < 0 && "text-destructive"
+                    agent.pnl24hNative > 0 && "text-sol-green-ink",
+                    agent.pnl24hNative < 0 && "text-destructive"
                   )}
                 >
-                  {formatSignedSol(agent.pnl24hSol, 3)}
+                  {formatSignedNative(agent.pnl24hNative, agent.nativeSymbol, 5)}
                 </p>
               </div>
               <div className="rounded-xl bg-secondary px-3 py-3 sm:px-4 sm:py-4">
@@ -288,11 +289,11 @@ export function AgentDetailModal({
                             {p.strategy}
                           </span>
                         </p>
-                        {/* Market cap, not a per-token price: 5.76e-8 SOL
+                        {/* Market cap, not a per-token price: 5.76e-8 ETH
                             tells a reader nothing about how early the entry
                             was, and cap is comparable across tokens. */}
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {Number(p.sizeSol).toFixed(3)} SOL in at{" "}
+                          {formatNative(rowSize(p), nativeSymbolFor(p), 4)} in at{" "}
                           <span className="text-foreground/80">
                             {formatMarketCap(p.entryMarketCapUsd)}
                           </span>

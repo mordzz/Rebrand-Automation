@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
     token: trades.token,
     strategy: trades.strategy,
     pnlSol: trades.pnlSol,
+    pnlNative: trades.pnlNative,
+    chain: trades.chain,
     closedAt: trades.closedAt,
   };
 

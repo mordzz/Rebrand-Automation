@@ -24,6 +24,16 @@ type TakeProfitTier = { atPct: number; sellPortionPct: number };
 type SniperConfigValue = {
   requireMintAuthorityRenounced: boolean;
   requireFreezeAuthorityRenounced: boolean;
+  /* Robinhood/EVM safety + risk fields (PR06.5/PR07) — the ones the active
+     Robinhood runtime actually reads. The Solana fields above stay in the
+     type only so a save round-trips them untouched. */
+  requireOwnerRenounced: boolean;
+  requireNoBlacklistCapability: boolean;
+  maxCreatorHoldPct: number | null;
+  maxNativePerSnipe: number | null;
+  maxNativeDeployed: number | null;
+  maxDailyDrawdownNative: number | null;
+  nativeSymbol: string | null;
   requireSocialLink: boolean;
   requireAlphaWalletBuy: boolean;
   alphaWallets: string[];
@@ -259,6 +269,15 @@ export function SniperConfigPanel({
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
+  /** Robinhood risk limits are only trusted with nativeSymbol="ETH"
+   * (lib/sniper/risk-limits-robinhood.ts), so setting one records it. */
+  function setNative(
+    key: "maxNativePerSnipe" | "maxNativeDeployed" | "maxDailyDrawdownNative",
+    value: number | null,
+  ) {
+    setDraft((prev) => (prev ? { ...prev, [key]: value, nativeSymbol: value == null ? prev.nativeSymbol : "ETH" } : prev));
+  }
+
   function updateTier(index: number, patch: Partial<TakeProfitTier>) {
     setDraft((prev) => {
       if (!prev) return prev;
@@ -334,14 +353,16 @@ export function SniperConfigPanel({
             Entry filters
           </p>
           <SwitchField
-            label="Require mint authority renounced"
-            checked={draft.requireMintAuthorityRenounced}
-            onChange={(v) => set("requireMintAuthorityRenounced", v)}
+            label="Require contract ownership renounced"
+            hint="ERC-20 owner must be renounced — the EVM stand-in for Solana's mint/freeze authority checks."
+            checked={draft.requireOwnerRenounced}
+            onChange={(v) => set("requireOwnerRenounced", v)}
           />
           <SwitchField
-            label="Require freeze authority renounced"
-            checked={draft.requireFreezeAuthorityRenounced}
-            onChange={(v) => set("requireFreezeAuthorityRenounced", v)}
+            label="Require no blacklist capability"
+            hint="Reject tokens whose contract can blacklist holders."
+            checked={draft.requireNoBlacklistCapability}
+            onChange={(v) => set("requireNoBlacklistCapability", v)}
           />
           <SwitchField
             label="Require a social link"
@@ -349,15 +370,16 @@ export function SniperConfigPanel({
             checked={draft.requireSocialLink}
             onChange={(v) => set("requireSocialLink", v)}
           />
-          <Field
-            label="Max creator buy"
-            hint="Reject if the creator's own initial buy exceeds this % of supply."
-            value={draft.maxCreatorBuyPct}
+          <NullableField
+            label="Max creator holding"
+            hint="Reject if the creator currently holds more than this % of supply. Off = not configured: Robinhood entries are refused until it is set."
+            value={draft.maxCreatorHoldPct}
             unit="%"
             min={1}
             max={50}
             step={1}
-            onChange={(v) => set("maxCreatorBuyPct", v)}
+            fallback={10}
+            onChange={(v) => set("maxCreatorHoldPct", v)}
           />
           <Field
             label="Minimum token age before evaluating"
@@ -435,14 +457,16 @@ export function SniperConfigPanel({
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
             Sizing
           </p>
-          <Field
+          <NullableField
             label="Position size per snipe"
-            value={draft.maxSolPerSnipe}
-            unit="SOL"
-            min={0.01}
-            max={1}
-            step={0.01}
-            onChange={(v) => set("maxSolPerSnipe", v)}
+            hint="Off = not configured: the agent refuses every entry until sizing is set."
+            value={draft.maxNativePerSnipe}
+            unit="ETH"
+            min={0.001}
+            max={0.5}
+            step={0.001}
+            fallback={0.01}
+            onChange={(v) => setNative("maxNativePerSnipe", v)}
           />
           <Field
             label="Max concurrent positions"
@@ -452,14 +476,16 @@ export function SniperConfigPanel({
             step={1}
             onChange={(v) => set("maxConcurrentPositions", v)}
           />
-          <Field
+          <NullableField
             label="Max total deployed"
-            value={draft.maxTotalDeployedSol}
-            unit="SOL"
-            min={0.05}
+            hint="Off = not configured: entries are refused."
+            value={draft.maxNativeDeployed}
+            unit="ETH"
+            min={0.005}
             max={5}
-            step={0.05}
-            onChange={(v) => set("maxTotalDeployedSol", v)}
+            step={0.005}
+            fallback={0.05}
+            onChange={(v) => setNative("maxNativeDeployed", v)}
           />
 
           <p className="pt-2 text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
@@ -474,14 +500,16 @@ export function SniperConfigPanel({
             step={1}
             onChange={(v) => set("maxConsecutiveLosses", v)}
           />
-          <Field
+          <NullableField
             label="Max daily drawdown"
-            value={draft.maxDailyDrawdownSol}
-            unit="SOL"
-            min={0.02}
+            hint="Off = not configured: entries are refused."
+            value={draft.maxDailyDrawdownNative}
+            unit="ETH"
+            min={0.002}
             max={2}
-            step={0.01}
-            onChange={(v) => set("maxDailyDrawdownSol", v)}
+            step={0.001}
+            fallback={0.02}
+            onChange={(v) => setNative("maxDailyDrawdownNative", v)}
           />
           <Field
             label="Cooldown after a loss"

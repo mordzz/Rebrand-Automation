@@ -25,7 +25,6 @@ import { ExecutionTerminal } from "@/components/dashboard/execution-terminal";
 import { SniperConfigPanel } from "@/components/dashboard/sniper-config-panel";
 import {
   TradeHistoryTable,
-  formatSignedSol,
 } from "@/components/dashboard/trade-history-table";
 import {
   TradePerformanceChart,
@@ -44,6 +43,7 @@ import { PRIVY_APP_ID } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { usePrivyAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
+import { formatNative } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 const PANEL_LABEL =
@@ -60,6 +60,10 @@ type BotDto = {
 
 type AddressBalance = {
   address: string;
+  /** Robinhood (EVM) address: decimal ETH string (PR14). */
+  balanceNative?: string | null;
+  nativeSymbol?: string;
+  /** Legacy Solana address only. */
   balanceSol?: number;
   balanceUsd?: number;
   rpc?: string;
@@ -70,7 +74,9 @@ type StatsResponse = {
   configured: boolean;
   openPositionsCount?: number;
   openPositionsInProfit?: number;
-  pnl24hSol?: number;
+  /** Robinhood realized PnL, last 24h, in `nativeSymbol` (ETH). */
+  pnl24hNative?: number;
+  nativeSymbol?: string;
   winRate30d?: number | null;
   trades30dCount?: number;
   wins30dCount?: number;
@@ -423,7 +429,7 @@ function CharacterForm({
               because that agent may already be live. */}
           {!initial && (
             <p className="text-xs text-muted-foreground">
-              Paper mode — it trades on paper before it ever spends a lamport.
+              Paper mode — it trades on paper before it ever spends a wei.
             </p>
           )}
         </div>
@@ -539,9 +545,12 @@ function BotDesk({
   const walletData = usePolledJson<{
     wallet: {
       address: string;
-      balanceSol: number | null;
-      requiredSol: number;
-      sizeSol: number;
+      /** Decimal string in `nativeSymbol` (Robinhood agent wallet view). */
+      balanceNative: string | null;
+      nativeSymbol?: string;
+      /** Null until a Robinhood funding-sufficiency policy exists. */
+      requiredNative: string | number | null;
+      sizeNative: string | number | null;
       sufficient: boolean | null;
     } | null;
   }>(`/api/my-bot/wallet?${walletQuery}`);
@@ -637,19 +646,24 @@ function BotDesk({
 
   /* The balance that matters on the deploy page is always the agent
      wallet's — it's the bot's own trading wallet, whether paper or live.
-     The operator's Phantom wallet is only used for identity; its balance
-     is irrelevant here. Fall back to the operator wallet only when no
-     agent wallet has been generated yet (pre-deploy state). */
-  const agentBal = agentWallet?.balanceSol;
+     The operator's owner (EVM) wallet is only used for identity; its
+     balance is irrelevant here. Fall back to the operator wallet only when
+     no agent wallet has been generated yet (pre-deploy state). */
+  const toNum = (v: string | number | null | undefined) =>
+    v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+  const agentBal = toNum(agentWallet?.balanceNative);
   const hasAgentWallet = agentWallet != null;
-  const effectiveSol = hasAgentWallet ? agentBal : balance?.balanceSol;
+  const effectiveSol = hasAgentWallet ? agentBal : toNum(balance?.balanceNative ?? balance?.balanceSol);
+  const effectiveSymbol = hasAgentWallet
+    ? (agentWallet?.nativeSymbol ?? "ETH")
+    : (balance?.nativeSymbol ?? "ETH");
   const effectiveUsd = hasAgentWallet ? null : balance?.balanceUsd;
   const effectiveError = hasAgentWallet ? null : balance?.error;
 
   const balanceCard: { value: string; hint: string; tone: Tone } =
     effectiveSol != null
       ? {
-          value: `${effectiveSol.toFixed(3)} SOL`,
+          value: `${effectiveSol.toFixed(4)} ${effectiveSymbol}`,
           hint:
             effectiveUsd != null
               ? `≈ $${effectiveUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
@@ -677,12 +691,12 @@ function BotDesk({
   const pnl24hCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured
       ? {
-          value: formatSignedSol(statsData.pnl24hSol ?? 0),
+          value: formatNative(statsData.pnl24hNative ?? 0, statsData.nativeSymbol ?? "ETH", 4, true),
           hint: "Realized, last 24h",
           tone:
-            (statsData.pnl24hSol ?? 0) > 0
+            (statsData.pnl24hNative ?? 0) > 0
               ? "positive"
-              : (statsData.pnl24hSol ?? 0) < 0
+              : (statsData.pnl24hNative ?? 0) < 0
                 ? "negative"
                 : "muted",
         }
@@ -812,7 +826,7 @@ function BotDesk({
               <div className="flex items-center gap-4">
                 {/* Reads the actual mode rather than asserting one. This
                     badge said "Paper Mode" unconditionally, including for a
-                    bot spending real SOL — the one place an operator glances
+                    bot spending real ETH — the one place an operator glances
                     to check what their agent is armed to do. Live gets the
                     destructive tone and a pulse because it is the state that
                     costs money if it is not the one you expected; sol-green
@@ -904,7 +918,7 @@ function BotDesk({
               </p>
               <p className="text-xs text-muted-foreground">
                 {tradingMode === "live"
-                  ? "Spending real SOL from the agent wallet. Trades are irreversible."
+                  ? "Spending real ETH from the agent wallet. Trades are irreversible."
                   : "Simulated fills. No real funds move."}
               </p>
               {modeError && (
@@ -1112,8 +1126,9 @@ function BotDesk({
 
       {goLiveOpen && (
         <GoLiveModal
-          balanceSol={agentWallet?.balanceSol ?? null}
-          sizeSol={agentWallet?.sizeSol ?? null}
+          balance={toNum(agentWallet?.balanceNative)}
+          size={toNum(agentWallet?.sizeNative)}
+          symbol={agentWallet?.nativeSymbol ?? "ETH"}
           address={agentWallet?.address ?? null}
           busy={modeBusy}
           onConfirm={() => void setMode("live")}
@@ -1124,8 +1139,9 @@ function BotDesk({
       {needsFunding && agentWallet && (
         <FundingModal
           address={agentWallet.address}
-          balanceSol={agentWallet.balanceSol ?? 0}
-          requiredSol={agentWallet.requiredSol}
+          balance={toNum(agentWallet.balanceNative) ?? 0}
+          required={toNum(agentWallet.requiredNative) ?? 0}
+          symbol={agentWallet.nativeSymbol ?? "ETH"}
           onClose={() => {
             setFundingDismissed(true);
             setFundingForced(false);

@@ -38,7 +38,7 @@ const STEPS = [
     icon: SlidersHorizontal,
     title: "Set the limits it must obey.",
     description:
-      "Position size in absolute SOL, a cap on concurrent positions, a daily loss limit, a target and a stop. No component may exceed them, including under retry or restart.",
+      "Position size in absolute ETH, a cap on concurrent positions, a daily loss limit, a target and a stop. No component may exceed them, including under retry or restart.",
   },
   {
     number: "04",
@@ -50,14 +50,16 @@ const STEPS = [
 ];
 
 /** Shipped defaults, whitepaper Appendix A.1: the values a newly deployed
- * agent actually runs, deliberately kept separate from design targets. */
+ * agent actually runs, deliberately kept separate from design targets.
+ * ETH sizing has no shipped default on Robinhood Chain: an agent refuses
+ * every entry until its operator sets it (PR07 fail-closed limits). */
 const DEFAULTS = [
-  ["Max per entry", "0.05 SOL"],
+  ["Max per entry", "You set it, in ETH"],
   ["Max concurrent", "3 positions"],
-  ["Max deployed", "0.15 SOL"],
+  ["Max deployed", "You set it, in ETH"],
   ["Take profit", "50% up"],
   ["Stop level", "20% down"],
-  ["Daily loss limit", "0.1 SOL"],
+  ["Daily loss limit", "You set it, in ETH"],
   ["Consecutive losses", "3, then it halts"],
   ["Mode", "Paper, not started"],
 ];
@@ -146,7 +148,7 @@ export function PrismaHowItWorks() {
             </h3>
             <p className="mt-4 text-xs leading-relaxed text-gray-400 sm:text-sm">
               An agent has to sign while you are asleep, so it gets a wallet of
-              its own: deploying generates a fresh Solana keypair belonging to
+              its own: deploying generates a fresh Robinhood Chain (EVM) wallet belonging to
               that agent alone, which you fund by deposit. Only what you deposit
               is ever at risk. There is no path from an agent wallet to your
               own, because Noah holds no authority over yours.
@@ -190,7 +192,7 @@ export function PrismaHowItWorks() {
               ))}
             </ul>
             <p className="mt-5 text-xs leading-relaxed text-gray-500">
-              Sizes are absolute SOL rather than a share of balance, so a larger
+              Sizes are absolute ETH rather than a share of balance, so a larger
               deposit does not silently scale up your risk. Each entry also
               holds back a fee reserve, so a buy can never leave the wallet
               unable to afford the sale that exits it.

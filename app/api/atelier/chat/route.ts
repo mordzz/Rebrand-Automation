@@ -14,7 +14,7 @@ import { getOpenPositions } from "@/lib/sniper/positions";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
-import { getAddressBalance } from "@/lib/solana/wallet";
+import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -107,17 +107,16 @@ async function buildContext(
         .limit(MEMORY_LIMIT),
     ]);
 
-  const pnl24hSol = trades24h.reduce((sum, t) => sum + Number(t.pnlSol), 0);
-  const wins30d = trades30d.filter((t) => Number(t.pnlSol) > 0).length;
+  const pnl24h = summarizePnl(trades24h);
+  const wins30d = trades30d.filter(tradeWon).length;
   const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
-  const breaker = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+  const breaker =
+    bot.agentChain === "robinhood"
+      ? await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config)
+      : deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
 
-  // Read the agent's own trading wallet balance so the LLM can report it.
-  let agentBalanceSol: number | null = null;
-  if (bot.agentPublicKey) {
-    const bal = await getAddressBalance(bot.agentPublicKey);
-    agentBalanceSol = bal.balanceSol ?? null;
-  }
+  // The agent's own trading wallet balance (Robinhood RPC, ETH).
+  const agentBalanceNative = await agentNativeBalance(bot);
 
   const context: AgentChatContext = {
     name: bot.name,
@@ -126,10 +125,11 @@ async function buildContext(
     tradingMode: bot.tradingMode as "paper" | "live",
     tradingPaused: breaker.tradingPaused,
     pauseReason: redactPauseReason(breaker.pauseReason),
-    pnl24hSol,
+    pnl24hNative: pnl24h.pnlNative,
+    nativeSymbol: pnl24h.nativeSymbol,
     winRate30d,
     trades30dCount: trades30d.length,
-    agentBalanceSol,
+    agentBalanceNative,
     openPositions: openPositions.map((p) => ({
       symbol: p.symbol,
       token: p.token,

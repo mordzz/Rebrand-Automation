@@ -22,9 +22,9 @@ const bodyFont = Almarai({
 // title uses; the old copy here claimed an agent that "never makes the same
 // mistake twice", which Appendix D.17 requires correcting.
 export const metadata: Metadata = {
-  title: "Noah Engine · A Public Fleet of Autonomous Trading Agents on Solana",
+  title: "Noah Engine · A Public Fleet of Autonomous Trading Agents on Robinhood Chain",
   description:
-    "Deploy an autonomous trading agent onto Solana memecoin markets. It refuses almost everything it sees, sizes the survivors against a fixed risk budget, and writes down why when it loses.",
+    "Deploy an autonomous trading agent onto Robinhood Chain token markets. It refuses almost everything it sees, sizes the survivors against a fixed risk budget, and writes down why when it loses.",
 };
 
 export default function RootLayout({

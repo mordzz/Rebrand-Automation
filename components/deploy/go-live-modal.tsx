@@ -15,15 +15,18 @@ import { ModalShell } from "@/components/ui/modal";
  * A confirmation nobody reads is worth nothing.
  */
 export function GoLiveModal({
-  balanceSol,
-  sizeSol,
+  balance,
+  size,
+  symbol,
   address,
   busy,
   onConfirm,
   onCancel,
 }: {
-  balanceSol: number | null;
-  sizeSol: number | null;
+  balance: number | null;
+  size: number | null;
+  /** Native unit of the agent wallet (Robinhood: ETH). */
+  symbol: string;
   address: string | null;
   busy?: boolean;
   onConfirm: () => void;
@@ -40,7 +43,7 @@ export function GoLiveModal({
         <>
           <p className="text-sm font-medium">Switch to live trading?</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            From here the agent buys and sells with real SOL, on its own,
+            From here the agent buys and sells with real {symbol}, on its own,
             with no further prompt per trade.
           </p>
         </>
@@ -52,7 +55,7 @@ export function GoLiveModal({
             Wallet balance
           </p>
           <p className="mt-1.5 text-lg font-medium tabular-nums">
-            {balanceSol == null ? "—" : `${balanceSol.toFixed(4)} SOL`}
+            {balance == null ? "—" : `${balance.toFixed(5)} ${symbol}`}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-4 py-3">
@@ -60,7 +63,7 @@ export function GoLiveModal({
             Size per trade
           </p>
           <p className="mt-1.5 text-lg font-medium tabular-nums">
-            {sizeSol == null ? "—" : `${sizeSol.toFixed(4)} SOL`}
+            {size == null ? "—" : `${size.toFixed(5)} ${symbol}`}
           </p>
         </div>
       </div>

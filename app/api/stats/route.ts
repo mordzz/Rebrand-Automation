@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { positions, trades, userBots } from "@/lib/db/schema";
+import { robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
@@ -57,13 +58,19 @@ export async function GET(request: NextRequest) {
   let breaker: { tradingPaused: boolean; pauseReason: string | null } | null = null;
   if (wallet && bot) {
     const config = await getEffectiveConfig(bot);
-    const [recentOutcomes, dailyPnlSol, lastLossAt] = await Promise.all([
-      getRecentOutcomes(wallet, 50, bot.breakerResetAt),
-      getDailyPnlSol(wallet, bot.breakerResetAt),
-      getLastLossAt(wallet, bot.breakerResetAt),
-    ]);
-    const derived = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
-    breaker = { tradingPaused: derived.tradingPaused, pauseReason: derived.pauseReason };
+    if (bot.agentChain === "robinhood") {
+      // Same breaker scripts/paper-daemon.ts enforces for Robinhood bots.
+      breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
+    } else {
+      // Historical Solana bot: its own (retired) Solana breaker rules.
+      const [recentOutcomes, dailyPnlSol, lastLossAt] = await Promise.all([
+        getRecentOutcomes(wallet, 50, bot.breakerResetAt),
+        getDailyPnlSol(wallet, bot.breakerResetAt),
+        getLastLossAt(wallet, bot.breakerResetAt),
+      ]);
+      const derived = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+      breaker = { tradingPaused: derived.tradingPaused, pauseReason: derived.pauseReason };
+    }
   }
 
   const openPositionsInProfit = openPositions.filter((p) => {
@@ -71,9 +78,10 @@ export async function GET(request: NextRequest) {
     return Number(p.lastPrice) > Number(p.entryPrice);
   }).length;
 
-  const pnl24hSol = trades24h.reduce((sum, t) => sum + Number(t.pnlSol), 0);
+  // Per chain: never sum ETH and SOL together (PR14).
+  const pnl24h = summarizePnl(trades24h);
 
-  const wins30d = trades30d.filter((t) => Number(t.pnlSol) > 0).length;
+  const wins30d = trades30d.filter(tradeWon).length;
   const winRate30d =
     trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
 
@@ -81,7 +89,10 @@ export async function GET(request: NextRequest) {
     configured: true,
     openPositionsCount: openPositions.length,
     openPositionsInProfit,
-    pnl24hSol,
+    pnl24hNative: pnl24h.pnlNative,
+    nativeSymbol: pnl24h.nativeSymbol,
+    /** Historical Solana PnL in the same window (SOL), kept separate. */
+    pnl24hSol: pnl24h.pnlSolHistorical,
     winRate30d,
     trades30dCount: trades30d.length,
     wins30dCount: wins30d,

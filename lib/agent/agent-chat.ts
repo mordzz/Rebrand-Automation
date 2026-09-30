@@ -34,12 +34,14 @@ export type AgentChatContext = {
   tradingMode: "paper" | "live";
   tradingPaused: boolean;
   pauseReason: string | null;
-  pnl24hSol: number;
+  /** Realized PnL, last 24h, in `nativeSymbol` (Robinhood: ETH). */
+  pnl24hNative: number;
+  nativeSymbol: string;
   winRate30d: number | null;
   trades30dCount: number;
-  /** The agent’s own trading wallet balance in SOL, or null if it
-   * couldn’t be read. */
-  agentBalanceSol: number | null;
+  /** The agent’s own trading wallet balance in `nativeSymbol`, or null
+   * if it couldn’t be read. */
+  agentBalanceNative: number | null;
   openPositions: {
     symbol: string | null;
     token: string;
@@ -165,10 +167,10 @@ Speak in first person: confident, a little wry, grounded strictly in the data be
 function formatContext(ctx: AgentChatContext): string {
   const lines: string[] = [
     `Deployed since: ${ctx.deployedAt}`,
-    `Trading mode: ${ctx.tradingMode === "live" ? "LIVE (spending real SOL from my agent wallet)" : "paper (simulated, no real funds move)"}`,
-    `Agent wallet balance: ${ctx.agentBalanceSol != null ? `${ctx.agentBalanceSol.toFixed(4)} SOL` : "unknown (could not read)"}`,
+    `Trading mode: ${ctx.tradingMode === "live" ? `LIVE (spending real ${ctx.nativeSymbol} from my agent wallet)` : "paper (simulated, no real funds move)"}`,
+    `Agent wallet balance: ${ctx.agentBalanceNative != null ? `${ctx.agentBalanceNative.toFixed(5)} ${ctx.nativeSymbol}` : "unknown (could not read)"}`,
     `Status: ${ctx.tradingPaused ? `paused (${ctx.pauseReason ?? "circuit breaker"})` : "actively trading"}`,
-    `P&L, last 24h: ${ctx.pnl24hSol.toFixed(4)} SOL`,
+    `P&L, last 24h: ${ctx.pnl24hNative.toFixed(5)} ${ctx.nativeSymbol}`,
     `Win rate, last 30d: ${ctx.winRate30d != null ? `${ctx.winRate30d.toFixed(0)}%` : "no trades yet"} (${ctx.trades30dCount} trades)`,
   ];
 

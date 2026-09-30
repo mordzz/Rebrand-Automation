@@ -1,12 +1,11 @@
 import { Reveal } from "@/components/reveal";
 
 const VENUES = [
-  { name: "Pump.fun", highlight: true },
-  { name: "Raydium" },
-  { name: "Meteora" },
-  { name: "Jupiter" },
-  { name: "Solana" },
-  { name: "Helius" },
+  { name: "Robinhood Chain", highlight: true },
+  { name: "GMGN" },
+  { name: "Uniswap v4" },
+  { name: "Lighter" },
+  { name: "Privy" },
 ];
 
 /** Real infrastructure this product actually integrates with — the

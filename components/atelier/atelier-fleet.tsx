@@ -4,7 +4,8 @@ import { Bot, Layers, Rocket, ShieldAlert, Target, TrendingUp, Wallet } from "lu
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { formatSignedSol } from "@/components/dashboard/trade-history-table";
+import { formatSignedNative } from "@/components/dashboard/trade-history-table";
+import { formatNative, nativeSymbolFor, rowSize } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 import { AgentDetailModal } from "./agent-detail-modal";
@@ -17,9 +18,12 @@ export type OpenPositionDto = {
   strategy: string;
   entryPrice: string;
   sizeSol: string;
+  /** PR04 neutral size + chain — pick the unit per position (PR14). */
+  sizeNative?: string | null;
+  chain?: string | null;
   lastPrice: string | null;
   openedAt: string;
-  /** USD market cap at entry and now. Null when supply or the SOL price
+  /** USD market cap at entry and now. Null when supply or the native price
    *  could not be read; the display shows a dash rather than a guess. */
   entryMarketCapUsd: number | null;
   currentMarketCapUsd: number | null;
@@ -37,16 +41,18 @@ export type AgentDto = {
    * to stop it; paused means it wants to trade but tripped a loss limit. */
   active: boolean;
   /** "paper" | "live". Paper means simulated fills; live means the agent
-   * wallet is spending real SOL. */
+   * wallet is spending real ETH. */
   tradingMode: "paper" | "live";
   tradingPaused: boolean;
   pauseReason: string | null;
-  pnl24hSol: number;
+  /** Robinhood realized PnL, last 24h, in `nativeSymbol` (ETH). */
+  pnl24hNative: number;
+  nativeSymbol: string;
   winRate30d: number | null;
   trades30dCount: number;
-  /** The agent wallet balance in SOL — only populated for live bots,
-   * null for paper (no wallet to read). */
-  agentBalanceSol: number | null;
+  /** The agent wallet balance in `nativeSymbol` — only populated for live
+   * bots, null for paper (no wallet to read). */
+  agentBalanceNative: number | null;
   openPositions: OpenPositionDto[];
 };
 
@@ -121,7 +127,7 @@ function PositionRow({ position }: { position: OpenPositionDto }) {
           </span>
         </p>
         <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
-          {Number(position.sizeSol).toFixed(3)} SOL in at{" "}
+          {formatNative(rowSize(position), nativeSymbolFor(position), 4)} in at{" "}
           {formatMarketCap(position.entryMarketCapUsd)}
         </p>
       </div>
@@ -205,8 +211,8 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
               </p>
             </div>
             <p className="mt-1.5 text-base font-medium tabular-nums">
-              {agent.agentBalanceSol != null
-                ? `${agent.agentBalanceSol.toFixed(3)}`
+              {agent.agentBalanceNative != null
+                ? `${agent.agentBalanceNative.toFixed(4)} ${agent.nativeSymbol}`
                 : "—"}
             </p>
           </div>
@@ -221,11 +227,11 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
           <p
             className={cn(
               "mt-1.5 text-base font-medium tabular-nums",
-              agent.pnl24hSol > 0 && "text-sol-green-ink",
-              agent.pnl24hSol < 0 && "text-destructive"
+              agent.pnl24hNative > 0 && "text-sol-green-ink",
+              agent.pnl24hNative < 0 && "text-destructive"
             )}
           >
-            {formatSignedSol(agent.pnl24hSol, 3)}
+            {formatSignedNative(agent.pnl24hNative, agent.nativeSymbol, 5)}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-3 py-3">
