@@ -24,6 +24,8 @@
     "collect:robinhood-liquidity": "tsx scripts/collect-robinhood-new-creation-liquidity.ts",
     "test:gmgn-robinhood": "tsx scripts/test-gmgn-robinhood-adapter.ts",
     "test:robinhood-safety": "tsx scripts/test-robinhood-safety.ts",
+    "test:robinhood-v4-adapter": "tsx scripts/test-robinhood-v4-adapter.ts",
+    "test:robinhood-v4-live": "tsx scripts/test-robinhood-v4-live.ts",
     "test:liquidity-collector": "tsx scripts/test-liquidity-collector.ts",
     "test:robinhood-paper-trading": "tsx scripts/test-robinhood-paper-trading.ts",
     "test:analyze-loss-effective-config": "tsx scripts/test-analyze-loss-effective-config.ts",
