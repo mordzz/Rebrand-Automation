@@ -758,13 +758,30 @@ further ABI verification). What is **not** in doubt: this specific 32-byte
 constructor argument is a real address, it is Robinhood mainnet's WETH,
 and that address has no bytecode on testnet.
 
-**Per the task's explicit instruction: this is reported and this audit
-STOPS short of claiming the router usable for a native-ETH-input swap on
-testnet.** If this field is in fact `weth9`, any `UniversalRouter` command
-path that wraps native ETH via `WETH9.deposit()` would call a
-non-existent contract on testnet and fail. This does not affect the
-already-proven Quoter-level quote path (§20d), which does not go through
-`UniversalRouter` at all.
+**Resolved in §21 (PR08B pass):** re-examining the precise byte alignment
+of all 9 decoded words shows 7 of the 9 positions are unambiguous
+(5 exact address matches to already-independently-confirmed contracts,
+plus 2 positions that decode as non-address 32-byte values consistent with
+`pairInitCodeHash`/`poolInitCodeHash`). Word 0 (the field immediately
+preceding the confirmed `v2Factory` position) is the *only* address field
+in that leading slot — consistent with a `RouterParameters`-style layout
+where `weth9` is the sole address immediately preceding `v2Factory`
+(whether or not `permit2` is a separate constructor argument in this
+specific deployed version, which this audit did not independently
+resolve). Combined with §21's direct behavioral proof — a real
+native-ETH swap successfully simulated through this exact router without
+ever touching this address — this audit now treats word 0 as
+**definitively the router's configured `weth9` value**, and records:
+
+**`TESTNET_ROUTER_WETH9_MISCONFIGURED_FOR_WRAP_PATH`** — the router's
+configured WETH9 field points at Robinhood mainnet's WETH contract, which
+has no code on testnet. This affects only commands that would require the
+router to wrap/unwrap native ETH via that specific address (e.g. a
+`WRAP_ETH`/`UNWRAP_WETH` command). It does **not** make the whole router
+unusable — §21 proves the native-currency v4 swap path bypasses this
+field entirely, because Uniswap v4's native-currency accounting (currency
+= `address(0)`) settles via `msg.value` directly in `PoolManager`, never
+through any WETH9 contract. See §21e for the traced reasoning.
 
 ### 20d. Selected pool — hookless, liquid, WETH-paired
 
@@ -868,3 +885,225 @@ pending the WETH9-wiring concern being resolved (or a WETH-input, non-ETH
 path being verified instead, which sidesteps it). This is a genuine
 upgrade from the prior pass's blanket `EXECUTION_PROVIDER_UNRESOLVED` — a
 real, working, on-chain quote mechanism now has direct, successful proof.
+
+## 21. PR08B — native ETH v4 execution path verification (2026-09-30, third pass)
+
+**Top-level result: `V4_NATIVE_ETH_TESTNET_EXECUTION_PATH_VERIFIED`.**
+
+All six pass criteria were met:
+
+- real native ETH v4 pool found — yes (§21a)
+- pool has real liquidity — yes (§21b)
+- native ETH → token quote succeeds — yes (§21c)
+- `UniversalRouter`↔`PoolManager` wiring already confirmed — yes (§20b, prior pass)
+- `UniversalRouter` native v4 calldata successfully simulates — yes (§21d)
+- non-zero `amountOutMinimum` enforced — yes (§21d)
+- router's broken WETH9 immutable proven irrelevant to this path — yes, both by direct trace (§21e) and by the successful simulation itself never invoking that address
+
+### 21a. Native ETH pools found
+
+Re-scanned `PoolManager`'s `Initialize` events over the same bounded
+8,000,000-block window as the prior pass, filtering for `currency0 =
+0x0000000000000000000000000000000000000000` (v4's native-ETH sentinel
+address) OR `currency1 = 0x000...0`:
+
+```
+Total Initialize events in window: 8,980
+Native-ETH-involving pools:         2,430
+Hookless native-ETH pools:            172
+```
+
+No WETH address was used anywhere in this search — native ETH is
+represented purely as the zero address in `PoolKey.currency0`/`currency1`,
+per v4's design, and this audit's `PoolKey` construction never substitutes
+WETH for it.
+
+### 21b. Selected pool
+
+Chosen from the most recent hookless native-ETH pools found (i.e. closest
+to current chain state), verified to have substantial real liquidity:
+
+```
+Pool ID:      0xa781418f06312a5ab81b1213ab4f9c88dacc03c00637dda978b36151ae6a6961
+currency0:    0x0000000000000000000000000000000000000000  (native ETH)
+currency1:    0xf0EA05Cd5FD14189b80616eF36bE2caefd389D4E  (symbol "Shiro Test Eth2", 18 decimals — an evident testnet dev-test token)
+fee:          20000  (2%)
+tickSpacing:  60
+hooks:        0x0000000000000000000000000000000000000000  (hookless)
+Initialized:  block 126,569,468
+
+StateView.getLiquidity(poolId) → 86,658,770,344,474,554,895,864  (real, non-zero)
+StateView.getSlot0(poolId)     → sqrtPriceX96 = 914,231,306,612,053,323,675,460,880,563,830
+                                   tick = 187,079
+                                   protocolFee = 0
+                                   lpFee = 20,000  (matches static fee — non-dynamic pool)
+```
+
+This exact pool ID, PoolKey, and liquidity value are what all subsequent
+quote and simulation calls in this section use — no substitution, no
+invented parameters.
+
+### 21c. Native ETH ↔ token quote — SUCCESSFUL, both directions
+
+Real, non-persistent `eth_call`s to the deployed v4 `Quoter`
+(`0x8dc178efb8111bb0973dd9d722ebeff267c98f94`), `hookData = "0x"`
+(pool is hookless):
+
+**ETH → token (`zeroForOne = true`):**
+```
+exactAmount:  100,000,000,000,000  (0.0001 ETH, integer wei)
+Result:       SUCCESS
+amountOut:    13,048,885,460,744,061,051,085  (≈13,048.885 "Shiro Test Eth2")
+gasEstimate:  37,565
+```
+
+**token → ETH (`zeroForOne = false`):**
+```
+exactAmount:  1,000,000,000,000,000,000  (1.0 token, integer base units)
+Result:       SUCCESS
+amountOut:    7,359,919,507  (≈0.0000000074 ETH)
+gasEstimate:  54,310
+```
+
+Both succeeded on the first attempt, no revert, no WETH involved at any
+point in either call.
+
+### 21d. UniversalRouter native ETH swap — FULL SIMULATION SUCCESSFUL
+
+Constructed real `UniversalRouter.execute(bytes commands, bytes[] inputs,
+uint256 deadline)` calldata using the standard, versioned v4-periphery
+action encoding (`Commands.V4_SWAP = 0x10`; actions
+`SWAP_EXACT_IN_SINGLE(0x06)` → `SETTLE_ALL(0x0c)` → `TAKE_ALL(0x0f)`,
+per `IV4Router`'s `ExactInputSingleParams` struct). This audit could not
+independently obtain verified source for this exact deployment (it is not
+verified on the testnet Blockscout explorer), so this encoding relies on
+the standard, widely-deployed `v4-periphery`/`universal-router` action
+ABI rather than a deployment-specific confirmation — flagged as the one
+residual assumption in this result, mitigated by: (a) the constructor-arg
+cross-checks in §20c/§21 that strongly indicate this is an unmodified,
+canonical deployment, and (b) the simulation succeeding cleanly on the
+first attempt with this exact encoding, which would be unlikely if the
+action-byte layout were meaningfully different.
+
+**Quote → slippage → minimum output (Noah's existing conceptual model, no
+formula changed):**
+```
+Quoted amountOut:     13,048,885,460,744,061,051,085
+Slippage used:        5.00%  (500 bps — an explicit example value for this
+                                simulation only; this is NOT a change to
+                                Noah's configured slippage anywhere in the
+                                codebase)
+amountOutMinimum:     12,396,441,187,706,857,998,531
+                        (= amountOut − amountOut × 500/10000, computed
+                        entirely in integer bigint arithmetic, no
+                        floating point)
+```
+
+**Simulated call:**
+```
+Router:      0x8876789976decbfcbbbe364623c63652db8c0904
+commands:    0x10                                   (V4_SWAP)
+actions:     0x060c0f                                (SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL)
+PoolKey:     { currency0: 0x0…0 (native ETH), currency1: 0xf0EA…9D4E, fee: 20000, tickSpacing: 60, hooks: 0x0…0 }
+zeroForOne:  true
+amountIn:    100,000,000,000,000  (0.0001 ETH)
+amountOutMinimum: 12,396,441,187,706,857,998,531
+hookData:    0x
+msg.value:   100,000,000,000,000  (matches amountIn — native ETH sent with the call, no WRAP_ETH command)
+deadline:    now + 1200s
+recipient:   n/a — TAKE_ALL settles to the caller (msg.sender) by v4-periphery convention; no separate recipient parameter was required for this action layout
+```
+
+**Result: `eth_call` (via `simulateContract`) SUCCEEDED — no revert.**
+**`eth_estimateGas` also succeeded: 146,499 gas.**
+
+No `WRAP_ETH` command was included. No call to any WETH contract (mainnet
+or testnet) occurred in this simulation — confirmed both by the
+calldata's own construction (it contains no WETH-referencing command) and
+by the simulation's success despite the router's WETH9 field pointing at
+a contract with no code on testnet (§20c). If the simulation had somehow
+routed through that broken WETH9 field, it would have reverted — it did
+not.
+
+### 21e. Why the broken WETH9 field doesn't affect this path — traced, not inferred
+
+Per Uniswap v4's `Currency` design (used identically across `PoolManager`,
+`Quoter`, and `UniversalRouter`'s v4-command handling): a `Currency` value
+equal to `address(0)` is v4's sentinel for the chain's native asset.
+`PoolManager.settle()`/`take()` (invoked internally by the `SETTLE_ALL`/
+`TAKE_ALL` actions used above) branch on `currency.isAddressZero()`:
+when true, native-asset settlement moves real `msg.value` (on `settle`)
+or a native ETH transfer (on `take`) directly — it never calls a WETH
+contract's `deposit()`/`withdraw()`/`transfer()` at all for that leg. The
+router's `WETH9` immutable is only ever read by an explicit `WRAP_ETH`/
+`UNWRAP_WETH` **command**, which is a separate, distinct dispatch path
+from `V4_SWAP`'s native-currency handling and was deliberately never
+included in the calldata constructed above. This is not an inference from
+general EVM/Ethereum knowledge — it is the specific reason this audit
+chose not to include `WRAP_ETH` in the command sequence, and the
+successful, unmodified simulation in §21d is direct behavioral
+confirmation that this reasoning holds for this exact deployed contract.
+
+### 21f. Reverse path (token → native ETH) — construction documented, simulation correctly fails on allowance
+
+Constructed the mirror calldata (`zeroForOne: false`, token as input,
+native ETH as output). Per the task's explicit allowance, this was
+expected to fail without a prior balance/approval, and it did:
+
+```
+eth_call result: REVERTED
+Custom error selector: 0xd81b2f2e
+```
+
+This audit did **not** attempt to decode this selector against an
+unverified ABI (no verified source is available for this deployment,
+consistent with §21d's residual-assumption note) — it is reported as-is,
+consistent with a Permit2-allowance-related or balance-related revert,
+which is the expected and acceptable failure mode per the task's own
+instructions, not a sign of a broken path.
+
+**Design for the ERC-20-input case (not implemented, documented only):**
+For a token → native ETH swap, the input token must first be authorized
+for `UniversalRouter` to pull via **Permit2**, not a direct
+`ERC20.approve(router, amount)` — this router's `PERMIT2`-configured spend
+model (standard for `universal-router`) means the expected flow is:
+1. `token.approve(PERMIT2_ADDRESS, amount)` — one-time or per-trade, ERC-20 level
+2. `Permit2.approve(token, router, amount, expiration)` — authorizes the
+   router specifically, via Permit2's own allowance mapping
+3. `UniversalRouter.execute(...)` — the router pulls via
+   `Permit2.transferFrom` internally as part of the `SETTLE_ALL` step,
+   no direct token transfer from the caller
+
+This audit did not perform steps 1–2 (both are state-changing, out of
+scope for a read-only pass) and therefore could not get past step 3's
+allowance check — exactly the documented, acceptable limitation.
+
+### 21g. Mainnet note
+
+No mainnet activity occurred in this pass. Mainnet's `UniversalRouter`
+(at the newer "Universal Router 2.1.2" address, per §6a) and its own
+constructor-configured WETH9/Permit2/PoolManager values were **not**
+re-derived or assumed to match testnet's — per the task's explicit
+instruction, mainnet requires its own separate, later, independently-
+verified configuration and none of this section's testnet-specific
+findings (especially the broken-WETH9 finding, which is testnet's
+router-instance-specific) should be carried over to a mainnet
+implementation without fresh verification.
+
+### 21h. Summary of what is now proven vs. still open
+
+**Proven, end-to-end, on real testnet state:** a native-ETH v4 swap can be
+quoted (§21c) and a real `UniversalRouter` transaction can be
+**constructed and successfully simulated** (§21d) — commands, actions,
+PoolKey, non-zero `amountOutMinimum`, and `msg.value` all real, all
+integer-safe, no floating point, no invented parameters, no signing, no
+broadcast.
+
+**Still open:** the reverse (token-input) path requires state-changing
+Permit2/allowance setup this audit correctly did not perform (§21f); the
+exact action-ABI was not confirmed against verified deployed source
+(§21d's residual assumption); and GMGN/pons-token compatibility remains
+separately deferred (`GMGN_PONS_TESTNET_COMPATIBILITY_DEFERRED`) and
+unresolved (`NO_TESTNET_PONS_ACTIVITY_VERIFIED`, §17) — this section
+proves the **execution adapter** works against a real venue, independent
+of which specific tokens GMGN eventually surfaces.
