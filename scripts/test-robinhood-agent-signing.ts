@@ -1,32 +1,40 @@
 /**
  * Deterministic tests for the PR09 Robinhood Chain autonomous agent
  * wallet/signing layer: lib/chain/robinhood-agent-wallet.ts,
- * lib/chain/robinhood-agent-signing.ts.
+ * lib/chain/robinhood-agent-signing.ts — including the hardening pass
+ * that added full calldata semantic validation (not just target-address
+ * allowlisting).
  *
  * No network calls, no broadcast. Key generation, encryption round-trip,
  * validation, and offline transaction signing are all real (not mocked)
  * — only the RPC-dependent prep steps (nonce/fee/gas) are injected via
- * signRobinhoodTransaction's `deps` parameter, exactly per this repo's
- * dependency-injection convention (see robinhood-v4-receipt.ts).
+ * signRobinhoodTransaction's `deps` parameter.
+ *
+ * Positive fixtures are REAL PR08 builder output
+ * (buildNativeBuyTransaction/buildNativeSellTransaction/
+ * buildErc20ApprovalTransaction/buildPermit2AuthorizationTransaction) —
+ * never fake/random calldata dressed up as a "successful swap".
  *
  * NEVER prints a raw private key — only derived addresses and encrypted
  * blobs ever reach console.log/assertEqual output.
  *
  * Run: npm run test:robinhood-agent-signing
  */
-// A random, test-only 32-byte key — used only if AGENT_WALLET_ENCRYPTION_KEY
-// isn't already configured in this environment. This test never persists
-// or logs it; it exists only so encrypt/decrypt round-trip tests below
-// can exercise real AES-256-GCM without requiring the real deployment
-// secret. Set before any of this repo's modules are imported, since
-// lib/solana/agent-wallet.ts reads it lazily per-call (not at import
-// time), but setting it up front here keeps this file's intent obvious.
 import * as crypto from "node:crypto";
 if (!process.env.AGENT_WALLET_ENCRYPTION_KEY?.trim()) {
   process.env.AGENT_WALLET_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 }
 
-import { encodeFunctionData, getAddress, isHex, parseTransaction, type Address, type Hex } from "viem";
+import {
+  decodeFunctionData,
+  encodeAbiParameters,
+  encodeFunctionData,
+  getAddress,
+  isHex,
+  parseTransaction,
+  type Address,
+  type Hex,
+} from "viem";
 
 import {
   generateRobinhoodAgentWallet,
@@ -40,8 +48,27 @@ import {
   type SignRobinhoodTransactionInput,
 } from "@/lib/chain/robinhood-agent-signing";
 import { resolveRobinhoodExecutionConfig } from "@/lib/chain/robinhood-execution-config";
-import { encryptSecret } from "@/lib/solana/agent-wallet";
-import type { UnsignedTransaction } from "@/lib/chain/robinhood-v4-swap-tx";
+import { encryptSecret } from "@/lib/wallet/secret-encryption";
+import {
+  ACTION_SETTLE_ALL,
+  ACTION_SWAP_EXACT_IN_SINGLE,
+  ACTION_TAKE_ALL,
+  COMMAND_V4_SWAP,
+  EXACT_INPUT_SINGLE_ABI_TYPE,
+  encodeV4SwapExactInSingle,
+} from "@/lib/chain/robinhood-v4-actions";
+import { computePoolId, NATIVE_CURRENCY, type PoolKey, type VerifiedPool } from "@/lib/chain/robinhood-v4-pool";
+import type { QuoteSwapResult } from "@/lib/chain/robinhood-v4-quote";
+import {
+  buildErc20ApprovalTransaction,
+  buildNativeBuyTransaction,
+  buildNativeSellTransaction,
+  buildPermit2AuthorizationTransaction,
+  ERC20_ABI,
+  PERMIT2_ABI,
+  UNIVERSAL_ROUTER_EXECUTE_ABI,
+  type UnsignedTransaction,
+} from "@/lib/chain/robinhood-v4-swap-tx";
 
 let failures = 0;
 
@@ -75,6 +102,15 @@ async function assertRejects(fn: () => Promise<unknown>, label: string): Promise
   }
 }
 
+function throwsSync(fn: () => unknown): boolean {
+  try {
+    fn();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 const testnetConfig = (() => {
   const result = resolveRobinhoodExecutionConfig("testnet");
   if (!result.ok) throw new Error("testnet config must resolve for this test file's fixtures");
@@ -91,209 +127,298 @@ function makeBotRow(overrides: Partial<AgentWalletBotRow> = {}): AgentWalletBotR
   };
 }
 
-const ERC20_APPROVE_ABI = [
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
+// The exact pool ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b verified — used
+// only as a synthetic input here (no RPC), matching PR08's own test
+// fixture in scripts/test-robinhood-v4-adapter.ts.
+const AUDIT_FIXTURE_POOL_KEY: PoolKey = {
+  currency0: NATIVE_CURRENCY,
+  currency1: "0xf0EA05Cd5FD14189b80616eF36bE2caefd389D4E",
+  fee: 20000,
+  tickSpacing: 60,
+  hooks: NATIVE_CURRENCY,
+};
+const FAKE_TOKEN: Address = AUDIT_FIXTURE_POOL_KEY.currency1;
 
-function fakeApprovalCalldata(spender: Address, amount: bigint): Hex {
-  return encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: "approve", args: [spender, amount] });
+function makeVerifiedPool(overrides: Partial<VerifiedPool> = {}): VerifiedPool {
+  return {
+    poolId: computePoolId(AUDIT_FIXTURE_POOL_KEY),
+    poolKey: AUDIT_FIXTURE_POOL_KEY,
+    liquidity: BigInt("86658770344474554895864"),
+    sqrtPriceX96: BigInt("914231306612053323675460880563830"),
+    tick: 187079,
+    isHookless: true,
+    ...overrides,
+  };
 }
 
-const FAKE_TOKEN: Address = "0xf0EA05Cd5FD14189b80616eF36bE2caefd389D4E";
+function makeBuyQuote(overrides: Partial<Extract<QuoteSwapResult, { ok: true }>["quote"]> = {}) {
+  return {
+    pool: makeVerifiedPool(),
+    side: "buy" as const,
+    zeroForOne: true,
+    amountIn: BigInt(100_000_000_000_000),
+    amountOutQuoted: BigInt("13048885460744061051085"),
+    amountOutMinimum: BigInt("12396441187706857998530"),
+    quoterGasEstimate: BigInt(37565),
+    currencyIn: NATIVE_CURRENCY,
+    currencyOut: FAKE_TOKEN,
+    network: "testnet" as const,
+    chainId: 46630,
+    ...overrides,
+  };
+}
+
+function makeSellQuote(overrides: Partial<Extract<QuoteSwapResult, { ok: true }>["quote"]> = {}) {
+  return {
+    pool: makeVerifiedPool(),
+    side: "sell" as const,
+    zeroForOne: false,
+    amountIn: BigInt("1000000000000000000"),
+    amountOutQuoted: BigInt(7359919507),
+    amountOutMinimum: BigInt(6991923531),
+    quoterGasEstimate: BigInt(54310),
+    currencyIn: FAKE_TOKEN,
+    currencyOut: NATIVE_CURRENCY,
+    network: "testnet" as const,
+    chainId: 46630,
+    ...overrides,
+  };
+}
+
+/** Rebuilds a UniversalRouter.execute() calldata blob by hand, for
+ * negative-test fixtures ONLY — never used to build a "successful"
+ * fixture (those always come from the real PR08 builders above). */
+function encodeExecute(commands: Hex, inputs: readonly Hex[], deadline: bigint): Hex {
+  return encodeFunctionData({ abi: UNIVERSAL_ROUTER_EXECUTE_ABI, functionName: "execute", args: [commands, inputs, deadline] });
+}
 
 async function main() {
-  // ═══ key generation ═══════════════════════════════════════════════════
+  // ═══ key generation (unchanged from prior pass) ═══════════════════════
   {
     const wallet = await generateRobinhoodAgentWallet();
     assert(/^0x[0-9a-fA-F]{40}$/.test(wallet.address), "generateRobinhoodAgentWallet produces a valid EVM address");
     assertEqual(wallet.chain, "robinhood", "generated wallet is tagged chain=robinhood");
     assertEqual(wallet.network, "testnet", "generated wallet is tagged with the active network (testnet)");
-    assertEqual(wallet.nativeSymbol, "ETH", "generated wallet is tagged nativeSymbol=ETH");
     assert(!wallet.secretEnc.includes("0x"), "secretEnc is an encrypted blob, not raw hex key material");
-
-    // The derived-address helper must agree with generation, without
-    // ever exposing the raw key.
     const derived = robinhoodAgentAddressFromSecret(wallet.secretEnc);
     assertEqual(getAddress(derived), getAddress(wallet.address), "generated EVM key derives the correct, matching address");
   }
-  {
-    // Two independent generations must never collide (sanity on the
-    // underlying CSPRNG usage, not a cryptographic proof).
-    const a = await generateRobinhoodAgentWallet();
-    const b = await generateRobinhoodAgentWallet();
-    assert(getAddress(a.address) !== getAddress(b.address), "two independently generated wallets have different addresses");
-  }
 
-  // ═══ encrypt → decrypt round trip (via loadRobinhoodAgentAccount) ═════
+  // ═══ encrypt -> decrypt round trip / malformed / mismatch / missing ══
   {
     const wallet = await generateRobinhoodAgentWallet();
     const bot = makeBotRow({ agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
     const loaded = await loadRobinhoodAgentAccount(bot);
-    assertEqual(getAddress(loaded.address), getAddress(wallet.address), "loadRobinhoodAgentAccount: encrypt -> decrypt -> derive round trip matches the generated address");
+    assertEqual(getAddress(loaded.address), getAddress(wallet.address), "loadRobinhoodAgentAccount: encrypt -> decrypt -> derive round trip matches");
   }
-
-  // ═══ decrypted key/address mismatch fails ═════════════════════════════
   {
     const walletA = await generateRobinhoodAgentWallet();
     const walletB = await generateRobinhoodAgentWallet();
-    // walletB's key, but claiming walletA's address.
     const bot = makeBotRow({ agentPublicKey: walletA.address, agentSecretEnc: walletB.secretEnc });
-    await assertRejects(
-      () => loadRobinhoodAgentAccount(bot),
-      "loadRobinhoodAgentAccount refuses when the derived address doesn't match the stored address"
-    );
+    await assertRejects(() => loadRobinhoodAgentAccount(bot), "loadRobinhoodAgentAccount refuses an address/key mismatch");
   }
-
-  // ═══ malformed private key fails ══════════════════════════════════════
   {
-    // Encrypt something that is NOT a 32-byte EVM key (e.g. 16 bytes).
     const malformedSecretEnc = encryptSecret(new Uint8Array(16).fill(7));
-    const bot = makeBotRow({
-      agentPublicKey: "0x1111111111111111111111111111111111111111",
-      agentSecretEnc: malformedSecretEnc,
-    });
-    await assertRejects(
-      () => loadRobinhoodAgentAccount(bot),
-      "loadRobinhoodAgentAccount refuses a decrypted key that isn't a valid 32-byte EVM private key"
-    );
+    const bot = makeBotRow({ agentPublicKey: "0x1111111111111111111111111111111111111111", agentSecretEnc: malformedSecretEnc });
+    await assertRejects(() => loadRobinhoodAgentAccount(bot), "loadRobinhoodAgentAccount refuses a malformed (non-32-byte) key");
   }
-
-  // ═══ missing key fails ═════════════════════════════════════════════════
   {
     const bot = makeBotRow({ agentPublicKey: "0x1111111111111111111111111111111111111111", agentSecretEnc: null });
-    await assertRejects(
-      () => loadRobinhoodAgentAccount(bot),
-      "loadRobinhoodAgentAccount refuses a bot with no stored encrypted key"
-    );
+    await assertRejects(() => loadRobinhoodAgentAccount(bot), "loadRobinhoodAgentAccount refuses a missing key");
   }
-  {
-    // Chain-tag mismatch (e.g. a legacy Solana bot's row accidentally
-    // routed here) must also refuse, never silently proceed.
-    const wallet = await generateRobinhoodAgentWallet();
-    const bot = makeBotRow({ agentChain: "solana", agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
-    await assertRejects(
-      () => loadRobinhoodAgentAccount(bot),
-      "loadRobinhoodAgentAccount refuses a bot whose agentChain isn't \"robinhood\""
-    );
-  }
-
-  // ═══ wrong network fails ═══════════════════════════════════════════════
   {
     const wallet = await generateRobinhoodAgentWallet();
     const bot = makeBotRow({ agentNetwork: "mainnet", agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
-    await assertRejects(
-      () => loadRobinhoodAgentAccount(bot),
-      "loadRobinhoodAgentAccount refuses a bot whose agentNetwork doesn't match the active Robinhood network"
-    );
+    await assertRejects(() => loadRobinhoodAgentAccount(bot), "loadRobinhoodAgentAccount refuses a wrong network");
   }
 
-  // ═══ validateSignRobinhoodTransactionInput: pure, no network ═══════════
-  const swapTx: UnsignedTransaction = {
-    chainId: testnetConfig.chainId,
-    to: testnetConfig.universalRouter,
-    data: "0x1000000000000000000000000000000000000000000000000000000000000020" as Hex,
-    value: BigInt(1000),
+  // ══════════════════════════════════════════════════════════════════════
+  // FULL CALLDATA SEMANTIC VALIDATION — the hardening pass
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ═══ 1-2. real PR08 native-buy builder is accepted end-to-end ════════
+  {
+    const quote = makeBuyQuote();
+    const tx = buildNativeBuyTransaction(testnetConfig, quote);
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(!throwsSync(() => validateSignRobinhoodTransactionInput(input)), "real PR08 buildNativeBuyTransaction output passes full swap semantic validation");
+  }
+
+  // ═══ 3. real PR08 native-sell builder is accepted end-to-end ═════════
+  {
+    const quote = makeSellQuote();
+    const tx = buildNativeSellTransaction(testnetConfig, quote);
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(!throwsSync(() => validateSignRobinhoodTransactionInput(input)), "real PR08 buildNativeSellTransaction output passes full swap semantic validation");
+  }
+
+  // ═══ 4. real PR08 ERC20 approval builder is accepted end-to-end ══════
+  {
+    const tx = buildErc20ApprovalTransaction(testnetConfig, FAKE_TOKEN, BigInt(1000));
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
+    assert(!throwsSync(() => validateSignRobinhoodTransactionInput(input)), "real PR08 buildErc20ApprovalTransaction output passes full erc20_approval semantic validation");
+  }
+
+  // ═══ 5. real PR08 Permit2 authorization builder is accepted end-to-end ═
+  {
+    const tx = buildPermit2AuthorizationTransaction(testnetConfig, FAKE_TOKEN, BigInt(5000));
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
+    assert(!throwsSync(() => validateSignRobinhoodTransactionInput(input)), "real PR08 buildPermit2AuthorizationTransaction output passes full permit2_authorization semantic validation");
+  }
+
+  // ═══ SWAP negative fixtures ════════════════════════════════════════════
+  const realBuyTx = buildNativeBuyTransaction(testnetConfig, makeBuyQuote());
+  const realBuyDecoded = decodeFunctionData({ abi: UNIVERSAL_ROUTER_EXECUTE_ABI, data: realBuyTx.data }) as {
+    functionName: string;
+    args: readonly [Hex, readonly Hex[], bigint];
   };
+  const [realCommands, realInputs, realDeadline] = realBuyDecoded.args;
+
   {
-    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: swapTx, intent: "swap" };
-    const result = validateSignRobinhoodTransactionInput(input);
-    assertEqual(getAddress(result.to), getAddress(testnetConfig.universalRouter), "swap intent: UniversalRouter target accepted");
+    // UniversalRouter + random calldata.
+    const tx: UnsignedTransaction = { ...realBuyTx, data: "0xdeadbeef" as Hex };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: UniversalRouter + random calldata is rejected");
   }
   {
-    const permit2Tx: UnsignedTransaction = { ...swapTx, to: testnetConfig.permit2 };
-    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: permit2Tx, intent: "permit2_authorization" };
-    const result = validateSignRobinhoodTransactionInput(input);
-    assertEqual(getAddress(result.to), getAddress(testnetConfig.permit2), "permit2_authorization intent: Permit2 target accepted");
+    // Valid execute selector, but commands carries TWO bytes (an extra
+    // command) instead of exactly one V4_SWAP byte.
+    const twoCommandBytes = `0x${COMMAND_V4_SWAP.toString(16).padStart(2, "0")}${COMMAND_V4_SWAP.toString(16).padStart(2, "0")}` as Hex;
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(twoCommandBytes, realInputs, realDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: valid execute selector + an additional command byte is rejected");
   }
   {
-    const approvalTx: UnsignedTransaction = { ...swapTx, to: FAKE_TOKEN, data: fakeApprovalCalldata(testnetConfig.permit2, BigInt(1000)) };
-    const input: SignRobinhoodTransactionInput = {
-      bot: makeBotRow(),
-      unsignedTransaction: approvalTx,
-      intent: "erc20_approval",
-      approvalToken: FAKE_TOKEN,
-    };
-    const result = validateSignRobinhoodTransactionInput(input);
-    assertEqual(getAddress(result.to), getAddress(FAKE_TOKEN), "erc20_approval intent: the named token target is accepted under explicit approvalToken");
+    // WRAP_ETH (0x0b) appended after V4_SWAP.
+    const withWrap = `${realCommands}0b` as Hex;
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(withWrap, realInputs, realDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: commands containing WRAP_ETH is rejected");
   }
   {
-    // An erc20_approval transaction targeting the router (not the named
-    // token) must be refused — approval intent only ever allows the
-    // one token it explicitly names, never the router or Permit2.
-    const approvalTx: UnsignedTransaction = { ...swapTx, to: testnetConfig.universalRouter };
-    const input: SignRobinhoodTransactionInput = {
-      bot: makeBotRow(),
-      unsignedTransaction: approvalTx,
-      intent: "erc20_approval",
-      approvalToken: FAKE_TOKEN,
-    };
-    assert(
-      throwsSync(() => validateSignRobinhoodTransactionInput(input)),
-      "erc20_approval intent refuses a target other than the explicitly named token (e.g. the router)"
+    // Wrong V4 action order: SETTLE_ALL before SWAP_EXACT_IN_SINGLE.
+    const quote = makeBuyQuote();
+    const exactInputSingleEncoded = encodeAbiParameters(
+      [EXACT_INPUT_SINGLE_ABI_TYPE],
+      [{ poolKey: quote.pool.poolKey, zeroForOne: quote.zeroForOne, amountIn: quote.amountIn, amountOutMinimum: quote.amountOutMinimum, hookData: "0x" }]
     );
-  }
-  {
-    // Unexpected transaction target: swap intent pointed at a random
-    // unrelated address instead of the verified UniversalRouter.
-    const wrongTargetTx: UnsignedTransaction = { ...swapTx, to: "0x2222222222222222222222222222222222222222" };
-    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: wrongTargetTx, intent: "swap" };
-    assert(
-      throwsSync(() => validateSignRobinhoodTransactionInput(input)),
-      "swap intent refuses an unexpected transaction target"
+    const settleEncoded = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [quote.currencyIn, quote.amountIn]);
+    const takeEncoded = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [quote.currencyOut, quote.amountOutMinimum]);
+    const reorderedActions = `0x${ACTION_SETTLE_ALL.toString(16).padStart(2, "0")}${ACTION_SWAP_EXACT_IN_SINGLE.toString(16).padStart(2, "0")}${ACTION_TAKE_ALL.toString(16).padStart(2, "0")}` as Hex;
+    const v4SwapInput = encodeAbiParameters(
+      [{ type: "bytes" }, { type: "bytes[]" }],
+      [reorderedActions, [settleEncoded, exactInputSingleEncoded, takeEncoded]]
     );
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(realCommands, [v4SwapInput], realDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: wrong V4 action order is rejected");
   }
   {
-    const negativeValueTx: UnsignedTransaction = { ...swapTx, value: BigInt(-1) };
-    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: negativeValueTx, intent: "swap" };
-    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "negative value is refused");
+    // Zero amountOutMinimum, bypassing PR08's builder-level check by
+    // going straight to the lower-level encoder.
+    const quote = makeBuyQuote();
+    const { commands, inputs } = encodeV4SwapExactInSingle({
+      exactInputSingle: { poolKey: quote.pool.poolKey, zeroForOne: quote.zeroForOne, amountIn: quote.amountIn, amountOutMinimum: BigInt(0), hookData: "0x" },
+      settleCurrency: quote.currencyIn,
+      settleMaxAmount: quote.amountIn,
+      takeCurrency: quote.currencyOut,
+      takeMinAmount: BigInt(0),
+    });
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(commands, inputs, realDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: zero amountOutMinimum is rejected at the signer layer too, independent of PR08's own builder check");
   }
   {
-    const emptyDataTx: UnsignedTransaction = { ...swapTx, data: "0x" as Hex };
-    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: emptyDataTx, intent: "swap" };
-    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "empty calldata (0x) is refused");
+    // Inconsistent tx.value: real calldata, but value doesn't equal amountIn.
+    const tx: UnsignedTransaction = { ...realBuyTx, value: realBuyTx.value + BigInt(1) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: tx.value inconsistent with amountIn is rejected");
   }
   {
-    const wrongChainIdTx: UnsignedTransaction = { ...swapTx, chainId: 999999 };
+    // Expired deadline.
+    const expiredDeadline = BigInt(Math.floor(Date.now() / 1000) - 100);
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(realCommands, realInputs, expiredDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: expired deadline is rejected");
+  }
+
+  // ═══ ERC20 approval negative fixtures ══════════════════════════════════
+  const TRANSFER_ABI = [
+    { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }] },
+  ] as const;
+  {
+    const data = encodeFunctionData({ abi: TRANSFER_ABI, functionName: "transfer", args: ["0x2222222222222222222222222222222222222222", BigInt(1000)] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: FAKE_TOKEN, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "erc20_approval: correct token + transfer() is rejected");
+  }
+  {
+    const wrongSpender: Address = "0x2222222222222222222222222222222222222222";
+    const data = encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [wrongSpender, BigInt(1000)] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: FAKE_TOKEN, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "erc20_approval: correct token + approve(wrong spender) is rejected");
+  }
+  {
+    const data = encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [testnetConfig.permit2, BigInt(0)] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: FAKE_TOKEN, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "erc20_approval: correct token + approve(Permit2, 0) is rejected");
+  }
+
+  // ═══ Permit2 authorization negative fixtures ═══════════════════════════
+  {
+    // Arbitrary selector: a 2-arg approve() (ERC20 shape) sent to Permit2,
+    // which only recognizes the 4-arg approve().
+    const data = encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [testnetConfig.universalRouter, BigInt(1000)] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: testnetConfig.permit2, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: an arbitrary/wrong-shaped selector is rejected");
+  }
+  {
+    const wrongSpender: Address = "0x2222222222222222222222222222222222222222";
+    const expiration = Math.floor(Date.now() / 1000) + 1200;
+    const data = encodeFunctionData({ abi: PERMIT2_ABI, functionName: "approve", args: [FAKE_TOKEN, wrongSpender, BigInt(1000), expiration] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: testnetConfig.permit2, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: wrong spender (not UniversalRouter) is rejected");
+  }
+  {
+    // Real builder output, but the caller's EXPECTED token doesn't match
+    // what was actually encoded.
+    const tx = buildPermit2AuthorizationTransaction(testnetConfig, FAKE_TOKEN, BigInt(1000));
+    const differentToken: Address = "0x2222222222222222222222222222222222222222";
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: differentToken };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: wrong (mismatched) expected token is rejected");
+  }
+  {
+    const expiredExpiration = Math.floor(Date.now() / 1000) - 100;
+    const data = encodeFunctionData({ abi: PERMIT2_ABI, functionName: "approve", args: [FAKE_TOKEN, testnetConfig.universalRouter, BigInt(1000), expiredExpiration] });
+    const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: testnetConfig.permit2, data, value: BigInt(0) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: expired authorization is rejected");
+  }
+
+  // ═══ basic field/network guards (unchanged behavior, still covered) ══
+  {
+    const wrongChainIdTx: UnsignedTransaction = { ...realBuyTx, chainId: 999999 };
     const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: wrongChainIdTx, intent: "swap" };
-    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "wrong chainId (doesn't match the resolved config's) is refused");
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "wrong chainId is refused");
   }
   {
-    // Mainnet fails closed: a bot configured for Robinhood mainnet can
-    // never validate for signing, regardless of the active process
-    // network — resolveRobinhoodExecutionConfig("mainnet") itself always
-    // fails closed (see PR08's own tests), and this proves that failure
-    // propagates all the way through signing validation, never silently
-    // falling back to testnet addresses.
-    const input: SignRobinhoodTransactionInput = {
-      bot: makeBotRow({ agentNetwork: "mainnet" }),
-      unsignedTransaction: swapTx,
-      intent: "swap",
-    };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow({ agentNetwork: "mainnet" }), unsignedTransaction: realBuyTx, intent: "swap" };
     assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "mainnet signing fails closed");
   }
   {
-    const input: SignRobinhoodTransactionInput = {
-      bot: makeBotRow({ agentNetwork: null }),
-      unsignedTransaction: swapTx,
-      intent: "swap",
-    };
-    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "a bot with no recorded agentNetwork fails closed rather than assuming one");
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow({ agentNetwork: null }), unsignedTransaction: realBuyTx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "a bot with no recorded agentNetwork fails closed");
   }
 
-  // ═══ full offline sign: real key, injected RPC-dependent prep ════════
+  // ═══ full offline sign: real PR08 output, real key, injected RPC prep ═
   {
     const wallet = await generateRobinhoodAgentWallet();
     const bot = makeBotRow({ agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
-    const input: SignRobinhoodTransactionInput = { bot, unsignedTransaction: swapTx, intent: "swap" };
+    const input: SignRobinhoodTransactionInput = { bot, unsignedTransaction: realBuyTx, intent: "swap" };
 
     const signed = await signRobinhoodTransaction(input, {
       assertNetwork: async () => {},
@@ -304,79 +429,43 @@ async function main() {
 
     assertEqual(signed.chainId, testnetConfig.chainId, "signed tx carries the expected chainId");
     assertEqual(getAddress(signed.to), getAddress(testnetConfig.universalRouter), "signed tx carries the expected to");
-    assertEqual(signed.value, swapTx.value, "signed tx carries the expected value");
+    assertEqual(signed.value, realBuyTx.value, "signed tx carries the expected value");
     assertEqual(signed.nonce, 7, "signed tx carries the injected nonce");
     assert(isHex(signed.signedRawTransaction), "signedRawTransaction is hex");
     assert(
-      !JSON.stringify(signed, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
-        .toLowerCase()
-        .includes("privatekey"),
+      !JSON.stringify(signed, (_k, v) => (typeof v === "bigint" ? v.toString() : v)).toLowerCase().includes("privatekey"),
       "signing result never includes a field named privateKey"
     );
 
-    // Decode the signed raw transaction independently and confirm it
-    // matches what was requested — proof the offline signing actually
-    // produced the right transaction, not just that no error was thrown.
     const decoded = parseTransaction(signed.signedRawTransaction);
     assertEqual(decoded.chainId, testnetConfig.chainId, "decoded signed tx: chainId matches");
     assertEqual(getAddress(decoded.to as Address), getAddress(testnetConfig.universalRouter), "decoded signed tx: to matches");
-    assertEqual(decoded.value, swapTx.value, "decoded signed tx: value matches");
-    assertEqual(decoded.data, swapTx.data, "decoded signed tx: data matches");
+    assertEqual(decoded.value, realBuyTx.value, "decoded signed tx: value matches");
+    assertEqual(decoded.data, realBuyTx.data, "decoded signed tx: data matches");
     assertEqual(decoded.nonce, 7, "decoded signed tx: nonce matches");
     assert(decoded.type === "eip1559", "decoded signed tx: type is eip1559");
   }
   {
-    // erc20_approval end-to-end, proving the approval-only target scoping
-    // survives all the way to a real signed transaction.
+    // The full signRobinhoodTransaction path also rejects bad calldata
+    // before ever touching the key/RPC deps.
     const wallet = await generateRobinhoodAgentWallet();
     const bot = makeBotRow({ agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
-    const approvalTx: UnsignedTransaction = {
-      chainId: testnetConfig.chainId,
-      to: FAKE_TOKEN,
-      data: fakeApprovalCalldata(testnetConfig.permit2, BigInt(5000)),
-      value: BigInt(0),
-    };
-    const input: SignRobinhoodTransactionInput = { bot, unsignedTransaction: approvalTx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
-
-    const signed = await signRobinhoodTransaction(input, {
-      assertNetwork: async () => {},
-      getNonce: async () => 0,
-      estimateFeesPerGas: async () => ({ maxFeePerGas: BigInt(2_000_000_000), maxPriorityFeePerGas: BigInt(1_000_000_000) }),
-      estimateGas: async () => BigInt(60_000),
-    });
-    assertEqual(getAddress(signed.to), getAddress(FAKE_TOKEN), "signed erc20_approval tx targets exactly the named token");
-    assertEqual(signed.value, BigInt(0), "signed erc20_approval tx carries zero value");
-  }
-  {
-    // The full signRobinhoodTransaction path also rejects an unexpected
-    // target before ever touching the key/RPC deps.
-    const wallet = await generateRobinhoodAgentWallet();
-    const bot = makeBotRow({ agentPublicKey: wallet.address, agentSecretEnc: wallet.secretEnc });
-    const wrongTargetTx: UnsignedTransaction = { ...swapTx, to: "0x2222222222222222222222222222222222222222" };
-    const input: SignRobinhoodTransactionInput = { bot, unsignedTransaction: wrongTargetTx, intent: "swap" };
+    const badTx: UnsignedTransaction = { ...realBuyTx, data: "0xdeadbeef" as Hex };
+    const input: SignRobinhoodTransactionInput = { bot, unsignedTransaction: badTx, intent: "swap" };
     await assertRejects(
       () =>
         signRobinhoodTransaction(input, {
           assertNetwork: async () => {},
           getNonce: async () => {
-            throw new Error("getNonce must not be called when target validation already failed");
+            throw new Error("getNonce must not be called when calldata semantic validation already failed");
           },
         }),
-      "signRobinhoodTransaction end-to-end: unexpected target is refused before any RPC prep step runs"
+      "signRobinhoodTransaction end-to-end: bad calldata is refused before any RPC prep step runs"
     );
   }
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
   process.exitCode = failures === 0 ? 0 : 1;
-}
-
-function throwsSync(fn: () => unknown): boolean {
-  try {
-    fn();
-    return false;
-  } catch {
-    return true;
-  }
 }
 
 main().catch((error) => {

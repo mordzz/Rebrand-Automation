@@ -36,10 +36,13 @@ export type UnsignedSwapTransaction = UnsignedTransaction & {
   amountOutMinimum: bigint;
 };
 
-const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes — matches the window used in the audit's live simulation
+export const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes — matches the window used in the audit's live simulation
 /** A generous but finite upper bound (7 days) — rejects absurd/overflow
- * values without constraining any legitimate use of this adapter. */
-const MAX_DEADLINE_SECONDS = 7 * 24 * 60 * 60;
+ * values without constraining any legitimate use of this adapter.
+ * Exported so PR09's signing-time semantic validation checks a decoded
+ * deadline/expiration against the exact same bound PR08 used to build
+ * it, rather than a second, possibly-drifted copy of "7 days". */
+export const MAX_DEADLINE_SECONDS = 7 * 24 * 60 * 60;
 
 /** Permit2's `amount` field is `uint160` — `2**160 - 1`. */
 const UINT160_MAX = BigInt("0xffffffffffffffffffffffffffffffffffffff");
@@ -51,7 +54,7 @@ const UINT48_MAX = BigInt("0xffffffffffff");
  * that isn't a finite positive integer within a sane bound — never lets
  * a negative, zero, NaN, Infinity, or absurdly large value silently
  * produce a nonsensical or overflowing deadline. */
-function validateBoundedSeconds(seconds: number, label: string): number {
+export function validateBoundedSeconds(seconds: number, label: string): number {
   if (!Number.isFinite(seconds) || !Number.isInteger(seconds)) {
     throw new Error(`${label} must be a finite integer, got ${seconds}`);
   }
@@ -89,7 +92,11 @@ function assertQuoteMatchesConfigNetwork(
   }
 }
 
-const UNIVERSAL_ROUTER_EXECUTE_ABI = [
+/** Exported so PR09's signing-time calldata decoder
+ * (lib/chain/robinhood-agent-signing.ts) decodes the exact same ABI this
+ * module encodes with — one definition, never a second hand-copied one
+ * that could silently drift out of sync. */
+export const UNIVERSAL_ROUTER_EXECUTE_ABI = [
   {
     type: "function",
     name: "execute",
@@ -222,7 +229,9 @@ export function buildNativeSellTransaction(
 
 // ── Sell-path prerequisites: ERC-20 → Permit2 → UniversalRouter ────────
 
-const ERC20_ABI = [
+/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above —
+ * PR09's signer decodes with this exact ABI, never a hand-copied one. */
+export const ERC20_ABI = [
   {
     type: "function",
     name: "approve",
@@ -245,7 +254,8 @@ const ERC20_ABI = [
   },
 ] as const;
 
-const PERMIT2_ABI = [
+/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above. */
+export const PERMIT2_ABI = [
   {
     type: "function",
     name: "approve",

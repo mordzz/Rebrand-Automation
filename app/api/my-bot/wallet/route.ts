@@ -10,6 +10,8 @@ import {
 } from "@/lib/solana/agent-wallet";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";
+import { getNativeBalance, RobinhoodRpcError } from "@/lib/chain/rpc";
+import { buildRobinhoodAgentWalletView } from "@/lib/chain/robinhood-agent-wallet-view";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +80,40 @@ export async function GET(request: Request) {
       reason: isAgentWalletConfigured()
         ? "not_generated"
         : "encryption_key_missing",
+    });
+  }
+
+  /* Chain-aware dispatch: a Robinhood/EVM agent wallet's address is never
+     a valid input to the Solana balance reader below (getAddressBalance
+     decodes it as a Solana base58 address, which a 0x-shaped address is
+     not) — this branch must run BEFORE that call, never after a failed
+     attempt. */
+  if (bot.agentChain === "robinhood") {
+    let balanceWei: bigint | null = null;
+    let balanceError: string | null = null;
+    try {
+      balanceWei = await getNativeBalance(bot.agentPublicKey);
+    } catch (error) {
+      balanceError =
+        error instanceof RobinhoodRpcError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Could not read the wallet balance.";
+    }
+
+    const view = buildRobinhoodAgentWalletView(
+      { agentPublicKey: bot.agentPublicKey, agentNetwork: bot.agentNetwork },
+      { balanceWei, error: balanceError }
+    );
+    if ("reason" in view) {
+      return NextResponse.json(view);
+    }
+    return NextResponse.json({
+      configured: true,
+      wallet: view,
+      tradingMode: bot.tradingMode,
+      active: bot.active,
     });
   }
 

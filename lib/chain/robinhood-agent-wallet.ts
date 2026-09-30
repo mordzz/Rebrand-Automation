@@ -18,10 +18,10 @@
  * here ever derives an agent private key from the owner wallet, and
  * nothing here ever exposes agent key material to a browser.
  *
- * Encryption at rest reuses lib/solana/agent-wallet.ts's AES-256-GCM
- * implementation (encryptSecret/decryptSecret) — that layer only ever
- * handles opaque bytes and has no Solana-specific assumption in it, so
- * this module deliberately does not reimplement its own encryption.
+ * Encryption at rest reuses lib/wallet/secret-encryption.ts's chain-
+ * neutral AES-256-GCM implementation (encryptSecret/decryptSecret) — that
+ * module has no Solana or EVM assumption in it, so this module
+ * deliberately does not reimplement its own encryption.
  */
 import { bytesToHex, getAddress, hexToBytes, isAddress, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
@@ -30,7 +30,7 @@ import {
   decryptSecret,
   encryptSecret,
   isAgentWalletConfigured,
-} from "@/lib/solana/agent-wallet";
+} from "@/lib/wallet/secret-encryption";
 import { ROBINHOOD_NATIVE_SYMBOL, ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
 
 export { isAgentWalletConfigured };

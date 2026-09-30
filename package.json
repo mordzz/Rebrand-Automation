@@ -22,6 +22,7 @@
     "migrate:robinhood-agent-wallet": "tsx scripts/apply-robinhood-agent-wallet-migration.ts",
     "test:robinhood-agent-signing": "tsx scripts/test-robinhood-agent-signing.ts",
     "test:robinhood-agent-signing-live": "tsx scripts/test-robinhood-agent-signing-live.ts",
+    "test:robinhood-agent-wallet-view": "tsx scripts/test-robinhood-agent-wallet-view.ts",
     "inspect:gmgn-robinhood": "tsx scripts/inspect-gmgn-robinhood.ts",
     "inspect:robinhood-liquidity": "tsx scripts/inspect-robinhood-liquidity.ts",
     "collect:robinhood-liquidity": "tsx scripts/collect-robinhood-new-creation-liquidity.ts",
