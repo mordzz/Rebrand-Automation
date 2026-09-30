@@ -39,6 +39,7 @@ import {
   CHARACTER_ROSTER,
   characterTypeForSrc,
 } from "@/components/deploy/characters";
+import { NetworkBadge } from "@/components/network-badge";
 import { PRIVY_APP_ID } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -822,6 +823,7 @@ function BotDesk({
                 <span className="truncate font-mono text-sm">
                   {shortAddress(address)}
                 </span>
+                <NetworkBadge />
               </div>
               <div className="flex items-center gap-4">
                 {/* Reads the actual mode rather than asserting one. This

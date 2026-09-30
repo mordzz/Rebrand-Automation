@@ -84,6 +84,13 @@ function usePolledJson<T>(url: string, intervalMs: number): T | null {
   return data;
 }
 
+/** Display a slider value at its step's precision (no float noise such as
+ * 0.0022104315514197086). */
+function formatStepValue(value: number, step: number): string {
+  const decimals = Math.min(8, Math.max(0, (String(step).split(".")[1] ?? "").length));
+  return Number(value.toFixed(decimals)).toString();
+}
+
 function Field({
   label,
   hint,
@@ -107,8 +114,8 @@ function Field({
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
         <Label className="text-sm font-normal">{label}</Label>
-        <span className="text-sm font-medium">
-          {value}
+        <span className="text-sm font-medium tabular-nums">
+          {formatStepValue(value, step)}
           {unit ? ` ${unit}` : ""}
         </span>
       </div>
@@ -168,8 +175,8 @@ function NullableField({
             step={step}
             className="flex-1"
           />
-          <span className="ml-4 w-16 shrink-0 text-right text-sm font-medium">
-            {value}
+          <span className="ml-4 w-24 shrink-0 text-right text-sm font-medium tabular-nums">
+            {formatStepValue(value, step)}
             {unit ? ` ${unit}` : ""}
           </span>
         </div>
@@ -222,6 +229,7 @@ export function SniperConfigPanel({
   const [alphaWalletsInput, setAlphaWalletsInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Seed the draft once from the first fetched config, adjusting state
   // during render (React's documented pattern for this) rather than an
@@ -241,17 +249,23 @@ export function SniperConfigPanel({
   async function save() {
     if (!draft) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await saveFetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      const json = await res.json();
-      if (json.config) {
+      const json = (await res.json().catch(() => ({}))) as { config?: SniperConfigValue; error?: string };
+      if (res.ok && json.config) {
         setDraft(json.config);
         setSavedAt(Date.now());
+      } else {
+        // Surface the failure instead of silently leaving the draft unsaved.
+        setSaveError(json.error ?? `Couldn't save (HTTP ${res.status}). Your changes are still here — try again.`);
       }
+    } catch {
+      setSaveError("Couldn't reach the server. Your changes are still here — try again.");
     } finally {
       setSaving(false);
     }
@@ -330,8 +344,12 @@ export function SniperConfigPanel({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          {savedAt && !dirty && (
-            <span className="text-xs text-muted-foreground">Saved</span>
+          {saveError ? (
+            <span role="alert" className="max-w-xs text-right text-xs text-destructive">
+              {saveError}
+            </span>
+          ) : (
+            savedAt && !dirty && <span className="text-xs text-muted-foreground">Saved</span>
           )}
           {dirty && (
             <Button variant="ghost" size="sm" onClick={reset} className="text-xs text-muted-foreground">

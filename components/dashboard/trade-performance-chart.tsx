@@ -56,10 +56,11 @@ export function TradePerformanceChart({
   // variable, so the render body stays pure).
   // One unit per chart: Robinhood (ETH) rows if any exist, otherwise the
   // historical Solana (SOL) rows. ETH and SOL are never summed together.
-  const hasRobinhood = trades.some(isRobinhoodRow);
-  const unit = hasRobinhood ? "ETH" : "SOL";
+  // Only a desk whose ledger is purely historical Solana charts in SOL.
+  const solanaOnly = trades.length > 0 && !trades.some(isRobinhoodRow);
+  const unit = solanaOnly ? "SOL" : "ETH";
   const perfSeries = trades
-    .filter((t) => isRobinhoodRow(t) === hasRobinhood)
+    .filter((t) => isRobinhoodRow(t) !== solanaOnly)
     .sort(
       (a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime()
     )
