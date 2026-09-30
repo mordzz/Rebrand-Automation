@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { NextConfig } from "next";
 
 // Optional Solana peers of @privy-io/react-auth. The app is EVM-only (Robinhood
@@ -17,6 +19,16 @@ const nextConfig: NextConfig = {
     resolveAlias: Object.fromEntries(
       privySolanaPeers.map((pkg) => [pkg, PRIVY_SOLANA_PEER_STUB]),
     ),
+  },
+  // Same aliases for `next dev --webpack` (the Docker dev workflow).
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      ...Object.fromEntries(
+        privySolanaPeers.map((pkg) => [pkg, path.resolve(PRIVY_SOLANA_PEER_STUB)]),
+      ),
+    };
+    return config;
   },
 };
 
