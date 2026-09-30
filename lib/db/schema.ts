@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -405,6 +407,17 @@ export const userBots = pgTable("user_bots", {
   agentChain: text("agent_chain"),
   agentNetwork: text("agent_network"),
   agentNativeSymbol: text("agent_native_symbol"),
+  /* PR12 Lighter perps credentials (drizzle/0005_lighter_api_credentials.sql).
+   * The Lighter account is owned by the AGENT wallet above, never the owner
+   * wallet. `lighterApiKeyEnc` is an encrypted blob only decryptable inside
+   * the Lighter signer worker — never select it into a browser response. */
+  lighterNetwork: text("lighter_network"),
+  lighterAccountIndex: bigint("lighter_account_index", { mode: "number" }),
+  lighterApiKeyIndex: integer("lighter_api_key_index"),
+  lighterApiPublicKey: text("lighter_api_public_key"),
+  lighterApiKeyEnc: text("lighter_api_key_enc"),
+  lighterApiKeyStatus: text("lighter_api_key_status"),
+  lighterApiKeyRegisteredAt: timestamp("lighter_api_key_registered_at", { withTimezone: true }),
   /* "paper" | "live". Defaults to paper and stays there until the operator
    * turns it on deliberately — Design Principle 3 in the whitepaper: every
    * agent begins in dry-run, and going live is a separate decision, not a
