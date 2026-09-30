@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { maskRpcUrl, validateRpcUrl } from "@/lib/solana/rpc-validate";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +30,8 @@ async function loadBot(wallet: string) {
  * A deployed bot's private RPC endpoint.
  *
  * The raw URL is never returned by any method here — provider URLs carry
- * an API key, and this endpoint trusts a client-asserted wallet like the
- * rest of app/api/my-bot, so returning it would hand the key to anyone
+ * an API key, and reads trust a client-asserted wallet (only mutations
+ * require a verified Privy owner — lib/auth/privy-server.ts), so returning it would hand the key to anyone
  * who knows a wallet address. Reads get a masked host only.
  */
 export async function GET(request: Request) {
@@ -59,9 +60,9 @@ export async function POST(request: Request) {
   }
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   let body: { url?: string };
   try {
@@ -103,9 +104,9 @@ export async function DELETE(request: Request) {
   }
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   const bot = await loadBot(wallet);
   if (!bot) {

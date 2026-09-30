@@ -30,8 +30,8 @@ function isPlausibleSolanaAddress(addr: string): boolean {
  * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
  * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
  * may legitimately be either shape depending on when the bot was deployed.
- * NOTE (demo): the wallet is client-asserted. Before real deploys, verify
- * Privy's access token server-side instead of trusting this parameter. */
+ * GET is read-only (address + balance, never key material), so the wallet
+ * is client-asserted here; the only mutation (POST withdraw) is retired. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return isPlausibleSolanaAddress(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }

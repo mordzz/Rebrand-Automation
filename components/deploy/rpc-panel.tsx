@@ -4,6 +4,7 @@ import { Check, Loader2, Trash2, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { usePrivyAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 import { cn } from "@/lib/utils";
 
 type RpcResponse = {
@@ -27,6 +28,7 @@ export function RpcPanel({ walletQuery }: { walletQuery: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const authedFetch = usePrivyAuthedFetch();
 
   useEffect(() => {
     let disposed = false;
@@ -52,7 +54,7 @@ export function RpcPanel({ walletQuery }: { walletQuery: string }) {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch(`/api/my-bot/rpc?${walletQuery}`, {
+      const res = await authedFetch(`/api/my-bot/rpc?${walletQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: draft }),
@@ -79,7 +81,7 @@ export function RpcPanel({ walletQuery }: { walletQuery: string }) {
     setError(null);
     setSuccess(null);
     try {
-      await fetch(`/api/my-bot/rpc?${walletQuery}`, { method: "DELETE" });
+      await authedFetch(`/api/my-bot/rpc?${walletQuery}`, { method: "DELETE" });
       setCurrent(null);
     } catch {
       setError("Could not clear that endpoint.");

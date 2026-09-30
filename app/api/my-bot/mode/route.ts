@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";
 
@@ -11,12 +12,6 @@ export const dynamic = "force-dynamic";
 
 /** Mirrors LIVE_FEE_HEADROOM_SOL in scripts/paper-daemon.ts. */
 const LIVE_FEE_HEADROOM_SOL = 0.01;
-
-/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
-function isPlausibleWalletAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
 
 /**
  * Switches a bot between paper and live.
@@ -36,9 +31,9 @@ export async function POST(request: Request) {
   }
 
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(owner)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, owner);
+  if (!auth.ok) return authErrorResponse(auth);
 
   let body: { mode?: string };
   try {

@@ -24,7 +24,7 @@ function isPlausibleWalletAddress(addr: string): boolean {
 const CHARACTER_TYPES = new Set(["3d", "image", "gif"]);
 
 /** Drops the encrypted agent key from anything sent to a browser. This
- * endpoint trusts a client-asserted wallet, so shipping key material —
+ * endpoint's GET trusts a client-asserted wallet, so shipping key material —
  * even encrypted — would put it one guessed address away from anyone who
  * later obtains the encryption key. */
 function withoutSecret<T extends { agentSecretEnc?: string | null }>(row: T) {
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   if (!bot) return NextResponse.json({ configured: true, bot: null });
 
   /* Strip the encrypted agent key before it leaves the server. It is
-     encrypted, but this endpoint trusts a client-asserted wallet, so
+     encrypted, but this GET trusts a client-asserted wallet, so
      shipping it would put every agent's key material one guessed address
      away from an attacker who later obtains the encryption key. */
   return NextResponse.json({ configured: true, bot: withoutSecret(bot) });

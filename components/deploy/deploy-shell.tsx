@@ -43,6 +43,7 @@ import {
 import { PRIVY_APP_ID } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { usePrivyAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 import { cn } from "@/lib/utils";
 
 const PANEL_LABEL =
@@ -221,7 +222,7 @@ function CharacterForm({
   onDone: () => void;
   onCancel?: () => void;
 }) {
-  const { getAccessToken } = usePrivy();
+  const authedFetch = usePrivyAuthedFetch();
   const initialRosterId =
     initial == null
       ? "noah"
@@ -267,19 +268,11 @@ function CharacterForm({
     setSaving(true);
     setError(null);
     try {
-      // The server verifies this Privy token and that `address` is linked
-      // to its user before saving (or minting an agent wallet).
-      const token = await getAccessToken();
-      if (!token) {
-        setError("Your session expired — reconnect your wallet and try again.");
-        return;
-      }
-      const res = await fetch("/api/my-bot", {
+      // Authed: the server verifies the Privy token and that `address` is
+      // linked to its user before saving (or minting an agent wallet).
+      const res = await authedFetch("/api/my-bot", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wallet: address, name: trimmed, ...payload }),
       });
       const json = await res.json();
@@ -468,6 +461,7 @@ function BotDesk({
      a filtered view of the same rows. A freshly deployed bot legitimately
      starts empty until it closes its own trades. */
   const walletQuery = `wallet=${encodeURIComponent(address)}`;
+  const authedFetch = usePrivyAuthedFetch();
   const statsData = usePolledJson<StatsResponse>(`/api/stats?${walletQuery}`);
   const tradesData = usePolledJson<{ configured: boolean; data: TradeRow[] }>(
     `/api/trades?${walletQuery}`,
@@ -486,7 +480,7 @@ function BotDesk({
     setResetting(true);
     setResetMessage(null);
     try {
-      const res = await fetch(`/api/my-bot/reset-breaker?${walletQuery}`, { method: "POST" });
+      const res = await authedFetch(`/api/my-bot/reset-breaker?${walletQuery}`, { method: "POST" });
       setResetMessage(
         res.ok ? "Reset — trading resumes within moments." : "Reset failed, try again.",
       );
@@ -524,7 +518,7 @@ function BotDesk({
     setToggling(true);
     setActiveOverride(next);
     try {
-      await fetch(`/api/my-bot/toggle?${walletQuery}`, {
+      await authedFetch(`/api/my-bot/toggle?${walletQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active: next }),
@@ -590,7 +584,7 @@ function BotDesk({
     setModeBusy(true);
     setModeError(null);
     try {
-      const res = await fetch(`/api/my-bot/mode?${walletQuery}`, {
+      const res = await authedFetch(`/api/my-bot/mode?${walletQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: next }),
@@ -630,7 +624,7 @@ function BotDesk({
     setDryRunError(null);
     setDryRunResult(null);
     try {
-      const res = await fetch(`/api/my-bot/dry-run?${walletQuery}`, { method: "POST" });
+      const res = await authedFetch(`/api/my-bot/dry-run?${walletQuery}`, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Dry run failed");
       setDryRunResult(json);
@@ -1145,6 +1139,7 @@ function BotDesk({
         endpoint={`/api/my-bot/config?wallet=${encodeURIComponent(address)}`}
         title={`${bot.name} · Private Tune`}
         description="Your bot's own rules — seeded from the default configuration, yours to adjust."
+        saveFetch={authedFetch}
       />
     </div>
   );

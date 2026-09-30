@@ -194,10 +194,14 @@ export function SniperConfigPanel({
   endpoint = "/api/sniper/config",
   title = "The Raven · Live Config",
   description = "Changes take effect on the daemon's next cycle — no restart needed.",
+  saveFetch = fetch,
 }: {
   endpoint?: string;
   title?: string;
   description?: string;
+  /** Used for the PATCH only — a user bot's panel passes a Privy-authed
+   * fetch (see lib/auth/use-privy-authed-fetch.ts). */
+  saveFetch?: typeof fetch;
 }) {
   const response = usePolledJson<{ configured: boolean; config: SniperConfigValue | null }>(
     endpoint,
@@ -228,7 +232,7 @@ export function SniperConfigPanel({
     if (!draft) return;
     setSaving(true);
     try {
-      const res = await fetch(endpoint, {
+      const res = await saveFetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),

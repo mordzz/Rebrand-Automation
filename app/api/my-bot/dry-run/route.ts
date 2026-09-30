@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { evaluateSafety, fetchTokenSafetyData } from "@/lib/sniper/safety-checks";
 import { subscribeNewTokenStream, type PumpPortalNewTokenEvent } from "@/lib/solana/pumpportal";
@@ -22,12 +23,6 @@ const MAX_EXTRA_WAIT_SEC = 15;
 // produce far more mints than are worth deep-checking for one test run.
 const MAX_TOKENS_EVALUATED = 20;
 
-/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
-function isPlausibleWalletAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
-
 /**
  * One-shot config test: listens to the real, live pump.fun mint stream for
  * a short window, then grades every token it saw against this bot's own
@@ -43,9 +38,9 @@ export async function POST(request: Request) {
   }
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   const [bot] = await db.select().from(userBots).where(eq(userBots.walletAddress, wallet)).limit(1);
   if (!bot) {

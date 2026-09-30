@@ -12,7 +12,7 @@
  *
  * Run: npm run test:privy-server-auth
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { verifyAccessToken } from "@privy-io/node";
@@ -219,6 +219,27 @@ async function main() {
     assert(authAt < genAt, `${route}: auth happens before key generation`);
     assert(!/Solana|solana\//.test(post.match(/import[^;]+;/g)?.join("") ?? ""), `${route}: no Solana imports`);
   }
+  // Every mutating handler under app/api/my-bot must authenticate before it
+  // touches the DB — or be a fixed fail-closed stub that reads nothing.
+  for (const dir of readdirSync(join(root, "app/api/my-bot"), { recursive: true }) as string[]) {
+    if (!dir.endsWith("route.ts")) continue;
+    const route = join("app/api/my-bot", dir);
+    const src = readFileSync(join(root, route), "utf8");
+    const handlers = src.split(/(?=export async function )/).slice(1);
+    for (const h of handlers) {
+      const method = /export async function (\w+)/.exec(h)?.[1];
+      if (!method || method === "GET") continue;
+      const readsState = /getDb\(|request\.json\(|generateRobinhoodAgentWallet\(/.test(h);
+      if (!readsState) {
+        assert(/status: (410|501)|return retired\(\)/.test(h), `${route} ${method}: stateless handler is a fail-closed stub`);
+        continue;
+      }
+      const authAt = h.indexOf("authenticateEvmOwner(");
+      const firstDb = h.search(/\.(select|update|insert|delete)\(/);
+      assert(authAt > 0 && (firstDb < 0 || authAt < firstDb), `${route} ${method}: authenticates before DB access`);
+    }
+  }
+
   {
     const src = readFileSync(join(root, "app/api/my-bot/reveal-key/route.ts"), "utf8");
     assert(/status: 410/.test(src) && !/decryptSecret|agentSecretEnc/.test(src), "reveal-key stays retired (410, no key access)");
