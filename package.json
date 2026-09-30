@@ -21,6 +21,7 @@
     "test:robinhood-agent-wallet-view": "tsx scripts/test-robinhood-agent-wallet-view.ts",
     "test:privy-server-auth": "tsx scripts/test-privy-server-auth.ts",
     "test:robinhood-broadcast": "tsx scripts/test-robinhood-broadcast.ts",
+    "test:lighter-foundation": "tsx scripts/test-lighter-foundation.ts",
     "canary:robinhood-testnet": "tsx scripts/robinhood-testnet-canary.ts",
     "inspect:gmgn-robinhood": "tsx scripts/inspect-gmgn-robinhood.ts",
     "inspect:robinhood-liquidity": "tsx scripts/inspect-robinhood-liquidity.ts",
