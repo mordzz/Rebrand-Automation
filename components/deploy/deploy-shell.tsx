@@ -621,9 +621,9 @@ function BotDesk({
     }
   }
 
-  // One-shot config test: listens to the real live pump.fun stream for
-  // ~15-25s and grades everything it saw against this bot's own config,
-  // using the exact same check the daemon runs — no position is ever
+  // One-shot config test: grades the freshest Robinhood Chain launches
+  // (GMGN) against this bot's own config, using the exact same check the
+  // daemon runs — no position is ever
   // opened, nothing is written to positions/trades. Distinct from
   // Start/Stop: this doesn't touch `active` and doesn't need it on.
   const [dryRunning, setDryRunning] = useState(false);
@@ -965,7 +965,7 @@ function BotDesk({
                 {dryRunning && (
                   <p className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
-                    Watching the live pump.fun stream and grading what comes in: this takes about 20-30 seconds.
+                    Grading the freshest Robinhood Chain launches against your config: this takes a few seconds.
                   </p>
                 )}
 
