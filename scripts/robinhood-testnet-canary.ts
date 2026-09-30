@@ -15,9 +15,11 @@
  *
  * TESTNET ONLY (chain 46630): the broadcaster refuses anything else.
  *
- * The canary agent wallet is generated once and stored ENCRYPTED
- * (AGENT_WALLET_ENCRYPTION_KEY) in data/robinhood-testnet-canary.wallet.json
- * (gitignored). Its private key is never printed. If it is unfunded, the
+ * The canary wallet is generated once and stored ENCRYPTED (AES-256-GCM)
+ * with its own test-only key, ROBINHOOD_TESTNET_CANARY_ENCRYPTION_KEY
+ * (32 bytes, hex or base64), in data/robinhood-testnet-canary.wallet.json
+ * (gitignored). It deliberately does NOT use AGENT_WALLET_ENCRYPTION_KEY,
+ * which also enables production agent-wallet creation. Its private key is never printed. If it is unfunded, the
  * script prints the address to fund from the Robinhood testnet faucet and
  * exits with code 2 without sending anything.
  *
@@ -26,14 +28,16 @@
 import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 
+import * as crypto from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { formatEther, getAddress, type Address } from "viem";
+import { bytesToHex, formatEther, getAddress, hexToBytes, type Address } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { explorerUrl, ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { getErc20Balance, getNativeBalance, getRobinhoodPublicClient } from "@/lib/chain/rpc";
-import { generateRobinhoodAgentWallet, isAgentWalletConfigured, type AgentWalletBotRow } from "@/lib/chain/robinhood-agent-wallet";
+import type { AgentWalletBotRow } from "@/lib/chain/robinhood-agent-wallet";
 import { signRobinhoodTransaction, type SigningIntent } from "@/lib/chain/robinhood-agent-signing";
 import {
   broadcastRobinhoodTransaction,
@@ -73,6 +77,50 @@ const LEDGER_FILE = join(DATA_DIR, "robinhood-testnet-canary.ledger.jsonl");
 
 type StoredWallet = { address: Address; secretEnc: string; network: string };
 
+/** Test-only canary key: exactly 32 decoded bytes, hex or base64. Never
+ * printed; errors never include the value. */
+function canaryKey(): Buffer {
+  const raw = process.env.ROBINHOOD_TESTNET_CANARY_ENCRYPTION_KEY?.trim();
+  if (!raw) throw new Error("ROBINHOOD_TESTNET_CANARY_ENCRYPTION_KEY is not set (32 bytes, hex or base64).");
+  const key = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
+  if (key.length !== 32) throw new Error("ROBINHOOD_TESTNET_CANARY_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+  return key;
+}
+
+function encryptCanarySecret(secret: Uint8Array): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", canaryKey(), iv);
+  const data = Buffer.concat([cipher.update(secret), cipher.final()]);
+  return ["canary1", iv.toString("base64"), cipher.getAuthTag().toString("base64"), data.toString("base64")].join(".");
+}
+
+function decryptCanarySecret(stored: string): Uint8Array {
+  const [v, iv, tag, data] = stored.split(".");
+  if (v !== "canary1" || !iv || !tag || !data) throw new Error("Canary wallet file is not in the expected format.");
+  const d = crypto.createDecipheriv("aes-256-gcm", canaryKey(), Buffer.from(iv, "base64"));
+  d.setAuthTag(Buffer.from(tag, "base64"));
+  try {
+    return new Uint8Array(Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]));
+  } catch {
+    throw new Error("Canary wallet decryption failed (wrong ROBINHOOD_TESTNET_CANARY_ENCRYPTION_KEY?).");
+  }
+}
+
+/** Signer key loader for the canary only — same fail-closed checks as the
+ * production loader (chain, network, stored address == derived address). */
+async function loadCanaryAccount(bot: AgentWalletBotRow) {
+  if (bot.agentChain !== "robinhood" || bot.agentNetwork !== "testnet" || !bot.agentSecretEnc || !bot.agentPublicKey) {
+    throw new Error("Canary wallet row is not a Robinhood testnet wallet.");
+  }
+  const bytes = decryptCanarySecret(bot.agentSecretEnc);
+  if (bytes.length !== 32) throw new Error("Canary key is not 32 bytes.");
+  const account = privateKeyToAccount(bytesToHex(bytes));
+  if (getAddress(account.address) !== getAddress(bot.agentPublicKey)) {
+    throw new Error("Canary derived address does not match the stored address.");
+  }
+  return { account, address: account.address };
+}
+
 function ledger(entry: Record<string, unknown>) {
   appendFileSync(
     LEDGER_FILE,
@@ -83,22 +131,24 @@ function ledger(entry: Record<string, unknown>) {
 async function loadOrCreateWallet(): Promise<StoredWallet> {
   mkdirSync(DATA_DIR, { recursive: true });
   if (existsSync(WALLET_FILE)) return JSON.parse(readFileSync(WALLET_FILE, "utf8")) as StoredWallet;
-  const w = await generateRobinhoodAgentWallet();
-  const stored: StoredWallet = { address: w.address, secretEnc: w.secretEnc, network: w.network };
-  writeFileSync(WALLET_FILE, JSON.stringify(stored, null, 2));
-  console.log(`Generated canary agent wallet ${w.address} (encrypted key stored in ${WALLET_FILE}).`);
+  const pk = generatePrivateKey();
+  const address = privateKeyToAccount(pk).address;
+  const stored: StoredWallet = { address, secretEnc: encryptCanarySecret(hexToBytes(pk)), network: "testnet" };
+  writeFileSync(WALLET_FILE, JSON.stringify(stored, null, 2), { flag: "wx" });
+  console.log(`Generated canary wallet ${address} (encrypted with the canary key in ${WALLET_FILE}).`);
   return stored;
 }
 
 async function main() {
   if (ROBINHOOD_NETWORK !== "testnet") throw new Error("Canary runs on Robinhood testnet only.");
-  if (!isAgentWalletConfigured()) throw new Error("AGENT_WALLET_ENCRYPTION_KEY is not set.");
+  canaryKey(); // validate before touching any wallet file
   const cfg = resolveRobinhoodExecutionConfig("testnet");
   if (!cfg.ok) throw new Error(cfg.reason);
   const config = cfg.config;
 
   const stored = await loadOrCreateWallet();
   if (stored.network !== "testnet") throw new Error("Stored canary wallet is not a testnet wallet.");
+  await loadCanaryAccount({ agentChain: "robinhood", agentNetwork: stored.network, agentPublicKey: stored.address, agentSecretEnc: stored.secretEnc });
   const bot: AgentWalletBotRow = {
     agentChain: "robinhood",
     agentNetwork: stored.network,
@@ -122,7 +172,10 @@ async function main() {
   const hashes: Array<{ step: string; hash: string; status: string }> = [];
 
   async function execute(step: string, unsigned: UnsignedTransaction, intent: SigningIntent, approvalToken?: Address) {
-    const signed = await signRobinhoodTransaction({ bot, unsignedTransaction: unsigned, intent, approvalToken });
+    const signed = await signRobinhoodTransaction(
+      { bot, unsignedTransaction: unsigned, intent, approvalToken },
+      { loadAccount: loadCanaryAccount },
+    );
     const input = {
       expectedSender: sender,
       unsignedTransaction: unsigned,

@@ -416,6 +416,9 @@ export type SignRobinhoodTransactionDeps = {
   getNonce?: (address: Address) => Promise<number>;
   estimateFeesPerGas?: () => Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }>;
   estimateGas?: (params: { account: Address; to: Address; data: Hex; value: bigint }) => Promise<bigint>;
+  /** Key loader. Defaults to the production encrypted agent-wallet loader;
+   * only the PR10 testnet canary substitutes its own separately-keyed one. */
+  loadAccount?: typeof loadRobinhoodAgentAccount;
 };
 
 /**
@@ -442,7 +445,7 @@ export async function signRobinhoodTransaction(
   const assertNetwork = deps.assertNetwork ?? assertExecutionConfigOnActiveNetwork;
   await assertNetwork(config, client);
 
-  const { account } = await loadRobinhoodAgentAccount(input.bot);
+  const { account } = await (deps.loadAccount ?? loadRobinhoodAgentAccount)(input.bot);
 
   const getNonce = deps.getNonce ?? ((address: Address) => client.getTransactionCount({ address, blockTag: "pending" }));
   const estimateFeesPerGas = deps.estimateFeesPerGas ?? (() => client.estimateFeesPerGas());
