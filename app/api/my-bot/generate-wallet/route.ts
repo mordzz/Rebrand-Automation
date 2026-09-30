@@ -8,6 +8,7 @@ import {
   generateAgentWallet,
   isAgentWalletConfigured,
 } from "@/lib/solana/agent-wallet";
+import { generateRobinhoodAgentWallet } from "@/lib/chain/robinhood-agent-wallet";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,12 @@ export const dynamic = "force-dynamic";
  * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
+}
+
+/** Same chain dispatch as app/api/my-bot/route.ts — never inferred any
+ * other way. */
+function isEvmOwnerWallet(wallet: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(wallet);
 }
 
 /**
@@ -81,7 +88,29 @@ export async function POST(request: Request) {
     });
   }
 
-  // Generate new keypair & encrypt
+  // Generate new keypair & encrypt — chain dispatch by owner wallet shape,
+  // same rule as app/api/my-bot/route.ts.
+  if (isEvmOwnerWallet(wallet)) {
+    const generated = await generateRobinhoodAgentWallet();
+    await db
+      .update(userBots)
+      .set({
+        agentPublicKey: generated.address,
+        agentSecretEnc: generated.secretEnc,
+        agentChain: generated.chain,
+        agentNetwork: generated.network,
+        agentNativeSymbol: generated.nativeSymbol,
+        updatedAt: new Date(),
+      })
+      .where(eq(userBots.id, bot.id));
+
+    return NextResponse.json({
+      ok: true,
+      walletAddress: generated.address,
+      alreadyExisted: false,
+    });
+  }
+
   const generated = await generateAgentWallet();
 
   await db
@@ -89,6 +118,9 @@ export async function POST(request: Request) {
     .set({
       agentPublicKey: generated.publicKey,
       agentSecretEnc: generated.secretEnc,
+      agentChain: "solana",
+      agentNetwork: null,
+      agentNativeSymbol: "SOL",
       updatedAt: new Date(),
     })
     .where(eq(userBots.id, bot.id));

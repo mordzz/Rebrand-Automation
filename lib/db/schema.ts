@@ -393,6 +393,18 @@ export const userBots = pgTable("user_bots", {
    * lib/solana/agent-wallet.ts. No API ever returns this column. */
   agentPublicKey: text("agent_public_key"),
   agentSecretEnc: text("agent_secret_enc"),
+  /* Chain/network metadata for the agent wallet above — added in PR09,
+   * additive only (see drizzle/0004_robinhood_agent_wallet.sql). Every
+   * bot deployed before PR09 is unambiguously Solana (no other signer
+   * existed) and was backfilled accordingly; NULL network for those
+   * legacy rows means "never recorded", never a guess. A NEW bot's agent
+   * wallet is chain-aware from the moment it's generated: EVM-owned bots
+   * (0x wallet_address) get "robinhood"/"testnet"/"ETH"; legacy-flow
+   * Solana bots keep getting "solana"/null/"SOL". Runtime code must
+   * dispatch on this column, never infer chain from address shape alone. */
+  agentChain: text("agent_chain"),
+  agentNetwork: text("agent_network"),
+  agentNativeSymbol: text("agent_native_symbol"),
   /* "paper" | "live". Defaults to paper and stays there until the operator
    * turns it on deliberately — Design Principle 3 in the whitepaper: every
    * agent begins in dry-run, and going live is a separate decision, not a

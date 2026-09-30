@@ -67,7 +67,13 @@ function requireKey(): Buffer {
   return key;
 }
 
-function encryptSecret(secret: Uint8Array): string {
+/** Exported (not just used internally) so the chain-neutral parts of this
+ * encryption layer can be reused by lib/chain/robinhood-agent-wallet.ts
+ * for EVM agent keys — this function only ever handles opaque bytes, it
+ * has no Solana-specific assumption in it. Do not duplicate this AES-256-GCM
+ * implementation elsewhere; one encryption implementation, reused across
+ * chains. */
+export function encryptSecret(secret: Uint8Array): string {
   const key = requireKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);

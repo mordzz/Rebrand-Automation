@@ -157,6 +157,20 @@ export async function POST(request: Request) {
   const blocked = assertNotOfficial(bot);
   if (blocked) return blocked;
 
+  /* Chain-aware routing: never feed a Robinhood/EVM agent's key material
+   * into the Solana withdrawal path below (createKeyPairSignerFromBytes
+   * expects a 64-byte Solana secret; a stored 32-byte EVM key isn't that
+   * shape and would fail unpredictably rather than with a clear reason).
+   * Withdrawal for Robinhood bots also inherently means broadcasting a
+   * transaction, which is explicitly out of scope for PR09 (signing
+   * only, see lib/chain/robinhood-agent-signing.ts) — that's PR10's job. */
+  if (bot.agentChain === "robinhood") {
+    return NextResponse.json(
+      { error: "Robinhood agent-wallet withdrawal is not yet implemented (requires PR10's broadcast layer)." },
+      { status: 501 }
+    );
+  }
+
   /* Check the balance server-side rather than trusting the amount the
      browser sent. Without this a request could ask for more than the
      wallet holds and fail on-chain after the operator was told it was
