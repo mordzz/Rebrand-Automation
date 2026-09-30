@@ -46,7 +46,34 @@ export type LighterMarket = {
   openInterest: string;
 };
 
-export type LighterSubAccount = { accountIndex: number; l1Address: string; collateral: string };
+export type LighterSubAccount = { accountIndex: number; l1Address: string; collateral: string; accountType: number };
+
+/** GET /api/v1/apikeys entry (official ApiKey model). */
+export type LighterApiKeyRecord = { accountIndex: number; apiKeyIndex: number; nonce: number; publicKey: string };
+
+/** Official Order model (subset used by Noah). Amounts stay strings. */
+export type LighterOrder = {
+  orderIndex: number;
+  clientOrderIndex: number;
+  marketIndex: number;
+  isAsk: boolean;
+  type: string;
+  timeInForce: string;
+  reduceOnly: boolean;
+  price: string;
+  initialBaseAmount: string;
+  remainingBaseAmount: string;
+  filledBaseAmount: string;
+  status: string;
+};
+
+/** GET /api/v1/fundings entry (official Funding model). */
+export type LighterFundingRate = { timestamp: number; value: string; rate: string; direction: string };
+
+/** GET /api/v1/positionFunding entry (official PositionFunding model). */
+export type LighterPositionFunding = {
+  timestamp: number; marketId: number; change: string; rate: string; positionSize: string; positionSide: string;
+};
 
 export type LighterPosition = {
   marketId: number;
@@ -61,6 +88,10 @@ export type LighterPosition = {
   unrealizedPnl: string;
   realizedPnl: string;
   liquidationPrice: string | null;
+  /** Cumulative funding paid out on this position (official field). */
+  totalFundingPaidOut: string;
+  allocatedMargin: string;
+  marginMode: number;
 };
 
 export type LighterAccountState = {
@@ -74,14 +105,14 @@ export type LighterAccountState = {
   positions: LighterPosition[];
 };
 
-type Fetcher = (url: string) => Promise<Response>;
+type Fetcher = (url: string, headers?: Record<string, string>) => Promise<Response>;
 
 const str = (v: unknown) => (v === null || v === undefined ? "0" : String(v));
 
-async function getJson(url: string, fetcher: Fetcher): Promise<Record<string, unknown>> {
+async function getJson(url: string, fetcher: Fetcher, headers?: Record<string, string>): Promise<Record<string, unknown>> {
   let res: Response;
   try {
-    res = await fetcher(url);
+    res = await fetcher(url, headers);
   } catch (error) {
     throw new LighterApiError("unavailable", `Lighter request failed: ${error instanceof Error ? error.message : error}`);
   }
@@ -141,6 +172,9 @@ export function parseAccount(raw: Record<string, unknown>): LighterAccountState 
         unrealizedPnl: str(p.unrealized_pnl),
         realizedPnl: str(p.realized_pnl),
         liquidationPrice: p.liquidation_price == null ? null : str(p.liquidation_price),
+        totalFundingPaidOut: str(p.total_funding_paid_out),
+        allocatedMargin: str(p.allocated_margin),
+        marginMode: Number(p.margin_mode ?? 0),
       };
     }),
   };
@@ -149,7 +183,7 @@ export function parseAccount(raw: Record<string, unknown>): LighterAccountState 
 export class LighterClient {
   constructor(
     readonly config: LighterConfig = getLighterConfig(),
-    private readonly fetcher: Fetcher = (url) => fetch(url, { cache: "no-store" }),
+    private readonly fetcher: Fetcher = (url, headers) => fetch(url, { cache: "no-store", headers }),
   ) {}
 
   /** Confirms the API host serves the configured network's rollup. */
@@ -181,7 +215,12 @@ export class LighterClient {
         this.fetcher,
       );
       const subs = Array.isArray(body.sub_accounts) ? (body.sub_accounts as Array<Record<string, unknown>>) : [];
-      return subs.map((s) => ({ accountIndex: Number(s.index), l1Address: str(s.l1_address), collateral: str(s.collateral) }));
+      return subs.map((s) => ({
+        accountIndex: Number(s.index),
+        l1Address: str(s.l1_address),
+        collateral: str(s.collateral),
+        accountType: Number(s.account_type),
+      }));
     } catch (error) {
       if (error instanceof LighterApiError && error.kind === "not_found") return [];
       throw error;
@@ -196,5 +235,77 @@ export class LighterClient {
     const accounts = Array.isArray(body.accounts) ? (body.accounts as Array<Record<string, unknown>>) : [];
     if (accounts.length === 0) throw new LighterApiError("not_found", `Lighter account ${accountIndex} not found`);
     return parseAccount(accounts[0]);
+  }
+
+  /** Registered API key(s) for an account slot — public data. */
+  async getApiKeys(accountIndex: number, apiKeyIndex: number): Promise<LighterApiKeyRecord[]> {
+    let body: Record<string, unknown>;
+    try {
+      body = await getJson(
+        `${this.config.apiBaseUrl}/apikeys?account_index=${accountIndex}&api_key_index=${apiKeyIndex}`,
+        this.fetcher,
+      );
+    } catch (error) {
+      // Live-verified: an empty slot answers "api key not found".
+      if (error instanceof LighterApiError && error.kind === "not_found") return [];
+      throw error;
+    }
+    const keys = Array.isArray(body.api_keys) ? (body.api_keys as Array<Record<string, unknown>>) : [];
+    return keys.map((k) => ({
+      accountIndex: Number(k.account_index),
+      apiKeyIndex: Number(k.api_key_index),
+      nonce: Number(k.nonce),
+      publicKey: str(k.public_key),
+    }));
+  }
+
+  /** Active orders — requires an auth token from the account's API key. */
+  async getActiveOrders(accountIndex: number, authToken: string, marketId?: number): Promise<LighterOrder[]> {
+    const market = marketId === undefined ? "" : `&market_id=${marketId}`;
+    const body = await getJson(
+      `${this.config.apiBaseUrl}/accountActiveOrders?account_index=${accountIndex}${market}`,
+      this.fetcher,
+      { authorization: authToken },
+    );
+    const orders = Array.isArray(body.orders) ? (body.orders as Array<Record<string, unknown>>) : [];
+    return orders.map((o) => ({
+      orderIndex: Number(o.order_index),
+      clientOrderIndex: Number(o.client_order_index),
+      marketIndex: Number(o.market_index),
+      isAsk: o.is_ask === true || o.is_ask === 1,
+      type: str(o.type),
+      timeInForce: str(o.time_in_force),
+      reduceOnly: o.reduce_only === true || o.reduce_only === 1,
+      price: str(o.price),
+      initialBaseAmount: str(o.initial_base_amount),
+      remainingBaseAmount: str(o.remaining_base_amount),
+      filledBaseAmount: str(o.filled_base_amount),
+      status: str(o.status),
+    }));
+  }
+
+  /** Market funding-rate history — public. */
+  async getFundingRates(marketId: number, hours = 24): Promise<LighterFundingRate[]> {
+    const end = Math.floor(Date.now() / 1000);
+    const body = await getJson(
+      `${this.config.apiBaseUrl}/fundings?market_id=${marketId}&resolution=1h&start_timestamp=${end - hours * 3600}&end_timestamp=${end}&count_back=${hours}`,
+      this.fetcher,
+    );
+    const rows = Array.isArray(body.fundings) ? (body.fundings as Array<Record<string, unknown>>) : [];
+    return rows.map((f) => ({ timestamp: Number(f.timestamp), value: str(f.value), rate: str(f.rate), direction: str(f.direction) }));
+  }
+
+  /** The account's own funding payments — requires an auth token. */
+  async getPositionFunding(accountIndex: number, authToken: string, limit = 50): Promise<LighterPositionFunding[]> {
+    const body = await getJson(
+      `${this.config.apiBaseUrl}/positionFunding?account_index=${accountIndex}&limit=${limit}`,
+      this.fetcher,
+      { authorization: authToken },
+    );
+    const rows = Array.isArray(body.position_fundings) ? (body.position_fundings as Array<Record<string, unknown>>) : [];
+    return rows.map((f) => ({
+      timestamp: Number(f.timestamp), marketId: Number(f.market_id), change: str(f.change), rate: str(f.rate),
+      positionSize: str(f.position_size), positionSide: str(f.position_side),
+    }));
   }
 }

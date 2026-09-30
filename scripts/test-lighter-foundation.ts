@@ -11,6 +11,7 @@
 import { ROBINHOOD_CHAIN_IDS, ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { LighterApiError, LighterClient, parseAccount, parseMarket } from "@/lib/lighter/client";
 import { getLighterConfig } from "@/lib/lighter/config";
+import { parseAccountFrame, streamUrl, subscribeAccount } from "@/lib/lighter/websocket";
 
 let failures = 0;
 function assert(condition: boolean, label: string): void {
@@ -91,6 +92,49 @@ async function main() {
     assert(threw, "non-EVM L1 address refused before any request");
   }
 
+  // ═══ Authed/public read endpoints (fake fetcher) ══════════════════════
+  {
+    const seen: Array<{ url: string; auth?: string }> = [];
+    const c = new LighterClient(t, async (url, headers) => {
+      seen.push({ url, auth: headers?.authorization });
+      if (url.includes("accountActiveOrders")) return new Response(JSON.stringify({ code: 200, orders: [{ order_index: 281474976710656, client_order_index: 7, market_index: 0, is_ask: true, type: "limit", time_in_force: "good-till-time", reduce_only: false, price: "4050.00", initial_base_amount: "0.1000", remaining_base_amount: "0.1000", filled_base_amount: "0", status: "open" }] }));
+      if (url.includes("apikeys")) return new Response(JSON.stringify({ code: 200, api_keys: [{ account_index: 47, api_key_index: 2, nonce: 4, public_key: "0xab" }] }));
+      if (url.includes("positionFunding")) return new Response(JSON.stringify({ code: 200, position_fundings: [{ timestamp: 1, market_id: 0, change: "-0.01", rate: "0.0001", position_size: "0.1", position_side: "long" }] }));
+      return new Response(JSON.stringify({ code: 200, fundings: [{ timestamp: 1, value: "0.03", rate: "0.0012", direction: "long" }] }));
+    });
+    const orders = await c.getActiveOrders(47, "tok123");
+    assert(orders[0].orderIndex === 281474976710656 && orders[0].isAsk && orders[0].price === "4050.00", "active orders parsed (official Order fields)");
+    assert(seen[0].auth === "tok123", "active orders sent with authorization header, not in URL");
+    assert(!seen[0].url.includes("tok123"), "auth token never placed in the URL");
+    assert((await c.getApiKeys(47, 2))[0].publicKey === "0xab", "api keys parsed");
+    const empty = new LighterClient(t, fake({ apikeys: { status: 400, body: { code: 21200, message: "api key not found" } } }));
+    assert((await empty.getApiKeys(47, 9)).length === 0, "empty key slot (\"api key not found\") → [] not an error");
+    assert((await c.getPositionFunding(47, "tok123"))[0].change === "-0.01", "position funding parsed");
+    assert((await c.getFundingRates(0))[0].rate === "0.0012", "funding rates parsed");
+  }
+
+  // ═══ WebSocket (official account_all channel) ═════════════════════════
+  assert(streamUrl(t) === "wss://api.rh-testnet.lighter.xyz/stream", "stream URL per official client (/stream)");
+  assert(parseAccountFrame(JSON.stringify({ type: "update/account_all", channel: "account_all:47", account: 47, positions: {} }), 47)?.kind === "update", "update frame parsed");
+  assert(parseAccountFrame(JSON.stringify({ type: "subscribed/account_all", channel: "account_all:47" }), 47)?.kind === "snapshot", "snapshot frame parsed");
+  assert(parseAccountFrame(JSON.stringify({ type: "update/account_all", account: 48 }), 47) === null, "other account's frame ignored");
+  assert(parseAccountFrame("not json", 47) === null && parseAccountFrame(JSON.stringify({ type: "connected" }), 47) === null, "non-account frames ignored");
+  {
+    const sent: string[] = [];
+    class FakeWS {
+      onopen: (() => void) | null = null; onmessage: ((e: { data: string }) => void) | null = null; onerror = null; onclose: (() => void) | null = null;
+      constructor(readonly url: string) { setTimeout(() => { this.onopen?.(); this.onmessage?.({ data: JSON.stringify({ type: "update/account_all", account: 47 }) }); }, 0); }
+      send(m: string) { sent.push(m); }
+      close() {}
+    }
+    const got: string[] = [];
+    const sub = subscribeAccount(47, (m) => got.push(m.kind), { config: t, WebSocketImpl: FakeWS as unknown as typeof WebSocket });
+    await new Promise((r) => setTimeout(r, 20));
+    sub.close();
+    assert(sent.length === 1 && JSON.parse(sent[0]).channel === "account_all/47", "subscribes only to account_all/<index>");
+    assert(got.join() === "update", "stream delivers account updates");
+  }
+
   // ═══ Live read-only (active network) ══════════════════════════════════
   if (!process.argv.includes("--offline")) {
     const c = new LighterClient();
@@ -103,7 +147,10 @@ async function main() {
       if (subs.length > 0) {
         const a = await c.getAccount(subs[0].accountIndex);
         assert(a.accountIndex === subs[0].accountIndex, `live: account ${a.accountIndex} readable (collateral ${a.collateralAssets.map((x) => x.symbol).join(",") || "none"})`);
+        assert(Array.isArray(await c.getApiKeys(subs[0].accountIndex, 2)), "live: empty api key slot reads as [] (not an error)");
       }
+      const rates = await c.getFundingRates(markets[0].marketId, 3);
+      assert(Array.isArray(rates), `live: funding rates readable (${rates.length} points)`);
     } catch (error) {
       if (error instanceof LighterApiError && error.kind === "unavailable") console.log(`[SKIP] live Lighter unreachable: ${error.message}`);
       else throw error;

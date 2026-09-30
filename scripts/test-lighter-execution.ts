@@ -12,6 +12,12 @@
  *
  * Run: npm run test:lighter-execution
  */
+import * as crypto from "node:crypto";
+if (!process.env.LIGHTER_API_KEY_ENCRYPTION_KEY?.trim()) {
+  // Throwaway key for this test process only (inherited by the worker).
+  process.env.LIGHTER_API_KEY_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
+}
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -48,7 +54,7 @@ const ETH: LighterMarket = {
 const baseIntent: PerpOrderIntent = {
   market: ETH, side: "sell", type: "limit", size: "0.1", price: "4050", reduceOnly: false, timeInForce: "gtt", clientOrderIndex: 7,
 };
-const API_KEY = "a".repeat(80);
+const ENC = "lk1.fake.fake.fake";
 
 /** Fake transport that behaves like the official signer echoing fields. */
 function fakeTransport(opts: { hang?: boolean; override?: (op: string, args: number[]) => Record<string, unknown> } = {}) {
@@ -114,47 +120,47 @@ async function main() {
 
   // ═══ 2. Signer adapter (fake transport) ═══════════════════════════════
   await rejects(
-    () => LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: { ...testnet, lighterChainId: 46630 }, transport: fakeTransport().t }),
+    () => LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: { ...testnet, lighterChainId: 46630 }, transport: fakeTransport().t }),
     kind("wrong_domain"),
     "Robinhood EVM chain id as Lighter signing domain → refused",
   );
   await rejects(
-    () => LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: { ...testnet, lighterChainId: 466324 }, transport: fakeTransport().t }),
+    () => LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: { ...testnet, lighterChainId: 466324 }, transport: fakeTransport().t }),
     kind("wrong_domain"),
     "mainnet signing domain on testnet config → refused",
   );
   await rejects(
-    () => LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 0, accountIndex: 1, config: testnet, transport: fakeTransport().t }),
+    () => LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 0, accountIndex: 1, config: testnet, transport: fakeTransport().t }),
     (e) => e instanceof LighterSignerError,
     "reserved API key index 0 refused",
   );
   await rejects(
-    () => LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, artifactDir: join(process.cwd(), "does-not-exist") }),
+    () => LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, artifactDir: join(process.cwd(), "does-not-exist") }),
     kind("unavailable"),
     "missing signer artifacts → unavailable",
   );
   {
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: fakeTransport({ hang: true }).t, timeoutMs: 30 }).catch((e) => e);
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: fakeTransport({ hang: true }).t, timeoutMs: 30 }).catch((e) => e);
     assert(signer instanceof LighterSignerError && signer.kind === "timeout", "signer timeout surfaces as timeout");
   }
   {
     const { t } = fakeTransport({ override: () => ({ txType: 14, txHash: "ab", txInfo: JSON.stringify({ AccountIndex: 1, ApiKeyIndex: 3, Nonce: 5, MarketIndex: 0, ClientOrderIndex: 7, BaseAmount: 999999, Price: 405000, IsAsk: 1, Type: 0, TimeInForce: 1, ReduceOnly: 0 }) }) });
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
     await rejects(() => signer.createOrder(s), kind("malformed_output"), "signed amount differs from intent → malformed_output");
   }
   {
     const { t } = fakeTransport({ override: () => ({ txType: 15, txHash: "ab", txInfo: "{}" }) });
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
     await rejects(() => signer.createOrder(s), kind("malformed_output"), "wrong tx type → malformed_output");
   }
   {
     const { t } = fakeTransport({ override: () => ({ txType: 14, txHash: "ab", txInfo: "not json" }) });
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
     await rejects(() => signer.createOrder(s), kind("malformed_output"), "non-JSON txInfo → malformed_output");
   }
   {
     const { t } = fakeTransport({ override: () => ({ error: "boom" }) });
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: t });
     await rejects(() => signer.createOrder(s), kind("signer_error"), "signer error propagates as signer_error");
   }
   {
@@ -168,7 +174,7 @@ async function main() {
   const okClient = { assertNetwork: async () => {} } as unknown as LighterClient;
   async function executor(opts: { sendFail?: number; transport?: SignerTransport; client?: LighterClient } = {}) {
     const { t, calls } = fakeTransport();
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: opts.transport ?? t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: testnet, transport: opts.transport ?? t });
     let nonceFetches = 0;
     let sends = 0;
     const ex = new LighterExecutor(signer, {
@@ -211,7 +217,7 @@ async function main() {
     await rejects(() => ex.updateLeverage(ETH, 0, "cross"), kind("invalid_intent"), "leverage 0 refused");
   }
   {
-    const signer = await LighterSigner.open({ apiPrivateKey: API_KEY, apiKeyIndex: 3, accountIndex: 1, config: getLighterConfig("mainnet"), transport: fakeTransport().t });
+    const signer = await LighterSigner.open({ apiKeyEnc: ENC, apiKeyIndex: 3, accountIndex: 1, config: getLighterConfig("mainnet"), transport: fakeTransport().t });
     let k = "";
     try { new LighterExecutor(signer); } catch (e) { k = (e as LighterOrderError).kind; }
     assert(k === "mainnet_refused", "mainnet executor refused (no mainnet orders)");
@@ -224,8 +230,8 @@ async function main() {
     accountIndex: 1, l1Address: "0x", collateral: "500", availableBalance: "480", totalAssetValue: "495",
     collateralAssets: [{ symbol: "USDC", marginBalance: "500" }],
     positions: [
-      { marketId: 0, symbol: "ETH", size: "0.5", sign: -1, avgEntryPrice: "4000", unrealizedPnl: "-5", realizedPnl: "1.25", liquidationPrice: "4800" },
-      { marketId: 1, symbol: "BTC", size: "0", sign: 1, avgEntryPrice: "0", unrealizedPnl: "0", realizedPnl: "3", liquidationPrice: null },
+      { marketId: 0, symbol: "ETH", size: "0.5", sign: -1, avgEntryPrice: "4000", unrealizedPnl: "-5", realizedPnl: "1.25", liquidationPrice: "4800", totalFundingPaidOut: "0.3", allocatedMargin: "0", marginMode: 0 },
+      { marketId: 1, symbol: "BTC", size: "0", sign: 1, avgEntryPrice: "0", unrealizedPnl: "0", realizedPnl: "3", liquidationPrice: null, totalFundingPaidOut: "0", allocatedMargin: "0", marginMode: 1 },
     ],
   });
   assert(view.positions.length === 1 && view.positions[0].unrealizedPnl === "-5" && view.positions[0].realizedPnl === "1.25", "PnL strings preserved; flat positions hidden");
@@ -238,24 +244,25 @@ async function main() {
     return finish();
   }
   {
-    // Throwaway, unregistered key generated by the official signer itself.
-    const { Worker } = await import("node:worker_threads");
-    const keyGen = new Worker(
-      `const {parentPort}=require("node:worker_threads");require(process.cwd()+"/vendor/lighter-signer/wasm_exec.js");` +
-        `const go=new Go();WebAssembly.instantiate(require("fs").readFileSync(process.cwd()+"/vendor/lighter-signer/lighter-signer.wasm"),go.importObject)` +
-        `.then(({instance})=>{go.run(instance);parentPort.postMessage(GenerateAPIKey());});`,
-      { eval: true },
+    // Throwaway, unregistered key generated INSIDE the worker by the
+    // official GenerateAPIKey; this thread only ever sees public + encrypted.
+    const prov = await LighterSigner.provision({ apiKeyIndex: 3, accountIndex: 47, config: testnet, timeoutMs: 10_000 });
+    await prov.signer.close();
+    assert(/^(0x)?[0-9a-f]{80}$/i.test(prov.publicKey) && prov.apiKeyEnc.startsWith("lk1."), "real WASM: provision returns only public key + encrypted blob");
+    const signer = await LighterSigner.open({ apiKeyEnc: prov.apiKeyEnc, apiKeyIndex: 3, accountIndex: 47, config: testnet, timeoutMs: 10_000 });
+    await rejects(
+      () => LighterSigner.open({ apiKeyEnc: prov.apiKeyEnc, apiKeyIndex: 4, accountIndex: 47, config: testnet, timeoutMs: 10_000 }),
+      (e) => /different account\/key index/.test((e as Error).message),
+      "real WASM: encrypted key cannot be replayed onto another key slot (AAD binding)",
     );
-    const key = await new Promise<{ privateKey: string }>((r) => keyGen.once("message", r));
-    await keyGen.terminate();
-
-    const signer = await LighterSigner.open({ apiPrivateKey: key.privateKey, apiKeyIndex: 3, accountIndex: 47, config: testnet, timeoutMs: 10_000 });
     try {
       const order = await signer.createOrder(scaleOrderIntent(baseIntent, 12));
       assert(order.txType === LIGHTER_TX_TYPE.createOrder && order.txHash.length > 0, "real WASM: create order signed, fields cross-checked");
       const info = JSON.parse(order.txInfo) as Record<string, unknown>;
       assert(typeof info.Sig === "string" && (info.Sig as string).length > 0, "real WASM: signature present");
-      assert(!order.txInfo.includes(key.privateKey), "real WASM: API private key absent from signed output");
+      const token = await signer.createAuthToken(Math.floor(Date.now() / 1000) + 600);
+      assert(token.length > 10, "real WASM: auth token created with API key");
+      await rejects(() => signer.createAuthToken(Math.floor(Date.now() / 1000) + 9 * 3600), (e) => e instanceof LighterSignerError, "auth token beyond 8h refused");
       const cancel = await signer.cancelOrder({ marketIndex: 0, orderIndex: 123, nonce: 13 });
       assert(cancel.txType === LIGHTER_TX_TYPE.cancelOrder, "real WASM: cancel signed, fields cross-checked");
       const modify = await signer.modifyOrder({ marketIndex: 0, orderIndex: 123, baseAmount: 2000, price: 406000, nonce: 14 });
@@ -264,8 +271,8 @@ async function main() {
       assert(lev.txType === LIGHTER_TX_TYPE.updateLeverage, "real WASM: leverage signed, fields cross-checked");
       await rejects(
         () => signer.createOrder({ ...scaleOrderIntent(baseIntent, 16), marketIndex: 40000 }),
-        (e) => e instanceof LighterSignerError && !(e as Error).message.includes(key.privateKey),
-        "real WASM: out-of-range market refused; error does not leak key",
+        (e) => e instanceof LighterSignerError,
+        "real WASM: out-of-range market refused",
       );
     } finally {
       await signer.close();

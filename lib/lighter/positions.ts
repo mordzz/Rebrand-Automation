@@ -19,6 +19,10 @@ export type PerpPositionView = {
   unrealizedPnl: string;
   realizedPnl: string;
   liquidationPrice: string | null;
+  totalFundingPaidOut: string;
+  allocatedMargin: string;
+  /** Official constants: CROSS_MARGIN_MODE = 0, ISOLATED_MARGIN_MODE = 1. */
+  marginMode: "cross" | "isolated" | "unknown";
 };
 
 export type PerpAccountView = {
@@ -56,6 +60,9 @@ export function toPerpAccountView(a: LighterAccountState): PerpAccountView {
         unrealizedPnl: p.unrealizedPnl,
         realizedPnl: p.realizedPnl,
         liquidationPrice: p.liquidationPrice,
+        totalFundingPaidOut: p.totalFundingPaidOut,
+        allocatedMargin: p.allocatedMargin,
+        marginMode: (p.marginMode === 0 ? "cross" : p.marginMode === 1 ? "isolated" : "unknown") as PerpPositionView["marginMode"],
       }))
       .filter((p) => p.side !== "flat"),
   };
