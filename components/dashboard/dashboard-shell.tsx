@@ -17,7 +17,6 @@ import { useEffect, useRef, useState } from "react";
 
 import type { CharacterMood } from "@/components/dashboard/character-canvas";
 import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
-import { LiveMints } from "@/components/dashboard/live-mints";
 import { NewLaunches } from "@/components/dashboard/new-launches";
 import { SniperConfigReadout } from "@/components/dashboard/sniper-config-readout";
 import {
@@ -663,12 +662,9 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           </TabsContent>
 
           <TabsContent value="mints">
-            {/* Two feeds, deliberately: LiveMints is the real-time pump.fun
-                WebSocket the engine actually snipes from; NewLaunches is
-                the wider multi-launchpad view (bags, believe, letsbonk,
-                boop, moonshot, …) that PumpPortal alone cannot see. */}
+            {/* Robinhood Chain launches from the same GMGN discovery the
+                agent reads (PR16 retired the Solana PumpPortal stream). */}
             <div className="flex flex-col gap-5">
-              <LiveMints />
               <NewLaunches />
             </div>
           </TabsContent>
