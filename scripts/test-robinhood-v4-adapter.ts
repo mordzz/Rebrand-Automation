@@ -12,23 +12,30 @@
  *
  * Run: npm run test:robinhood-v4-adapter
  */
-import { isAddress } from "viem";
+import { isAddress, type TransactionReceipt } from "viem";
 
 import {
   resolveRobinhoodExecutionConfig,
   type RobinhoodExecutionConfig,
 } from "@/lib/chain/robinhood-execution-config";
-import { computePoolId, NATIVE_CURRENCY, type PoolKey, type VerifiedPool } from "@/lib/chain/robinhood-v4-pool";
+import {
+  computePoolId,
+  NATIVE_CURRENCY,
+  validatePoolKey,
+  type PoolKey,
+  type VerifiedPool,
+} from "@/lib/chain/robinhood-v4-pool";
 import { assertNoWrapCommands, encodeV4SwapExactInSingle } from "@/lib/chain/robinhood-v4-actions";
 import { computeAmountOutMinimum, MAX_SLIPPAGE_BPS } from "@/lib/chain/robinhood-v4-slippage";
-import type { QuoteSwapResult } from "@/lib/chain/robinhood-v4-quote";
+import { quoteSwap, type QuoteSwapResult } from "@/lib/chain/robinhood-v4-quote";
 import {
   buildErc20ApprovalTransaction,
   buildNativeBuyTransaction,
   buildNativeSellTransaction,
   buildPermit2AuthorizationTransaction,
 } from "@/lib/chain/robinhood-v4-swap-tx";
-import { interpretSwapReceipt } from "@/lib/chain/robinhood-v4-receipt";
+import { interpretMinedReceipt, interpretSwapReceipt } from "@/lib/chain/robinhood-v4-receipt";
+import { RobinhoodRpcError } from "@/lib/chain/rpc";
 
 let failures = 0;
 
@@ -95,6 +102,8 @@ function makeBuyQuote(overrides: Partial<Extract<QuoteSwapResult, { ok: true }>[
     quoterGasEstimate: BigInt(37565),
     currencyIn: NATIVE_CURRENCY,
     currencyOut: AUDIT_FIXTURE_POOL_KEY.currency1,
+    network: "testnet" as const,
+    chainId: 46630,
     ...overrides,
   };
 }
@@ -110,6 +119,8 @@ function makeSellQuote(overrides: Partial<Extract<QuoteSwapResult, { ok: true }>
     quoterGasEstimate: BigInt(54310),
     currencyIn: AUDIT_FIXTURE_POOL_KEY.currency1,
     currencyOut: NATIVE_CURRENCY,
+    network: "testnet" as const,
+    chainId: 46630,
     ...overrides,
   };
 }
@@ -377,15 +388,249 @@ async function main() {
     assert(nowSec > 0, "sanity: clock is available for expiry bound checks");
   }
 
-  // ═══ receipt interpretation: malformed-hash path needs no network ═══
-  // (success/reverted/pending against a real hash requires live testnet
-  // network access — covered by scripts/test-robinhood-v4-live.ts's
-  // architecture, and by this file's static review of the mapping logic
-  // in robinhood-v4-receipt.ts; the malformed-hash path below exercises
-  // the real function end-to-end without needing the RPC to be up.)
+  // ═══ receipt interpretation ═══════════════════════════════════════════
+  function makeReceipt(overrides: Partial<TransactionReceipt> = {}): TransactionReceipt {
+    return {
+      status: "success",
+      to: testnetConfig.universalRouter,
+      from: "0x1111111111111111111111111111111111111111",
+      transactionHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      blockHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      blockNumber: BigInt(1),
+      contractAddress: null,
+      cumulativeGasUsed: BigInt(1),
+      effectiveGasPrice: BigInt(1),
+      gasUsed: BigInt(1),
+      logs: [],
+      logsBloom: "0x00",
+      transactionIndex: 0,
+      type: "eip1559",
+      ...overrides,
+    } as TransactionReceipt;
+  }
+
+  // ═══ interpretMinedReceipt: pure, no network — the core router-target guard ═
   {
-    const result = await interpretSwapReceipt("not-a-real-hash");
-    assertEqual(result, { status: "not_found" }, "interpretSwapReceipt: a malformed hash resolves to not_found, never pending/success");
+    const result = interpretMinedReceipt(testnetConfig, makeReceipt());
+    assertEqual(result.status, "success", "successful receipt to the configured router → success");
+  }
+  {
+    const result = interpretMinedReceipt(testnetConfig, makeReceipt({ status: "reverted" }));
+    assertEqual(result.status, "reverted", "reverted receipt → reverted, regardless of target");
+  }
+  {
+    // The exact scenario this hardening pass exists for: a successful
+    // receipt, but sent somewhere other than the configured router. Must
+    // NEVER be reported as a successful swap.
+    const result = interpretMinedReceipt(
+      testnetConfig,
+      makeReceipt({ to: "0x2222222222222222222222222222222222222222" })
+    );
+    assertEqual(result.status, "unexpected_target", "successful receipt to an unrelated address → unexpected_target, never success");
+    if (result.status === "unexpected_target") {
+      assertEqual(result.actualTarget, "0x2222222222222222222222222222222222222222", "unexpected_target carries the actual (wrong) target address");
+    }
+  }
+  {
+    const result = interpretMinedReceipt(testnetConfig, makeReceipt({ to: null }));
+    assertEqual(result.status, "unexpected_target", "a null receipt.to (contract creation) is never treated as success");
+  }
+  {
+    // EVM-address-safe comparison: differing only in casing must still
+    // match, proving this isn't a raw case-sensitive string compare.
+    const result = interpretMinedReceipt(
+      testnetConfig,
+      makeReceipt({ to: testnetConfig.universalRouter.toLowerCase() as `0x${string}` })
+    );
+    assertEqual(result.status, "success", "receipt.to matching the router in a different case is still recognized as the router");
+  }
+
+  // ═══ interpretSwapReceipt: pending / not_found / rpc_unavailable via injected fetchStatus ═
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => ({ status: "pending" }),
+      assertNetwork: async () => {},
+    });
+    assertEqual(result, { status: "pending" }, "interpretSwapReceipt: pending status passes through");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "not-a-real-hash", {
+      fetchStatus: async () => {
+        throw new RobinhoodRpcError("invalid_hash", "not a valid hash");
+      },
+      assertNetwork: async () => {},
+    });
+    assertEqual(result, { status: "not_found" }, "interpretSwapReceipt: invalid_hash maps to not_found");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => {
+        throw new RobinhoodRpcError("not_found", "no such transaction");
+      },
+      assertNetwork: async () => {},
+    });
+    assertEqual(result, { status: "not_found" }, "interpretSwapReceipt: not_found error maps to not_found");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => {
+        throw new RobinhoodRpcError("rpc_unavailable", "connection refused");
+      },
+      assertNetwork: async () => {},
+    });
+    assertEqual(result.status, "rpc_unavailable", "interpretSwapReceipt: rpc_unavailable error maps to rpc_unavailable");
+  }
+  {
+    // The network/execution-config guard runs before any transaction
+    // lookup — a mismatched config must fail closed as rpc_unavailable,
+    // never silently proceed to check a hash against the wrong network.
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => {
+        throw new Error("fetchStatus must not be called when the network guard fails");
+      },
+      assertNetwork: async () => {
+        throw new Error("simulated network mismatch");
+      },
+    });
+    assertEqual(result.status, "rpc_unavailable", "interpretSwapReceipt: execution-config/network guard failure fails closed as rpc_unavailable");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => ({ status: "mined", receipt: makeReceipt({ status: "reverted" }) }),
+      assertNetwork: async () => {},
+    });
+    assertEqual(result.status, "reverted", "interpretSwapReceipt: mined+reverted flows through to reverted");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => ({
+        status: "mined",
+        receipt: makeReceipt({ to: "0x2222222222222222222222222222222222222222" }),
+      }),
+      assertNetwork: async () => {},
+    });
+    assertEqual(result.status, "unexpected_target", "interpretSwapReceipt: mined+success to the wrong router flows through to unexpected_target, never success");
+  }
+  {
+    const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      fetchStatus: async () => ({ status: "mined", receipt: makeReceipt() }),
+      assertNetwork: async () => {},
+    });
+    assertEqual(result.status, "success", "interpretSwapReceipt: mined+success to the correct router flows through to success");
+  }
+
+  // ═══ malformed PoolKey validation (no network — fails before any RPC read) ═
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: -1 }, testnetConfig);
+    assertEqual(result.ok, false, "negative fee is refused");
+  }
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: 16_777_216 }, testnetConfig);
+    assertEqual(result.ok, false, "fee exceeding uint24 max is refused");
+  }
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: 1.5 }, testnetConfig);
+    assertEqual(result.ok, false, "non-integer fee is refused");
+  }
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, tickSpacing: 8_388_608 }, testnetConfig);
+    assertEqual(result.ok, false, "tickSpacing exceeding int24 max is refused");
+  }
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, tickSpacing: -8_388_609 }, testnetConfig);
+    assertEqual(result.ok, false, "tickSpacing below int24 min is refused");
+  }
+  {
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, tickSpacing: 1.5 }, testnetConfig);
+    assertEqual(result.ok, false, "non-integer tickSpacing is refused");
+  }
+  {
+    // None of the malformed-field cases above should ever throw an
+    // uncaught exception — every call above already implicitly proves
+    // this (an uncaught throw would crash this test script), but assert
+    // explicitly that a clearly-invalid PoolKey still returns a well-formed result object.
+    const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: NaN, tickSpacing: Infinity }, testnetConfig);
+    assert(typeof result.ok === "boolean", "even a wildly malformed PoolKey (NaN/Infinity fields) returns a well-formed result, never throws");
+    assertEqual(result.ok, false, "NaN fee / Infinity tickSpacing is refused");
+  }
+
+  // ═══ deadline validation ═════════════════════════════════════════════
+  {
+    const quote = makeBuyQuote();
+    for (const bad of [-1, 0, NaN, Infinity, -Infinity, 1.5, 10 * 24 * 60 * 60]) {
+      assertThrows(
+        () => buildNativeBuyTransaction(testnetConfig, quote, { deadlineSeconds: bad }),
+        `buildNativeBuyTransaction refuses deadlineSeconds=${bad}`
+      );
+    }
+    const tx = buildNativeBuyTransaction(testnetConfig, quote, { deadlineSeconds: 60 });
+    assert(!!tx, "buildNativeBuyTransaction accepts a valid, small positive deadlineSeconds");
+  }
+
+  // ═══ Permit2 expiration validation ═══════════════════════════════════
+  {
+    for (const bad of [-1, 0, NaN, Infinity, -Infinity, 1.5, 10 * 24 * 60 * 60]) {
+      assertThrows(
+        () =>
+          buildPermit2AuthorizationTransaction(testnetConfig, AUDIT_FIXTURE_POOL_KEY.currency1, BigInt(1000), {
+            expirationSeconds: bad,
+          }),
+        `buildPermit2AuthorizationTransaction refuses expirationSeconds=${bad}`
+      );
+    }
+    const tx = buildPermit2AuthorizationTransaction(testnetConfig, AUDIT_FIXTURE_POOL_KEY.currency1, BigInt(1000), {
+      expirationSeconds: 60,
+    });
+    assert(!!tx, "buildPermit2AuthorizationTransaction accepts a valid, small positive expirationSeconds");
+  }
+
+  // ═══ cross-network quote provenance ═══════════════════════════════════
+  {
+    const quote = makeBuyQuote(); // network: "testnet", chainId: 46630
+    const tx = buildNativeBuyTransaction(testnetConfig, quote);
+    assert(!!tx, "a testnet quote + testnet config is accepted");
+  }
+  {
+    const quote = makeBuyQuote({ chainId: 999999 });
+    assertThrows(
+      () => buildNativeBuyTransaction(testnetConfig, quote),
+      "buildNativeBuyTransaction refuses a quote whose chainId doesn't match the config's"
+    );
+  }
+  {
+    // A synthetic "mainnet" network label on the quote — proving the
+    // guard, never a real usable mainnet execution config (none exists
+    // in production code; resolveRobinhoodExecutionConfig("mainnet")
+    // still fails closed, as already proven above).
+    const quote = makeBuyQuote({ network: "mainnet" });
+    assertThrows(
+      () => buildNativeBuyTransaction(testnetConfig, quote),
+      "buildNativeBuyTransaction refuses a quote whose network doesn't match the config's"
+    );
+  }
+  {
+    const quote = makeSellQuote({ chainId: 999999 });
+    assertThrows(
+      () => buildNativeSellTransaction(testnetConfig, quote),
+      "buildNativeSellTransaction refuses a quote whose chainId doesn't match the config's"
+    );
+  }
+  {
+    // Execution-config/active-network mismatch fails closed for any
+    // RPC-dependent operation — proven here via quoteSwap's own guard by
+    // constructing a synthetic mismatched config (network label doesn't
+    // match ROBINHOOD_NETWORK, which is "testnet" in this environment).
+    // Not a real mainnet config — resolveRobinhoodExecutionConfig never
+    // produces one; this is purely to prove the guard rejects mismatches.
+    const mismatchedConfig: RobinhoodExecutionConfig = { ...testnetConfig, network: "mainnet", chainId: 4663 };
+    const result = await quoteSwap({
+      config: mismatchedConfig,
+      poolKey: AUDIT_FIXTURE_POOL_KEY,
+      side: "buy",
+      amountIn: BigInt(1000),
+      slippageBps: 500,
+    });
+    assertEqual(result.ok, false, "quoteSwap fails closed when config.network doesn't match the active ROBINHOOD_NETWORK, before any RPC read");
   }
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);
