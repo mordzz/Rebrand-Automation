@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 /** Mirrors LIVE_FEE_HEADROOM_SOL in scripts/paper-daemon.ts. */
 const LIVE_FEE_HEADROOM_SOL = 0.01;
 
-function isPlausibleSolanaAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
+ * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
+function isPlausibleWalletAddress(addr: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
 /**
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(owner)) {
+  if (!isPlausibleWalletAddress(owner)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 
