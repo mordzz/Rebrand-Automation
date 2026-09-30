@@ -55,7 +55,7 @@ const cache = new Map<string, { at: number; stats: WalletStats }>();
 
 async function fetchOne(wallet: string, period: string): Promise<WalletStats> {
   const data = await gmgnGet<RawWalletStats>("/v1/user/wallet_stats", {
-    chain: "sol",
+    chain: "robinhood", // PR16: Robinhood Chain (was "sol")
     wallet_address: wallet,
     period,
   });

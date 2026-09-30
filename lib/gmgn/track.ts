@@ -118,7 +118,7 @@ async function fetchList(
   source: TrackSource,
   limit: number
 ): Promise<TrackedTrade[]> {
-  const data = await gmgnGet<{ list?: RawTrade[] }>(path, { chain: "sol", limit });
+  const data = await gmgnGet<{ list?: RawTrade[] }>(path, { chain: "robinhood", limit });
   const list = data?.list;
   if (!Array.isArray(list)) return [];
   return list

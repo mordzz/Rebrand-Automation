@@ -2,7 +2,7 @@ import { gmgnGet, isGmgnConfigured } from "./client";
 
 /**
  * Market-wide token ranking via GMGN's `/v1/market/rank` — every indexed
- * Solana token ranked by a chosen metric (volume, market cap, ...), unlike
+ * Robinhood Chain token ranked by a chosen metric (volume, market cap, ...), unlike
  * `/v1/trenches` (discovery.ts) which is scoped to fresh launches only.
  * This is the "what's moving right now" view.
  *
@@ -86,7 +86,7 @@ function normalize(raw: RawRankToken): RankedToken | null {
 const CACHE_TTL_MS = 40_000;
 let cache: { at: number; key: string; tokens: RankedToken[] } | null = null;
 
-/** Top Solana tokens by `orderBy` over `interval`, richest first. Empty
+/** Top Robinhood Chain tokens by `orderBy` over `interval`, richest first. Empty
  * (never throws) when GMGN isn't configured or the call fails. */
 export async function getRankedTokens(opts: {
   interval?: RankInterval;
@@ -102,7 +102,7 @@ export async function getRankedTokens(opts: {
   }
 
   const envelope = await gmgnGet<RankEnvelope>("/v1/market/rank", {
-    chain: "sol",
+    chain: "robinhood", // PR16: Robinhood Chain (was "sol")
     interval,
     order_by: orderBy,
     direction: "desc",

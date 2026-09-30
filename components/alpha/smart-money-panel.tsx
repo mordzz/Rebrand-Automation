@@ -4,6 +4,7 @@ import { ArrowDownRight, ArrowUpRight, ExternalLink, Lock, Radar } from "lucide-
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { explorerUrl } from "@/lib/chain/config";
 
 type TrackedTrade = {
   id: string;
@@ -195,7 +196,7 @@ export function SmartMoneyPanel() {
               </div>
 
               <a
-                href={`https://pump.fun/coin/${trade.token}`}
+                href={explorerUrl("address", trade.token)}
                 target="_blank"
                 rel="noreferrer"
                 aria-label={`Open ${trade.symbol ?? "token"}`}

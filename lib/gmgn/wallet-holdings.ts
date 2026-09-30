@@ -42,7 +42,7 @@ const cache = new Map<string, { at: number; balance: WalletTokenBalance }>();
 
 async function fetchOne(wallet: string, mint: string): Promise<WalletTokenBalance> {
   const data = await gmgnGet<RawResponse>("/v1/user/wallet_token_balance", {
-    chain: "sol",
+    chain: "robinhood", // PR16: Robinhood Chain (was "sol")
     wallet_address: wallet,
     token_address: mint,
   });

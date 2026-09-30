@@ -5,7 +5,6 @@ import { getKolProfiles } from "@/lib/gmgn/kol-positions";
 import { getTokenSocials } from "@/lib/gmgn/token-info";
 import { getManyWalletStats, type WalletStats } from "@/lib/gmgn/wallet-stats";
 import { getManyWalletTokenBalances } from "@/lib/gmgn/wallet-holdings";
-import { getTokenIcons } from "@/lib/jupiter/token-icons";
 import { getTokenMarkets } from "@/lib/sniper/token-market";
 
 /** A KOL identity can span several wallets (see lib/gmgn/kol-positions.ts);
@@ -90,8 +89,7 @@ export async function GET(request: NextRequest) {
     k.positions.map((p) => ({ wallet: p.wallet, mint: p.mint }))
   );
 
-  const [icons, socials, currentMarkets, walletStats, balances] = await Promise.all([
-    getTokenIcons(mints),
+  const [socials, currentMarkets, walletStats, balances] = await Promise.all([
     getTokenSocials(mints),
     // Priced for every mint on the page, not just open ones: a "closed"
     // cycle can still be a partial exit with a real balance left, and
@@ -142,7 +140,9 @@ export async function GET(request: NextRequest) {
           id: p.id,
           mint: p.mint,
           symbol: p.symbol,
-          tokenLogo: icons.get(p.mint) ?? null,
+          // Jupiter's icon index was Solana-only; TokenIcon renders a
+          // monogram fallback on Robinhood Chain (PR16).
+          tokenLogo: null,
           tokenTwitter: social?.twitter ?? null,
           tokenWebsite: social?.website ?? null,
           tokenTelegram: social?.telegram ?? null,
