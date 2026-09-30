@@ -105,6 +105,10 @@ export async function verifySignedTransaction(
     throw new Error(`broadcast: signed transaction does not parse: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  // viem's parseTransaction omits zero-valued RLP fields (e.g. a 0 priority
+  // fee on Robinhood's L2, nonce 0, value 0) — treat absent as zero.
+  const n = (v: bigint | undefined) => v ?? BigInt(0);
+
   const fail = (what: string) => {
     throw new Error(`broadcast: refusing — ${what}`);
   };
@@ -116,12 +120,12 @@ export async function verifySignedTransaction(
   }
   if (!parsed.to || getAddress(parsed.to) !== getAddress(unsigned.to)) fail(`target ${parsed.to} != intended ${unsigned.to}`);
   if (getAddress(signed.to) !== getAddress(unsigned.to)) fail("signer-reported target differs from intended target");
-  if ((parsed.value ?? BigInt(0)) !== unsigned.value) fail(`value ${parsed.value ?? 0} != intended ${unsigned.value}`);
+  if (n(parsed.value) !== unsigned.value) fail(`value ${parsed.value ?? 0} != intended ${unsigned.value}`);
   if (signed.value !== unsigned.value) fail("signer-reported value differs from intended value");
   if ((parsed.data ?? "0x").toLowerCase() !== unsigned.data.toLowerCase()) fail("calldata differs from the intended calldata");
-  if (parsed.nonce !== signed.nonce) fail(`nonce ${parsed.nonce} != signer-reported ${signed.nonce}`);
-  if (parsed.gas !== signed.gas) fail("gas limit differs from signer-reported gas");
-  if (parsed.maxFeePerGas !== signed.maxFeePerGas || parsed.maxPriorityFeePerGas !== signed.maxPriorityFeePerGas) {
+  if ((parsed.nonce ?? 0) !== signed.nonce) fail(`nonce ${parsed.nonce} != signer-reported ${signed.nonce}`);
+  if (n(parsed.gas) !== signed.gas) fail("gas limit differs from signer-reported gas");
+  if (n(parsed.maxFeePerGas) !== signed.maxFeePerGas || n(parsed.maxPriorityFeePerGas) !== signed.maxPriorityFeePerGas) {
     fail("fee fields differ from signer-reported fees");
   }
 

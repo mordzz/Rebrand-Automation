@@ -150,6 +150,27 @@ async function main() {
     "garbage raw tx refused",
   );
 
+  // Regression: Robinhood testnet reports a 0 priority fee, and viem's
+  // parseTransaction omits zero-valued fields. Also nonce 0 (fresh wallet).
+  {
+    const zeroSigned = await signRobinhoodTransaction(
+      { bot, unsignedTransaction: unsigned, intent: "erc20_approval", approvalToken: TOKEN },
+      {
+        assertNetwork: async () => {},
+        getNonce: async () => 0,
+        estimateFeesPerGas: async () => ({ maxFeePerGas: BigInt(20_000_000), maxPriorityFeePerGas: BigInt(0) }),
+        estimateGas: async () => BigInt(60_000),
+      },
+    );
+    const rec = await verifySignedTransaction({ ...base, signed: zeroSigned });
+    assert(rec.nonce === 0, "zero priority fee + nonce 0 verifies (zero-valued fields omitted by parser)");
+    await rejects(
+      () => verifySignedTransaction({ ...base, signed: { ...zeroSigned, maxPriorityFeePerGas: BigInt(1) } }),
+      /fee fields/,
+      "zero-fee tx still refused if signer-reported fee differs",
+    );
+  }
+
   // A validly signed MAINNET transaction must never pass.
   {
     const mainnetKey = generatePrivateKey();
