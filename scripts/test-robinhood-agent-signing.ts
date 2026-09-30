@@ -199,7 +199,10 @@ async function main() {
     assert(/^0x[0-9a-fA-F]{40}$/.test(wallet.address), "generateRobinhoodAgentWallet produces a valid EVM address");
     assertEqual(wallet.chain, "robinhood", "generated wallet is tagged chain=robinhood");
     assertEqual(wallet.network, "testnet", "generated wallet is tagged with the active network (testnet)");
-    assert(!wallet.secretEnc.includes("0x"), "secretEnc is an encrypted blob, not raw hex key material");
+    // Not a substring check (base64 output can coincidentally contain
+    // "0x") — asserts the actual shape a raw 32-byte hex private key
+    // would have (0x + 64 hex chars) is absent.
+    assert(!/^0x[0-9a-f]{64}$/i.test(wallet.secretEnc), "secretEnc is an encrypted blob, not a raw hex private key");
     const derived = robinhoodAgentAddressFromSecret(wallet.secretEnc);
     assertEqual(getAddress(derived), getAddress(wallet.address), "generated EVM key derives the correct, matching address");
   }
@@ -342,6 +345,47 @@ async function main() {
     assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: expired deadline is rejected");
   }
 
+  // ═══ canonical/trailing-bytes negative fixtures ═══════════════════════
+  {
+    // Real, valid native-buy calldata with one extra trailing byte
+    // appended. decodeFunctionData does NOT throw on this (ABI decoding
+    // isn't required to consume every trailing byte) — only the
+    // canonical re-encode check catches it.
+    const tx: UnsignedTransaction = { ...realBuyTx, data: `${realBuyTx.data}00` as Hex };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: valid native buy calldata + trailing 00 byte is rejected");
+  }
+  {
+    const sellTx = buildNativeSellTransaction(testnetConfig, makeSellQuote());
+    const tx: UnsignedTransaction = { ...sellTx, data: `${sellTx.data}deadbeef` as Hex };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: valid native sell calldata + trailing bytes is rejected");
+  }
+  {
+    // Nested V4 input trailing bytes: the exactInputSingle payload inside
+    // the V4_SWAP input carries extra bytes past what
+    // EXACT_INPUT_SINGLE_ABI_TYPE actually needs — otherwise perfectly
+    // decodable (decodeAbiParameters ignores the extra bytes), but the
+    // canonical re-encode inside decodeV4SwapCommandsAndInputs must
+    // reject it.
+    const quote = makeBuyQuote();
+    const exactInputSingleEncoded = encodeAbiParameters(
+      [EXACT_INPUT_SINGLE_ABI_TYPE],
+      [{ poolKey: quote.pool.poolKey, zeroForOne: quote.zeroForOne, amountIn: quote.amountIn, amountOutMinimum: quote.amountOutMinimum, hookData: "0x" }]
+    );
+    const exactInputSingleWithTrailingBytes = `${exactInputSingleEncoded}cafebabe` as Hex;
+    const settleEncoded = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [quote.currencyIn, quote.amountIn]);
+    const takeEncoded = encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [quote.currencyOut, quote.amountOutMinimum]);
+    const actions = `0x${ACTION_SWAP_EXACT_IN_SINGLE.toString(16).padStart(2, "0")}${ACTION_SETTLE_ALL.toString(16).padStart(2, "0")}${ACTION_TAKE_ALL.toString(16).padStart(2, "0")}` as Hex;
+    const v4SwapInput = encodeAbiParameters(
+      [{ type: "bytes" }, { type: "bytes[]" }],
+      [actions, [exactInputSingleWithTrailingBytes, settleEncoded, takeEncoded]]
+    );
+    const tx: UnsignedTransaction = { ...realBuyTx, data: encodeExecute(realCommands, [v4SwapInput], realDeadline) };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "swap: otherwise-decodable trailing bytes inside the nested exactInputSingle payload is rejected");
+  }
+
   // ═══ ERC20 approval negative fixtures ══════════════════════════════════
   const TRANSFER_ABI = [
     { type: "function", name: "transfer", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }] },
@@ -364,6 +408,12 @@ async function main() {
     const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: FAKE_TOKEN, data, value: BigInt(0) };
     const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
     assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "erc20_approval: correct token + approve(Permit2, 0) is rejected");
+  }
+  {
+    const realApprovalTx = buildErc20ApprovalTransaction(testnetConfig, FAKE_TOKEN, BigInt(1000));
+    const tx: UnsignedTransaction = { ...realApprovalTx, data: `${realApprovalTx.data}00` as Hex };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "erc20_approval", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "erc20_approval: valid approve() + trailing bytes is rejected");
   }
 
   // ═══ Permit2 authorization negative fixtures ═══════════════════════════
@@ -397,6 +447,12 @@ async function main() {
     const tx: UnsignedTransaction = { chainId: testnetConfig.chainId, to: testnetConfig.permit2, data, value: BigInt(0) };
     const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
     assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: expired authorization is rejected");
+  }
+  {
+    const realPermit2Tx = buildPermit2AuthorizationTransaction(testnetConfig, FAKE_TOKEN, BigInt(1000));
+    const tx: UnsignedTransaction = { ...realPermit2Tx, data: `${realPermit2Tx.data}00` as Hex };
+    const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "permit2_authorization", approvalToken: FAKE_TOKEN };
+    assert(throwsSync(() => validateSignRobinhoodTransactionInput(input)), "permit2_authorization: valid approve() + trailing bytes is rejected");
   }
 
   // ═══ basic field/network guards (unchanged behavior, still covered) ══

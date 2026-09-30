@@ -25,7 +25,7 @@
  * explicit message, not silently disabled behind an env flag someone
  * could accidentally flip on.
  */
-import { decodeFunctionData, getAddress, type Address, type Hex } from "viem";
+import { decodeFunctionData, encodeFunctionData, getAddress, type Address, type Hex } from "viem";
 
 import { ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
@@ -117,6 +117,26 @@ function assertDeadlineWithinPolicy(deadlineOrExpiration: bigint, label: string)
  * builds — never just checking the function selector. Throws with a
  * specific reason on any deviation.
  */
+/**
+ * Requires that re-encoding the decoded arguments with the exact same
+ * ABI/function used to decode them reproduces the original calldata
+ * byte-for-byte. `decodeFunctionData`/`decodeAbiParameters` only prove
+ * the supplied bytes START WITH a value of the expected shape — ABI
+ * decoding is not required to consume every trailing byte to succeed, so
+ * this is the step that actually rules out trailing or non-canonical
+ * payload data riding along with an otherwise-valid-looking call.
+ * Comparison is case-insensitive (hex casing carries no semantic
+ * meaning), but every byte position must match.
+ */
+function assertCanonicalCalldata(original: Hex, canonical: Hex, label: string): void {
+  if (canonical.toLowerCase() !== original.toLowerCase()) {
+    throw new Error(
+      `signRobinhoodTransaction: ${label} calldata is not the canonical re-encoding of its own decoded ` +
+        `values — refusing (possible trailing or non-canonical payload bytes)`
+    );
+  }
+}
+
 function validateSwapCalldata(data: Hex, unsignedTransaction: UnsignedTransaction): void {
   let decodedExecute: { functionName: string; args: readonly unknown[] };
   try {
@@ -132,6 +152,12 @@ function validateSwapCalldata(data: Hex, unsignedTransaction: UnsignedTransactio
     throw new Error(`signRobinhoodTransaction: swap calldata decoded to unexpected function "${decodedExecute.functionName}"`);
   }
   const [commands, inputs, deadline] = decodedExecute.args as [Hex, readonly Hex[], bigint];
+
+  assertCanonicalCalldata(
+    data,
+    encodeFunctionData({ abi: UNIVERSAL_ROUTER_EXECUTE_ABI, functionName: "execute", args: [commands, inputs, deadline] }),
+    "swap (execute)"
+  );
 
   const decodeResult = decodeV4SwapCommandsAndInputs(commands, inputs);
   if (!decodeResult.ok) {
@@ -219,6 +245,11 @@ function validateErc20ApprovalCalldata(data: Hex, config: RobinhoodExecutionConf
     throw new Error(`signRobinhoodTransaction: erc20_approval calldata decoded to unexpected function "${decoded.functionName}"`);
   }
   const [spender, amount] = decoded.args as [Address, bigint];
+  assertCanonicalCalldata(
+    data,
+    encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [spender, amount] }),
+    "erc20_approval"
+  );
   if (getAddress(spender) !== getAddress(config.permit2)) {
     throw new Error(`signRobinhoodTransaction: erc20_approval spender (${spender}) must be Permit2 (${config.permit2})`);
   }
@@ -253,6 +284,11 @@ function validatePermit2AuthorizationCalldata(
     throw new Error(`signRobinhoodTransaction: permit2_authorization calldata decoded to unexpected function "${decoded.functionName}"`);
   }
   const [token, spender, amount, expiration] = decoded.args as [Address, Address, bigint, number];
+  assertCanonicalCalldata(
+    data,
+    encodeFunctionData({ abi: PERMIT2_ABI, functionName: "approve", args: [token, spender, amount, expiration] }),
+    "permit2_authorization"
+  );
   if (getAddress(token) !== getAddress(expectedToken)) {
     throw new Error(`signRobinhoodTransaction: permit2_authorization token (${token}) does not match expected (${expectedToken})`);
   }

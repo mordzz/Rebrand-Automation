@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildRobinhoodAgentWalletView } from "@/lib/chain/robinhood-agent-wallet-view";
+import { buildRobinhoodAgentWalletView, loadRobinhoodAgentAccountView } from "@/lib/chain/robinhood-agent-wallet-view";
 import { ROBINHOOD_NATIVE_SYMBOL, ROBINHOOD_NETWORK } from "@/lib/chain/config";
 
 let failures = 0;
@@ -102,6 +102,74 @@ async function main() {
       { balanceWei: BigInt(1), error: null }
     );
     assert("reason" in view && view.reason === "network_mismatch", "a bot with no recorded agentNetwork also fails closed as network_mismatch, never assumed");
+  }
+
+  // ═══ loadRobinhoodAgentAccountView: network mismatch BEFORE any RPC read ═
+  {
+    let calls = 0;
+    const view = await loadRobinhoodAgentAccountView(
+      { agentPublicKey: AGENT_ADDRESS, agentNetwork: "mainnet" }, // active network is testnet in this env
+      {
+        getBalance: async () => {
+          calls++;
+          return BigInt(1);
+        },
+      }
+    );
+    assertEqual(calls, 0, "network mismatch: the balance dependency is called exactly 0 times");
+    assert("reason" in view && view.reason === "network_mismatch", "network mismatch: loader returns network_mismatch");
+  }
+  {
+    let calls = 0;
+    const view = await loadRobinhoodAgentAccountView(
+      { agentPublicKey: AGENT_ADDRESS, agentNetwork: null },
+      {
+        getBalance: async () => {
+          calls++;
+          return BigInt(1);
+        },
+      }
+    );
+    assertEqual(calls, 0, "no recorded agentNetwork: the balance dependency is called exactly 0 times");
+    assert("reason" in view && view.reason === "network_mismatch", "no recorded agentNetwork: loader returns network_mismatch");
+  }
+  {
+    let calls = 0;
+    const view = await loadRobinhoodAgentAccountView(
+      { agentPublicKey: AGENT_ADDRESS, agentNetwork: ROBINHOOD_NETWORK },
+      {
+        getBalance: async () => {
+          calls++;
+          return BigInt("2000000000000000000"); // 2 ETH
+        },
+      }
+    );
+    assertEqual(calls, 1, "matching network: the balance dependency is called exactly 1 time");
+    assert(!("reason" in view), "matching network: loader returns a real wallet view");
+    if (!("reason" in view)) {
+      assertEqual(view.balanceNative, "2", "matching network: loader's view reflects the dependency's returned balance");
+    }
+  }
+  {
+    // The dependency throwing must not throw out of the loader — it
+    // surfaces as a wallet-view error, same as buildRobinhoodAgentWalletView's
+    // own failed-read handling.
+    let calls = 0;
+    const view = await loadRobinhoodAgentAccountView(
+      { agentPublicKey: AGENT_ADDRESS, agentNetwork: ROBINHOOD_NETWORK },
+      {
+        getBalance: async () => {
+          calls++;
+          throw new Error("simulated RPC failure");
+        },
+      }
+    );
+    assertEqual(calls, 1, "matching network + failed read: the balance dependency is still called exactly once");
+    assert(!("reason" in view), "matching network + failed read: loader still returns a real wallet view, not network_mismatch");
+    if (!("reason" in view)) {
+      assertEqual(view.balanceNative, null, "matching network + failed read: balanceNative is null, not 0");
+      assertEqual(view.error, "simulated RPC failure", "matching network + failed read: the dependency's error message is surfaced");
+    }
   }
 
   // ═══ structural: the Robinhood view module never references the Solana

@@ -10,8 +10,8 @@ import {
 } from "@/lib/solana/agent-wallet";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";
-import { getNativeBalance, RobinhoodRpcError } from "@/lib/chain/rpc";
-import { buildRobinhoodAgentWalletView } from "@/lib/chain/robinhood-agent-wallet-view";
+import { getNativeBalance } from "@/lib/chain/rpc";
+import { loadRobinhoodAgentAccountView } from "@/lib/chain/robinhood-agent-wallet-view";
 
 export const dynamic = "force-dynamic";
 
@@ -89,22 +89,12 @@ export async function GET(request: Request) {
      not) — this branch must run BEFORE that call, never after a failed
      attempt. */
   if (bot.agentChain === "robinhood") {
-    let balanceWei: bigint | null = null;
-    let balanceError: string | null = null;
-    try {
-      balanceWei = await getNativeBalance(bot.agentPublicKey);
-    } catch (error) {
-      balanceError =
-        error instanceof RobinhoodRpcError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : "Could not read the wallet balance.";
-    }
-
-    const view = buildRobinhoodAgentWalletView(
+    // loadRobinhoodAgentAccountView validates agentNetwork BEFORE ever
+    // calling getBalance — a network-mismatched bot never triggers a
+    // Robinhood RPC read at all.
+    const view = await loadRobinhoodAgentAccountView(
       { agentPublicKey: bot.agentPublicKey, agentNetwork: bot.agentNetwork },
-      { balanceWei, error: balanceError }
+      { getBalance: (address) => getNativeBalance(address) }
     );
     if ("reason" in view) {
       return NextResponse.json(view);

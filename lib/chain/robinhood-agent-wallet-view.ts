@@ -50,6 +50,13 @@ export type NetworkMismatchView = {
  * bot's recorded `agentNetwork` doesn't match the process's active
  * Robinhood network — never silently reads/reports a balance for the
  * wrong network's address space.
+ *
+ * Pure/sync by design — this alone does not prove a caller never
+ * performed the balance RPC read before calling it (a caller could fetch
+ * the balance first and then discover this returns a mismatch anyway).
+ * `loadRobinhoodAgentAccountView` below is the loader that actually
+ * enforces the ordering; production code (the API route) should call
+ * that, not this function, directly with a live balance.
  */
 export function buildRobinhoodAgentWalletView(
   bot: { agentPublicKey: string; agentNetwork: string | null },
@@ -76,4 +83,35 @@ export function buildRobinhoodAgentWalletView(
     sufficient: null,
     error: balance.error,
   };
+}
+
+/**
+ * The chain-aware loader the API route should actually call. Enforces
+ * the fail-closed ordering: validate `agentNetwork` FIRST; only call the
+ * (injectable) balance dependency if the network actually matches. A
+ * mismatched bot never triggers a Robinhood RPC read at all — proven by
+ * this function's own deterministic tests via a call-counting spy on
+ * `getBalance`, not just by code review.
+ */
+export async function loadRobinhoodAgentAccountView(
+  bot: { agentPublicKey: string; agentNetwork: string | null },
+  deps: { getBalance: (address: Address) => Promise<bigint> }
+): Promise<RobinhoodAgentWalletView | NetworkMismatchView> {
+  if (bot.agentNetwork !== ROBINHOOD_NETWORK) {
+    // Network mismatch — return immediately, WITHOUT calling
+    // deps.getBalance. buildRobinhoodAgentWalletView also independently
+    // checks this (belt-and-suspenders), but the balance dependency is
+    // never invoked here in the mismatch branch regardless.
+    return buildRobinhoodAgentWalletView(bot, { balanceWei: null, error: null });
+  }
+
+  let balanceWei: bigint | null = null;
+  let error: string | null = null;
+  try {
+    balanceWei = await deps.getBalance(bot.agentPublicKey as Address);
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : "Could not read the wallet balance.";
+  }
+
+  return buildRobinhoodAgentWalletView(bot, { balanceWei, error });
 }

@@ -241,6 +241,38 @@ export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly He
       paramsList[2]
     ) as [Address, bigint];
 
+    // Canonical re-encode check: `decodeAbiParameters` only proves the
+    // supplied bytes START WITH a value of the expected shape — it does
+    // NOT prove there's no trailing/non-canonical payload appended after
+    // it (ABI decoding is not required to consume every byte to
+    // succeed). Re-encoding the decoded values with the exact same
+    // encoder this module's own builder uses, and requiring byte-for-byte
+    // equality against what was supplied, closes that gap: any trailing
+    // bytes, reordered dynamic-tail data, or non-canonical encoding of an
+    // otherwise-valid-looking payload is rejected here, not silently
+    // accepted because the decode call happened not to throw.
+    const canonical = encodeV4SwapExactInSingle({
+      exactInputSingle,
+      settleCurrency,
+      settleMaxAmount,
+      takeCurrency,
+      takeMinAmount,
+    });
+    if (canonical.commands.toLowerCase() !== commands.toLowerCase()) {
+      return {
+        ok: false,
+        reason: "commands is not the canonical encoding for the decoded V4_SWAP command — refusing non-canonical calldata",
+      };
+    }
+    if (canonical.inputs.length !== 1 || canonical.inputs[0].toLowerCase() !== inputs[0].toLowerCase()) {
+      return {
+        ok: false,
+        reason:
+          "the V4_SWAP input is not the exact canonical re-encoding of its own decoded values — possible " +
+          "trailing or non-canonical bytes in the nested payload (actions/exactInputSingle/settle/take)",
+      };
+    }
+
     return {
       ok: true,
       decoded: { exactInputSingle, settleCurrency, settleMaxAmount, takeCurrency, takeMinAmount },
