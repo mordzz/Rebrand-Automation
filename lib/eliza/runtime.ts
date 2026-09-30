@@ -9,7 +9,6 @@ import { recordModelUsage } from "@/lib/model-usage";
 import { noahCharacter } from "./character";
 import { getProviderStatuses } from "./model-providers";
 import { lessonsProvider } from "./providers/lessons-provider";
-import { walletProvider } from "./providers/wallet-provider";
 import { buildElizaSettings } from "./settings";
 
 // No auth/session system exists yet: one fixed room/entity pair means every
@@ -61,7 +60,6 @@ export function getElizaRuntime(): Promise<AgentRuntime> | null {
       });
       await runtime.initialize();
       runtime.registerProvider(lessonsProvider);
-      runtime.registerProvider(walletProvider);
 
       // Real usage tracking for the dashboard's Model connections chart —
       // the event doesn't say which provider served the call (see

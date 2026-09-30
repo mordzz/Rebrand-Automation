@@ -378,12 +378,16 @@ export const userBots = pgTable("user_bots", {
    * (`?api-key=…`). Sitting in that blob it would be handed to anyone who
    * knows a wallet address, since that endpoint trusts a client-asserted
    * wallet. Keeping it separate means leaking it has to be a deliberate
-   * act rather than an accident — app/api/my-bot/rpc only ever returns a
-   * masked form, and nothing else selects this column. */
+   * act rather than an accident.
+   *
+   * PR16: historical only. This held a per-bot SOLANA RPC endpoint; the
+   * Robinhood runtime uses the server's ROBINHOOD_RPC_URL, and the panel +
+   * route that edited this column were retired. Never selected into a
+   * browser response. */
   rpcUrl: text("rpc_url"),
   /* This agent's own trading wallet, generated at deploy.
    *
-   * Separate from walletAddress above: that one is the operator's Phantom
+   * Separate from walletAddress above: that one is the operator's owner (EVM)
    * wallet, used only to identify who owns this bot, and its keys are
    * never requested or held. This one is a fresh keypair the agent signs
    * with, so it can trade without the operator present. Only what the

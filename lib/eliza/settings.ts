@@ -6,8 +6,8 @@
  * on import in the published 2.0.0-alpha.6 build — a name mismatch between
  * its generated action-spec registry and its own lookup key, unrelated to
  * anything in this app). Wallet reads and the gated transfer action talk to
- * lib/solana/wallet.ts directly, which already reads PRIVATE_KEY_SOLANA_WALLET
- * and SOLANA_RPC_URL from process.env on its own.
+ * nothing: the Solana house wallet (PRIVATE_KEY_SOLANA_WALLET) and its
+ * chat balance provider were retired in PR16.
  */
 export function buildElizaSettings(): Record<string, string> {
   const settings: Record<string, string> = {};

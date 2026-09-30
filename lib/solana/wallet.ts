@@ -33,13 +33,6 @@ async function fetchSolPrice(): Promise<number | undefined> {
   }
 }
 
-/** The house Solana signing wallet is retired with the Solana runtime; it
- * always reports not-connected rather than deriving an address from a
- * private key. */
-export async function getWalletSnapshot(): Promise<WalletSnapshot> {
-  return { connected: false };
-}
-
 export type AddressBalanceSnapshot = {
   address: string;
   balanceSol?: number;

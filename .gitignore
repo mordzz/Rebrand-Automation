@@ -41,11 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# anchor / rust program build artifacts
-target
-.anchor
-test-ledger
-**/*.rs.bk
 
 # investigation-output datasets (not application state — see
 # scripts/collect-robinhood-new-creation-liquidity.ts)

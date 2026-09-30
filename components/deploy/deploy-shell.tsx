@@ -34,7 +34,6 @@ import { AgentWalletPanel } from "@/components/deploy/agent-wallet-panel";
 import { FundingModal } from "@/components/deploy/funding-modal";
 import { GoLiveModal } from "@/components/deploy/go-live-modal";
 import { CharacterAvatar } from "@/components/deploy/character-avatar";
-import { RpcPanel } from "@/components/deploy/rpc-panel";
 import {
   CHARACTER_ROSTER,
   characterTypeForSrc,
@@ -1151,7 +1150,6 @@ function BotDesk({
         />
       )}
 
-      <RpcPanel walletQuery={walletQuery} />
 
       <SniperConfigPanel
         endpoint={`/api/my-bot/config?wallet=${encodeURIComponent(address)}`}
