@@ -6,14 +6,7 @@ import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { generateRobinhoodAgentWallet } from "@/lib/chain/robinhood-agent-wallet";
-
-/** Only an EVM-shaped (0x...) owner wallet ever gets a new agent wallet,
- * and it is always a Robinhood/EVM one. Solana agent-wallet generation is
- * retired (PR09A): a legacy Solana-owned bot keeps whatever it already
- * has, but no new Solana key is ever minted. */
-function isEvmOwnerWallet(wallet: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(wallet);
-}
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +15,8 @@ export const dynamic = "force-dynamic";
  * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
  * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
  * may legitimately be either shape depending on when the bot was deployed.
- * NOTE (demo): the wallet is client-asserted. Before real deploys, verify
- * Privy's access token server-side instead of trusting this parameter. */
+ * GET is read-only and strips key material; POST (which can mint an agent
+ * wallet) requires a verified Privy access token that owns the wallet. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
@@ -65,7 +58,12 @@ export async function GET(request: Request) {
   return NextResponse.json({ configured: true, bot: withoutSecret(bot) });
 }
 
-/** Creates or updates the caller's automaton (name + character). */
+/** Creates or updates the caller's automaton (name + character).
+ *
+ * PR09C: requires `Authorization: Bearer <Privy access token>` whose
+ * authoritative Privy user has `wallet` linked as an EVM account — checked
+ * before any DB read or key generation. Only EVM owners can deploy/refit;
+ * legacy Solana-owned bots stay in the DB untouched (read-only via GET). */
 export async function POST(request: Request) {
   const db = getDb();
   if (!db) {
@@ -85,13 +83,13 @@ export async function POST(request: Request) {
   }
 
   const wallet = body.wallet ?? "";
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
+
   const name = (body.name ?? "").trim().slice(0, 40);
   const characterType = body.characterType ?? "";
   const characterSrc = body.characterSrc?.trim() || null;
 
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
   if (name.length < 2) {
     return NextResponse.json({ error: "Name too short" }, { status: 400 });
   }
@@ -109,7 +107,7 @@ export async function POST(request: Request) {
      missing: a refit re-POSTs this route, and minting a fresh keypair
      there would orphan whatever the operator had already deposited into
      the old address. Skipped entirely when no encryption key is set —
-     lib/solana/agent-wallet.ts refuses to store a secret in the clear,
+     lib/wallet/secret-encryption.ts refuses to store a secret in the clear,
      and a bot with no wallet is recoverable while a leaked key is not. */
   const [existing] = await db
     .select()
@@ -125,7 +123,7 @@ export async function POST(request: Request) {
   let agentChain = existing?.agentChain ?? null;
   let agentNetwork = existing?.agentNetwork ?? null;
   let agentNativeSymbol = existing?.agentNativeSymbol ?? null;
-  if (!agentPublicKey && isAgentWalletConfigured() && isEvmOwnerWallet(wallet)) {
+  if (!agentPublicKey && isAgentWalletConfigured()) {
     const generated = await generateRobinhoodAgentWallet();
     agentPublicKey = generated.address;
     agentSecretEnc = generated.secretEnc;

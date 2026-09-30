@@ -221,6 +221,7 @@ function CharacterForm({
   onDone: () => void;
   onCancel?: () => void;
 }) {
+  const { getAccessToken } = usePrivy();
   const initialRosterId =
     initial == null
       ? "noah"
@@ -266,9 +267,19 @@ function CharacterForm({
     setSaving(true);
     setError(null);
     try {
+      // The server verifies this Privy token and that `address` is linked
+      // to its user before saving (or minting an agent wallet).
+      const token = await getAccessToken();
+      if (!token) {
+        setError("Your session expired — reconnect your wallet and try again.");
+        return;
+      }
       const res = await fetch("/api/my-bot", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ wallet: address, name: trimmed, ...payload }),
       });
       const json = await res.json();

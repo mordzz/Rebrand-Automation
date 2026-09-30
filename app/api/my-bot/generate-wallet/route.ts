@@ -6,20 +6,9 @@ import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { generateRobinhoodAgentWallet } from "@/lib/chain/robinhood-agent-wallet";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
-
-/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
-function isPlausibleWalletAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
-
-/** Same chain dispatch as app/api/my-bot/route.ts — never inferred any
- * other way. */
-function isEvmOwnerWallet(wallet: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(wallet);
-}
 
 /**
  * Generates an agent wallet for an existing automaton that was deployed
@@ -27,6 +16,11 @@ function isEvmOwnerWallet(wallet: string): boolean {
  *
  * 1 agent wallet per automaton (account). If a wallet already exists for this
  * automaton, this route is idempotent and returns the existing public key.
+ *
+ * PR09C: requires a verified Privy access token whose user has `wallet`
+ * linked as an EVM account (see lib/auth/privy-server.ts). Checked before
+ * any DB read or key generation. Solana agent-wallet generation is retired
+ * (PR09A) — a non-EVM wallet is rejected by the auth check itself.
  */
 export async function POST(request: Request) {
   const db = getDb();
@@ -47,9 +41,8 @@ export async function POST(request: Request) {
     }
   }
 
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
-  }
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   if (!isAgentWalletConfigured()) {
     return NextResponse.json(
@@ -85,34 +78,22 @@ export async function POST(request: Request) {
     });
   }
 
-  // Generate new keypair & encrypt — chain dispatch by owner wallet shape,
-  // same rule as app/api/my-bot/route.ts.
-  if (isEvmOwnerWallet(wallet)) {
-    const generated = await generateRobinhoodAgentWallet();
-    await db
-      .update(userBots)
-      .set({
-        agentPublicKey: generated.address,
-        agentSecretEnc: generated.secretEnc,
-        agentChain: generated.chain,
-        agentNetwork: generated.network,
-        agentNativeSymbol: generated.nativeSymbol,
-        updatedAt: new Date(),
-      })
-      .where(eq(userBots.id, bot.id));
+  const generated = await generateRobinhoodAgentWallet();
+  await db
+    .update(userBots)
+    .set({
+      agentPublicKey: generated.address,
+      agentSecretEnc: generated.secretEnc,
+      agentChain: generated.chain,
+      agentNetwork: generated.network,
+      agentNativeSymbol: generated.nativeSymbol,
+      updatedAt: new Date(),
+    })
+    .where(eq(userBots.id, bot.id));
 
-    return NextResponse.json({
-      ok: true,
-      walletAddress: generated.address,
-      alreadyExisted: false,
-    });
-  }
-
-  // PR09A: Solana agent-wallet generation is retired — no new Solana key
-  // is ever minted. Fail closed rather than silently creating an EVM
-  // wallet for a Solana-shaped owner.
-  return NextResponse.json(
-    { error: "Solana agent wallets are retired. Connect an EVM wallet to deploy on Robinhood Chain." },
-    { status: 410 }
-  );
+  return NextResponse.json({
+    ok: true,
+    walletAddress: generated.address,
+    alreadyExisted: false,
+  });
 }

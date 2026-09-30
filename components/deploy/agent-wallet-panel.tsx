@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, Check, Copy, Loader2, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ type WalletResponse = {
  * gets a wallet of its own rather than borrowing the operator's.
  */
 export function AgentWalletPanel({ walletQuery }: { walletQuery: string }) {
+  const { getAccessToken } = usePrivy();
   const [data, setData] = useState<WalletResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -106,8 +108,15 @@ export function AgentWalletPanel({ walletQuery }: { walletQuery: string }) {
     setGenerating(true);
     setGenError(null);
     try {
+      // Server verifies the Privy token owns this wallet before minting.
+      const token = await getAccessToken();
+      if (!token) {
+        setGenError("Your session expired — reconnect your wallet and try again.");
+        return;
+      }
       const res = await fetch(`/api/my-bot/generate-wallet?${walletQuery}`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
       if (!res.ok) {
