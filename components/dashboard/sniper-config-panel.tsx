@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 
 /** Mirrors lib/sniper/config.ts#SniperConfig — kept as a plain type here
  * (not imported) since this file is a client component and the source
@@ -211,15 +212,18 @@ export function SniperConfigPanel({
   endpoint = "/api/sniper/config",
   title = "The Raven · Live Config",
   description = "Changes take effect on the daemon's next cycle — no restart needed.",
-  saveFetch = fetch,
+  saveFetch,
 }: {
   endpoint?: string;
   title?: string;
   description?: string;
-  /** Used for the PATCH only — a user bot's panel passes a Privy-authed
-   * fetch (see lib/auth/use-privy-authed-fetch.ts). */
+  /** Used for the PATCH only. Defaults to the app-wide authed fetch
+   * (lib/auth/use-privy-authed-fetch.ts) — both the per-bot and the house
+   * config PATCH routes require a verified Privy user. */
   saveFetch?: typeof fetch;
 }) {
+  const contextFetch = useAuthedFetch();
+  const doFetch = saveFetch ?? contextFetch;
   const response = usePolledJson<{ configured: boolean; config: SniperConfigValue | null }>(
     endpoint,
     10_000
@@ -251,7 +255,7 @@ export function SniperConfigPanel({
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await saveFetch(endpoint, {
+      const res = await doFetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),

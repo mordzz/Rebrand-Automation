@@ -1,7 +1,7 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { useCallback } from "react";
+import { createContext, createElement, useCallback, useContext, type ReactNode } from "react";
 
 /**
  * `fetch` that attaches the caller's Privy access token as
@@ -30,4 +30,19 @@ export function usePrivyAuthedFetch(): typeof fetch {
     },
     [getAccessToken],
   );
+}
+
+/** Authed fetch for components that may render with or without Privy
+ * (PR17). Inside PrivyProvider, <AuthedFetchBridge> supplies the token-
+ * attaching fetch; without Privy the default is plain fetch, which every
+ * protected route refuses — fail closed, never a bypass. */
+export const AuthedFetchContext = createContext<typeof fetch>((input, init) => fetch(input, init));
+
+export function useAuthedFetch(): typeof fetch {
+  return useContext(AuthedFetchContext);
+}
+
+export function AuthedFetchBridge({ children }: { children: ReactNode }) {
+  const authedFetch = usePrivyAuthedFetch();
+  return createElement(AuthedFetchContext.Provider, { value: authedFetch }, children);
 }

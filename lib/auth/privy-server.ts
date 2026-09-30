@@ -168,3 +168,62 @@ export function authenticateEvmOwner(
 export function authErrorResponse(result: Extract<EvmOwnerAuthResult, { ok: false }>) {
   return NextResponse.json({ error: result.error }, { status: result.status });
 }
+
+/* ── House administration (PR17) ──────────────────────────────────────────
+ * House-level state (the shared sniper_config, the house on/off switch,
+ * lesson application, manual trade entry) belongs to the operator, not to
+ * any one bot owner. Authorized only for a verified Privy user one of whose
+ * LINKED EVM wallets is in the server-only HOUSE_ADMIN_WALLETS allowlist
+ * (comma-separated 0x addresses). Unset/empty allowlist = no one (fail
+ * closed). No client-supplied wallet is trusted. */
+
+export type HouseAdminAuthResult =
+  | { ok: true; privyUserId: string; adminWallet: Address }
+  | { ok: false; status: 401 | 403 | 503; error: string };
+
+export function houseAdminWallets(raw: string | undefined = process.env.HOUSE_ADMIN_WALLETS): Set<Address> {
+  const out = new Set<Address>();
+  for (const part of (raw ?? "").split(",")) {
+    const w = part.trim();
+    if (w && isAddress(w, { strict: false })) out.add(getAddress(w));
+  }
+  return out;
+}
+
+export async function authenticateHouseAdminWith(
+  backend: PrivyAuthBackend | null,
+  authorizationHeader: string | null,
+  admins: Set<Address>,
+): Promise<HouseAdminAuthResult> {
+  if (!backend) return { ok: false, status: 503, error: "Server authentication is not configured" };
+  const token = parseBearerToken(authorizationHeader);
+  if (!token) return { ok: false, status: 401, error: "Missing or malformed access token" };
+  let userId: string;
+  try {
+    ({ user_id: userId } = await backend.verifyAccessToken(token));
+  } catch {
+    return { ok: false, status: 401, error: "Invalid or expired access token" };
+  }
+  if (!userId) return { ok: false, status: 401, error: "Invalid or expired access token" };
+  if (admins.size === 0) {
+    return { ok: false, status: 403, error: "House administration is not configured on this server" };
+  }
+  let accounts: ReadonlyArray<LinkedAccountLike>;
+  try {
+    accounts = await backend.getUserLinkedAccounts(userId);
+  } catch {
+    return { ok: false, status: 503, error: "Could not resolve the authenticated user" };
+  }
+  for (const admin of admins) {
+    if (isLinkedEvmWallet(accounts, admin)) return { ok: true, privyUserId: userId, adminWallet: admin };
+  }
+  return { ok: false, status: 403, error: "Not a house administrator" };
+}
+
+export function authenticateHouseAdmin(request: Request): Promise<HouseAdminAuthResult> {
+  return authenticateHouseAdminWith(getPrivyAuthBackend(), request.headers.get("authorization"), houseAdminWallets());
+}
+
+export function houseAdminErrorResponse(result: Extract<HouseAdminAuthResult, { ok: false }>) {
+  return NextResponse.json({ error: result.error }, { status: result.status });
+}

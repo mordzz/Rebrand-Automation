@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import { nativeSymbolFor, rowPnl } from "@/lib/chain/display";
+import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 
 type ProviderId = "openrouter" | "anthropic" | "openai";
 
@@ -155,11 +156,13 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
   // waiting out the 15s poll before the button's own row updates.
   const [locallyApplied, setLocallyApplied] = useState<Set<string>>(new Set());
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  // PR17: applying a lesson changes the house config — house admin only.
+  const authedFetch = useAuthedFetch();
 
   async function applySuggestion(id: string) {
     setApplyingId(id);
     try {
-      const res = await fetch(`/api/lessons/${id}/apply`, { method: "POST" });
+      const res = await authedFetch(`/api/lessons/${id}/apply`, { method: "POST" });
       if (res.ok) {
         setLocallyApplied((prev) => new Set(prev).add(id));
       }

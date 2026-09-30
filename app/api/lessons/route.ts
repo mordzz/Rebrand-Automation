@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { lessons, trades } from "@/lib/db/schema";
+import { houseAdminErrorResponse, authenticateHouseAdmin } from "@/lib/auth/privy-server";
 
 /** Agent memory: lessons joined with the trades that taught them.
  *
@@ -55,6 +56,10 @@ export async function GET(request: NextRequest) {
 
 /** Mark a lesson as applied (or back to learning). */
 export async function PATCH(request: Request) {
+  // PR17: house-level mutation — verified Privy user with a linked EVM
+  // wallet in HOUSE_ADMIN_WALLETS (fail closed when unset).
+  const admin = await authenticateHouseAdmin(request);
+  if (!admin.ok) return houseAdminErrorResponse(admin);
   const db = getDb();
   if (!db) {
     return NextResponse.json(

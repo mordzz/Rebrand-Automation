@@ -2,6 +2,7 @@
 
 import { PrivyProvider } from "@privy-io/react-auth";
 
+import { AuthedFetchBridge } from "@/lib/auth/use-privy-authed-fetch";
 import { robinhoodChain, robinhoodChains } from "@/lib/chain/viem-chain";
 
 /** Inlined at build time — when unset, the app renders without Privy and
@@ -35,7 +36,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         supportedChains: robinhoodChains,
       }}
     >
-      {children}
+      <AuthedFetchBridge>{children}</AuthedFetchBridge>
     </PrivyProvider>
   );
 }

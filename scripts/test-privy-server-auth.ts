@@ -20,6 +20,8 @@ import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 
 import {
   authenticateEvmOwnerWith,
+  authenticateHouseAdminWith,
+  houseAdminWallets,
   isLinkedEvmWallet,
   parseBearerToken,
   type LinkedAccountLike,
@@ -237,6 +239,53 @@ async function main() {
       const authAt = h.indexOf("authenticateEvmOwner(");
       const firstDb = h.search(/\.(select|update|insert|delete)\(/);
       assert(authAt > 0 && (firstDb < 0 || authAt < firstDb), `${route} ${method}: authenticates before DB access`);
+    }
+  }
+
+  // ═══ PR17: house administration ═══════════════════════════════════════
+  {
+    const ADMIN = "0x1111111111111111111111111111111111111111";
+    const admins = houseAdminWallets(`${ADMIN.toLowerCase()}, not-an-address ,`);
+    assert(admins.size === 1 && admins.has(ADMIN), "HOUSE_ADMIN_WALLETS parsed; junk entries ignored");
+    const adminAccounts: LinkedAccountLike[] = [{ type: "wallet", chain_type: "ethereum", address: ADMIN }];
+    const ok = fakeBackend({ accounts: adminAccounts }).backend;
+    assert((await authenticateHouseAdminWith(ok, `Bearer ${FAKE_JWT}`, admins)).ok, "linked admin wallet → allowed");
+    const r1 = await authenticateHouseAdminWith(ok, `Bearer ${FAKE_JWT}`, new Set());
+    assert(!r1.ok && r1.status === 403, "empty allowlist → 403 (fail closed, nobody is admin)");
+    const r2 = await authenticateHouseAdminWith(fakeBackend({}).backend, `Bearer ${FAKE_JWT}`, admins);
+    assert(!r2.ok && r2.status === 403, "valid user without an admin wallet → 403");
+    const smart = fakeBackend({ accounts: [{ type: "smart_wallet", address: ADMIN }] }).backend;
+    const r3 = await authenticateHouseAdminWith(smart, `Bearer ${FAKE_JWT}`, admins);
+    assert(!r3.ok && r3.status === 403, "admin address only as a smart wallet → 403");
+    const r4 = await authenticateHouseAdminWith(ok, null, admins);
+    assert(!r4.ok && r4.status === 401, "house admin: missing token → 401");
+    const r5 = await authenticateHouseAdminWith(null, `Bearer ${FAKE_JWT}`, admins);
+    assert(!r5.ok && r5.status === 503, "house admin: unconfigured Privy → 503");
+  }
+
+  // Every mutating handler ANYWHERE under app/api must authenticate before
+  // touching state — owner auth, house-admin auth, or a fail-closed stub.
+  // Chat endpoints are the documented exception: they only call the LLM and
+  // read public stats; they never write trading state.
+  const CHAT_ONLY = new Set(["app/api/chat/route.ts", "app/api/atelier/chat/route.ts"]);
+  for (const dir of readdirSync(join(root, "app/api"), { recursive: true }) as string[]) {
+    if (!dir.endsWith("route.ts")) continue;
+    const route = join("app/api", dir).replace(/\\/g, "/");
+    const src = readFileSync(join(root, route), "utf8");
+    for (const h of src.split(/(?=export async function )/).slice(1)) {
+      const method = /export async function (\w+)/.exec(h)?.[1];
+      if (!method || method === "GET") continue;
+      if (CHAT_ONLY.has(route)) {
+        assert(!/\.(update|insert|delete)\(/.test(h), `${route} ${method}: chat-only route performs no DB writes`);
+        continue;
+      }
+      if (!/getDb\(|request\.json\(|\.(update|insert|delete)\(/.test(h)) {
+        assert(/status: (410|501)|return retired\(\)/.test(h), `${route} ${method}: stateless handler is a fail-closed stub`);
+        continue;
+      }
+      const authAt = h.search(/authenticate(EvmOwner|HouseAdmin)\(/);
+      const firstState = h.search(/\.(select|update|insert|delete)\(|updateSniperConfig\(|setPaused\(|recordClosedTrade\(/);
+      assert(authAt > 0 && (firstState < 0 || authAt < firstState), `${route} ${method}: authenticated before any state access`);
     }
   }
 
