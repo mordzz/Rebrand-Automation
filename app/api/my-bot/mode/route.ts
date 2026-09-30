@@ -1,17 +1,22 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { formatEther } from "viem";
 
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
+import { ROBINHOOD_NETWORK } from "@/lib/chain/config";
+import { getNativeBalance } from "@/lib/chain/rpc";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { getAddressBalance } from "@/lib/solana/wallet";
+import { resolveRobinhoodNativeLimits } from "@/lib/sniper/risk-limits-robinhood";
 
 export const dynamic = "force-dynamic";
 
-/** Mirrors LIVE_FEE_HEADROOM_SOL in scripts/paper-daemon.ts. */
-const LIVE_FEE_HEADROOM_SOL = 0.01;
+/** Gas headroom on top of one snipe's size, in wei (0.0005 ETH). Robinhood
+ * Chain is an L2, so this comfortably covers a buy, the exact-amount
+ * approvals, and the sell that the PR10 canary exercises. */
+const LIVE_GAS_HEADROOM_WEI = BigInt(500_000_000_000_000);
 
 /**
  * Switches a bot between paper and live.
@@ -65,11 +70,12 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const balance = await getAddressBalance(bot.agentPublicKey);
-    if (balance.balanceSol == null) {
+    /* PR09A retired Solana live execution; only a Robinhood agent wallet
+       on the active network can be gated (and later traded) here. */
+    if (bot.agentChain !== "robinhood" || bot.agentNetwork !== ROBINHOOD_NETWORK) {
       return NextResponse.json(
-        { error: "Could not read the agent wallet balance — try again shortly." },
-        { status: 503 }
+        { error: "Live mode requires a Robinhood agent wallet on the active network." },
+        { status: 410 }
       );
     }
     /* Gate on what a trade actually costs, not merely on a non-zero
@@ -77,13 +83,26 @@ export async function POST(request: Request) {
        and then fail to fill on every candidate it liked — the silent
        failure this check exists to prevent. `needsFunding` lets the UI
        answer with the funding modal instead of a bare error string. */
-    const config = await getEffectiveConfig(bot);
-    const requiredSol =
-      Math.round((config.maxSolPerSnipe + LIVE_FEE_HEADROOM_SOL) * 1e6) / 1e6;
-    if (balance.balanceSol < requiredSol) {
+    const limits = resolveRobinhoodNativeLimits(await getEffectiveConfig(bot));
+    if (!limits.ok) {
+      return NextResponse.json({ error: limits.reason }, { status: 400 });
+    }
+    let balanceWei: bigint;
+    try {
+      balanceWei = await getNativeBalance(bot.agentPublicKey);
+    } catch {
+      return NextResponse.json(
+        { error: "Could not read the agent wallet balance — try again shortly." },
+        { status: 503 }
+      );
+    }
+    // Snipe size is ETH (a number); compare in wei via gwei to avoid float noise.
+    const requiredWei =
+      BigInt(Math.ceil(limits.limits.maxNativePerSnipe * 1e9)) * BigInt(1e9) + LIVE_GAS_HEADROOM_WEI;
+    if (balanceWei < requiredWei) {
       return NextResponse.json(
         {
-          error: `Deposit at least ${requiredSol} SOL into the agent wallet before going live.`,
+          error: `Deposit at least ${formatEther(requiredWei)} ETH into the agent wallet before going live.`,
           needsFunding: true,
         },
         { status: 400 }
