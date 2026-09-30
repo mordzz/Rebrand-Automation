@@ -39,6 +39,7 @@
     "@elizaos/plugin-openai": "^2.0.3-beta.7",
     "@elizaos/plugin-openrouter": "^2.0.3-beta.7",
     "@elizaos/plugin-sql": "^2.0.3-beta.7",
+    "@privy-io/node": "0.35.0",
     "@privy-io/react-auth": "^3.35.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
