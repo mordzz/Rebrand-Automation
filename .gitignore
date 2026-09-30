@@ -53,3 +53,5 @@ test-ledger
 # PR10 testnet canary: encrypted canary wallet + broadcast ledger
 /data/robinhood-testnet-canary.wallet.json
 /data/robinhood-testnet-canary.ledger.jsonl
+# PR12 official Lighter signer build output (reproducible: npm run build:lighter-signer)
+/vendor/lighter-signer/
