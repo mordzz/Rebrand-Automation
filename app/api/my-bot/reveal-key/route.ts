@@ -14,8 +14,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function isPlausibleSolanaAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
+ * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. This only
+ * widens the identity-owner SHAPE check; the signature verification
+ * below (verifySolanaSignature) is unchanged and still Solana-only, so
+ * an EVM-owned bot correctly still cannot complete a key reveal until
+ * that has its own EVM migration (see components/providers.tsx). */
+function isPlausibleWalletAddress(addr: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
 async function loadBot(owner: string) {
@@ -49,7 +55,7 @@ async function loadBot(owner: string) {
  */
 export async function GET(request: Request) {
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(owner)) {
+  if (!isPlausibleWalletAddress(owner)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 
@@ -65,7 +71,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(owner)) {
+  if (!isPlausibleWalletAddress(owner)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 

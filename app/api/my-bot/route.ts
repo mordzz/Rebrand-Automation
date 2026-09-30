@@ -11,11 +11,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** Loose base58 shape check — enough to reject garbage, not full validation.
+/** Loose shape check for the identity/owner wallet — enough to reject
+ * garbage, not full validation. Accepts either a legacy Solana wallet
+ * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
+ * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
+ * may legitimately be either shape depending on when the bot was deployed.
  * NOTE (demo): the wallet is client-asserted. Before real deploys, verify
  * Privy's access token server-side instead of trusting this parameter. */
-function isPlausibleSolanaAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+function isPlausibleWalletAddress(addr: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
 const CHARACTER_TYPES = new Set(["3d", "image", "gif"]);
@@ -36,7 +40,7 @@ export async function GET(request: Request) {
   if (!db) return NextResponse.json({ configured: false, bot: null });
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(wallet)) {
+  if (!isPlausibleWalletAddress(wallet)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 
@@ -79,7 +83,7 @@ export async function POST(request: Request) {
   const characterType = body.characterType ?? "";
   const characterSrc = body.characterSrc?.trim() || null;
 
-  if (!isPlausibleSolanaAddress(wallet)) {
+  if (!isPlausibleWalletAddress(wallet)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
   if (name.length < 2) {

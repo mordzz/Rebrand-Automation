@@ -22,8 +22,23 @@ const FEE_HEADROOM_SOL = 0.00001;
  * can always afford to sell back out of what it bought. */
 const LIVE_FEE_HEADROOM_SOL = 0.01;
 
+/** Solana-only shape check — for values that must genuinely be a Solana
+ * address (e.g. a SOL withdrawal destination below), not the identity
+ * wallet. Do not use this for the owner/identity wallet — see
+ * isPlausibleWalletAddress. */
 function isPlausibleSolanaAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+}
+
+/** Loose shape check for the IDENTITY/owner wallet — enough to reject
+ * garbage, not full validation. Accepts either a legacy Solana wallet
+ * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
+ * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
+ * may legitimately be either shape depending on when the bot was deployed.
+ * NOTE (demo): the wallet is client-asserted. Before real deploys, verify
+ * Privy's access token server-side instead of trusting this parameter. */
+function isPlausibleWalletAddress(addr: string): boolean {
+  return isPlausibleSolanaAddress(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
 async function loadBot(wallet: string) {
@@ -48,7 +63,7 @@ export async function GET(request: Request) {
   if (!getDb()) return NextResponse.json({ configured: false, wallet: null });
 
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(owner)) {
+  if (!isPlausibleWalletAddress(owner)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 
@@ -108,7 +123,7 @@ export async function POST(request: Request) {
   }
 
   const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleSolanaAddress(owner)) {
+  if (!isPlausibleWalletAddress(owner)) {
     return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
   }
 

@@ -1,22 +1,59 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
 import { positions, type Position } from "@/lib/db/schema";
 
+/**
+ * Remaining notional after selling `sold` off a `current` amount, never
+ * negative. Pure/exported so PR07's sizeNative-persistence fix (see
+ * recordPartialExit below) is directly unit-testable without a DB — the
+ * same math is used for both the legacy sizeSol column and the
+ * chain-neutral sizeNative column, since a Robinhood position's tiered
+ * partial exits must shrink both in lockstep.
+ */
+export function computeRemainingSize(current: string | number, sold: number): number {
+  return Math.max(Number(current) - sold, 0);
+}
+
 export type OpenPositionInput = {
+  /** Legacy required column — for Robinhood callers this is a
+   * compatibility shadow: the same EVM token address that also goes into
+   * `tokenAddress` below, since `positions.token` is NOT NULL and this
+   * repo does not perform destructive migrations. Never itself read for
+   * Robinhood decision-making — see tokenAddress. */
   token: string;
   symbol?: string;
   entryPrice: number;
+  /** Legacy required column — for Robinhood callers this is a
+   * compatibility shadow holding the same numeric value as `sizeNative`
+   * below (an ETH notional, not SOL). Never itself read for Robinhood
+   * risk/sizing decisions — see sizeNative. */
   sizeSol: number;
   tokensBought?: number;
   takeProfitPct: number;
   stopLossPct: number;
+  /** Legacy required column — for Robinhood paper positions this is the
+   * literal "paper" sentinel, same convention as the Solana path. Never
+   * a real Robinhood transaction hash — see entryTxHash. */
   entryTxSignature: string;
   context?: Record<string, unknown>;
   /** null (default) = the house desk; set = one deployed bot's own ledger.
    * Same convention as trades.walletAddress (see app/api/positions/route.ts). */
   walletAddress?: string | null;
+
+  /* PR04 chain-neutral columns (PR07 is the first writer). All optional —
+   * Solana callers omit them entirely and every one stays NULL, exactly
+   * as before this PR. A Robinhood caller sets every field below;
+   * `entryTxHash` stays null for a paper simulation (never the "paper"
+   * string — that sentinel is entryTxSignature-only, the legacy shadow
+   * column above). */
+  tokenAddress?: string | null;
+  sizeNative?: number | null;
+  nativeSymbol?: string | null;
+  chain?: string | null;
+  network?: string | null;
+  entryTxHash?: string | null;
 };
 
 /**
@@ -45,6 +82,12 @@ export async function openPosition(
       entryTxSignature: input.entryTxSignature,
       context: input.context ?? null,
       walletAddress: input.walletAddress ?? null,
+      tokenAddress: input.tokenAddress ?? null,
+      sizeNative: input.sizeNative != null ? String(input.sizeNative) : null,
+      nativeSymbol: input.nativeSymbol ?? null,
+      chain: input.chain ?? null,
+      network: input.network ?? null,
+      entryTxHash: input.entryTxHash ?? null,
     })
     .returning();
   return row;
@@ -82,6 +125,57 @@ export async function getOpenPositions(
     );
 }
 
+/**
+ * Like getOpenPositions, but scoped to Solana rows only — chain IS NULL
+ * (legacy, pre-PR04 history) OR chain = "solana", explicitly. Used by
+ * the Solana risk gate (lib/sniper/risk-limits.ts#canOpenNewPosition) so
+ * a Robinhood row's `sizeSol` compatibility shadow (its real ETH
+ * notional) can never be summed into Solana's deployed-SOL figure.
+ */
+export async function getOpenSolanaPositions(
+  walletAddress: string | null = null
+): Promise<Position[]> {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(positions)
+    .where(
+      and(
+        eq(positions.status, "open"),
+        or(isNull(positions.chain), eq(positions.chain, "solana")),
+        walletAddress
+          ? eq(positions.walletAddress, walletAddress)
+          : isNull(positions.walletAddress)
+      )
+    );
+}
+
+/** Like getOpenPositions, but scoped to one chain — used by PR07's
+ * Robinhood risk gate so a deployed-native sum can never accidentally
+ * include Solana rows (chain=null/"solana"), and so a Solana-only
+ * consumer is never handed a Robinhood row. `chain` is matched exactly
+ * (no fallback/guessing for legacy null rows). */
+export async function getOpenPositionsByChain(
+  walletAddress: string | null,
+  chain: string
+): Promise<Position[]> {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(positions)
+    .where(
+      and(
+        eq(positions.status, "open"),
+        eq(positions.chain, chain),
+        walletAddress
+          ? eq(positions.walletAddress, walletAddress)
+          : isNull(positions.walletAddress)
+      )
+    );
+}
+
 /** Bookkeeping only — used by the exit loop between TP/SL evaluations.
  * `peakPrice` is only passed once the trailing stop has activated. */
 export async function updatePositionPrice(
@@ -111,6 +205,17 @@ export type PartialExitInput = {
   /** Index into sniperConfig.takeProfitTiers — recorded so a tier never
    * fires twice on the same position. */
   tierIndex: number;
+
+  /* PR04 chain-neutral trade fields — optional, Robinhood-only. Solana
+   * callers omit these; recordClosedTrade below then leaves them null,
+   * unchanged from before this PR. See closePosition's identical block
+   * for the shared rationale. */
+  sizeNative?: number | null;
+  pnlNative?: number | null;
+  nativeSymbol?: string | null;
+  chain?: string | null;
+  network?: string | null;
+  tokenAddress?: string | null;
 };
 
 /**
@@ -134,11 +239,17 @@ export async function recordPartialExit(
       exitPrice: exit.exitPrice,
       sizeSol: exit.soldSol,
       pnlSol: exit.pnlSol,
+      sizeNative: exit.sizeNative ?? null,
+      pnlNative: exit.pnlNative ?? null,
+      nativeSymbol: exit.nativeSymbol ?? null,
+      chain: exit.chain ?? null,
+      network: exit.network ?? null,
       openedAt: position.openedAt.toISOString(),
       closedAt: new Date().toISOString(),
       context: {
         ...((position.context as Record<string, unknown>) ?? {}),
         mint: position.token,
+        tokenAddress: exit.tokenAddress ?? null,
         exitTxSignature: exit.exitTxSignature,
         exitReason: `tiered-take-profit-tier-${exit.tierIndex}`,
       },
@@ -150,12 +261,28 @@ export async function recordPartialExit(
   const triggeredTiers = Array.isArray(context.triggeredTiers)
     ? (context.triggeredTiers as number[])
     : [];
-  const remainingSizeSol = Math.max(Number(position.sizeSol) - exit.soldSol, 0);
+  const remainingSizeSol = computeRemainingSize(position.sizeSol, exit.soldSol);
+  /* PR07 hardening: sizeNative must shrink in lockstep with sizeSol for a
+   * Robinhood position (they hold the same ETH-notional number — see
+   * OpenPositionInput's doc comments). Previously only sizeSol was
+   * updated here, leaving sizeNative stale at its original value after
+   * the first tiered partial exit — a later risk/PnL read of sizeNative
+   * would then use the wrong (original, not remaining) amount.
+   *
+   * This is conditioned on `position.sizeNative != null`, not on chain:
+   * a freshly-written Solana row still leaves sizeNative null (this PR
+   * doesn't change Solana writes), but a PR04-backfilled historical
+   * Solana row may have sizeNative populated (mirrored from sizeSol at
+   * migration time) — keeping that mirror in sync here is harmless and
+   * correct either way, so this branch is null-checked, not chain-checked. */
+  const remainingSizeNative =
+    position.sizeNative != null ? computeRemainingSize(position.sizeNative, exit.soldSol) : null;
 
   await db
     .update(positions)
     .set({
       sizeSol: String(remainingSizeSol),
+      ...(remainingSizeNative != null ? { sizeNative: String(remainingSizeNative) } : {}),
       context: { ...context, triggeredTiers: [...triggeredTiers, exit.tierIndex] },
     })
     .where(eq(positions.id, position.id));
@@ -173,6 +300,20 @@ export async function closePosition(
     exitTxSignature: string;
     pnlSol: number;
     reason: string;
+
+    /* PR04 chain-neutral trade fields — optional, Robinhood-only. Solana
+     * callers (scripts/paper-daemon.ts's existing exit path) omit these
+     * entirely; recordClosedTrade then writes null for every one, exactly
+     * as before this PR. A Robinhood caller supplies the ETH-denominated
+     * counterparts alongside the legacy sizeSol/pnlSol shadow values
+     * above (see closePosition's caller in scripts/paper-daemon.ts for
+     * how sizeSol/pnlSol get their compatibility-shadow numbers). */
+    sizeNative?: number | null;
+    pnlNative?: number | null;
+    nativeSymbol?: string | null;
+    chain?: string | null;
+    network?: string | null;
+    tokenAddress?: string | null;
   }
 ): Promise<void> {
   const db = getDb();
@@ -188,11 +329,17 @@ export async function closePosition(
       exitPrice: exit.exitPrice,
       sizeSol: Number(position.sizeSol),
       pnlSol: exit.pnlSol,
+      sizeNative: exit.sizeNative ?? null,
+      pnlNative: exit.pnlNative ?? null,
+      nativeSymbol: exit.nativeSymbol ?? null,
+      chain: exit.chain ?? null,
+      network: exit.network ?? null,
       openedAt: position.openedAt.toISOString(),
       closedAt: new Date().toISOString(),
       context: {
         ...((position.context as Record<string, unknown>) ?? {}),
         mint: position.token,
+        tokenAddress: exit.tokenAddress ?? null,
         exitTxSignature: exit.exitTxSignature,
         exitReason: exit.reason,
       },

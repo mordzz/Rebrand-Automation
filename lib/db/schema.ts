@@ -12,6 +12,19 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+/**
+ * One-time-migration marker table (drizzle/0001_chain_neutral_foundation.sql
+ * and any future hand-authored migration in the same style). Declared here
+ * so `drizzle-kit push` recognizes it as intentional rather than proposing
+ * to drop it as schema drift.
+ */
+export const migrations = pgTable("_migrations", {
+  name: text("name").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const trades = pgTable(
   "trades",
   {
@@ -26,6 +39,22 @@ export const trades = pgTable(
     exitPrice: numeric("exit_price"),
     sizeSol: numeric("size_sol"),
     pnlSol: numeric("pnl_sol").notNull(),
+    /* Chain-neutral successors to sizeSol/pnlSol (PR04 schema foundation —
+     * see MIGRATION_MATRIX.md). Nullable and unbackfilled-by-default on
+     * purpose: a column default would silently mislabel a future
+     * Robinhood row that forgot to set it. Existing (pre-migration) rows
+     * are explicitly backfilled once, since every row created before this
+     * PR is unambiguously Solana — see drizzle/0001_chain_neutral_foundation.sql.
+     * sizeSol/pnlSol stay in place; nothing reads/writes these new columns
+     * yet. */
+    sizeNative: numeric("size_native"),
+    pnlNative: numeric("pnl_native"),
+    nativeSymbol: text("native_symbol"),
+    chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    /* "testnet" | "mainnet" | null. Distinguishes Robinhood testnet
+     * (chain id 46630) from mainnet (4663) — `chain` alone can't. Left
+     * NULL for legacy Solana rows; never guessed. */
+    network: text("network"),
     openedAt: timestamp("opened_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true })
       .notNull()
@@ -70,7 +99,7 @@ export const positions = pgTable("positions", {
   id: uuid("id").defaultRandom().primaryKey(),
   /* Same null-means-house-desk convention as trades.walletAddress. */
   walletAddress: text("wallet_address"),
-  token: text("token").notNull(), // mint address
+  token: text("token").notNull(), // mint address (Solana) — see tokenAddress below
   symbol: text("symbol"),
   strategy: text("strategy").notNull().default("The Raven"),
   status: text("status").notNull().default("open"), // open | closed | failed
@@ -80,6 +109,16 @@ export const positions = pgTable("positions", {
   takeProfitPct: numeric("take_profit_pct").notNull(),
   stopLossPct: numeric("stop_loss_pct").notNull(),
   entryTxSignature: text("entry_tx_signature").notNull(),
+  /* Chain-neutral successors — same PR04 rationale as trades above.
+   * `token`/`sizeSol`/`entryTxSignature` stay in place and NOT NULL;
+   * these are additive and nullable until a later PR moves reads/writes
+   * over. */
+  tokenAddress: text("token_address"),
+  sizeNative: numeric("size_native"),
+  entryTxHash: text("entry_tx_hash"),
+  nativeSymbol: text("native_symbol"),
+  chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+  network: text("network"), // "testnet" | "mainnet" | null — see trades.network
   openedAt: timestamp("opened_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -105,6 +144,11 @@ export const sniperState = pgTable("sniper_state", {
   pauseReason: text("pause_reason"),
   consecutiveLosses: numeric("consecutive_losses").notNull().default("0"),
   dailyPnlSol: numeric("daily_pnl_sol").notNull().default("0"),
+  /* PR04 chain-neutral successor — see trades.sizeNative above for the
+   * additive rationale. dailyPnlSol stays authoritative until a later PR
+   * moves the daemon's reads/writes over. */
+  dailyPnlNative: numeric("daily_pnl_native"),
+  nativeSymbol: text("native_symbol"),
   dailyPnlResetAt: timestamp("daily_pnl_reset_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -159,6 +203,12 @@ export const sniperConfig = pgTable("sniper_config", {
   maxTotalDeployedSol: numeric("max_total_deployed_sol")
     .notNull()
     .default("0.15"),
+  /* PR04 chain-neutral successors — same additive rationale as trades
+   * above. The *Sol columns stay authoritative/NOT NULL; risk thresholds
+   * and semantics are unchanged by this PR. */
+  maxNativePerSnipe: numeric("max_native_per_snipe"),
+  maxNativeDeployed: numeric("max_native_deployed"),
+  nativeSymbol: text("native_symbol"),
 
   // Exit strategy (scripts/sniper-daemon.ts#checkExits)
   exitMode: text("exit_mode").notNull().default("fixed"), // fixed | tiered
@@ -189,6 +239,7 @@ export const sniperConfig = pgTable("sniper_config", {
   maxDailyDrawdownSol: numeric("max_daily_drawdown_sol")
     .notNull()
     .default("0.1"),
+  maxDailyDrawdownNative: numeric("max_daily_drawdown_native"),
   cooldownAfterLossSec: numeric("cooldown_after_loss_sec")
     .notNull()
     .default("0"),
@@ -196,6 +247,30 @@ export const sniperConfig = pgTable("sniper_config", {
   metadataFetchTimeoutMs: numeric("metadata_fetch_timeout_ms")
     .notNull()
     .default("3000"),
+
+  /* PR06.5 — Robinhood/EVM-specific safety policy. Additive: the legacy
+   * Solana fields above (requireMintAuthorityRenounced,
+   * requireFreezeAuthorityRenounced, maxCreatorBuyPct, minLiquiditySol)
+   * are untouched and remain Solana-only. These are deliberate new EVM
+   * policy choices, not semantic translations of the Solana fields — see
+   * lib/gmgn/safety-robinhood.ts for why mint/freeze-authority concepts
+   * don't carry over. */
+  requireOwnerRenounced: boolean("require_owner_renounced")
+    .notNull()
+    .default(true),
+  requireNoBlacklistCapability: boolean("require_no_blacklist_capability")
+    .notNull()
+    .default(true),
+  /* Robinhood equivalent of maxCreatorBuyPct — but measures CURRENT
+   * creator holding concentration (creatorHoldRate), not initial
+   * buy/allocation, which cannot be reliably reconstructed on Robinhood
+   * (see safety-robinhood.ts). Still nullable (null continues to mean
+   * "not yet configured" → configuration blocker) but now defaults to
+   * the approved v1 value (10) for new rows — see
+   * drizzle/0003_robinhood_v1_policy.sql for the matching backfill of
+   * existing NULL rows. Never silently inherits maxCreatorBuyPct's
+   * threshold just because both are percentages. */
+  maxCreatorHoldPct: numeric("max_creator_hold_pct").default("10"),
 });
 
 /**
@@ -256,6 +331,13 @@ export const logs = pgTable(
        on-chain account, and that is what an operator actually wants to
        open when reading back what their bot did. */
     tokenMint: text("token_mint"),
+    /* PR04 chain-neutral successors — txSignature/tokenMint stay in
+     * place (including the literal "paper" sentinel for simulated
+     * trades). See trades.sizeNative above for the additive rationale. */
+    txHash: text("tx_hash"),
+    tokenAddress: text("token_address"),
+    chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    network: text("network"), // "testnet" | "mainnet" | null — see trades.network
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -406,6 +488,12 @@ export const alphaCandidates = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     token: text("token").notNull().unique(), // mint address
+    /* PR04 chain-neutral successor + chain discriminator — schema
+     * foundation only, per the migration plan; discovery/safety logic is
+     * unchanged in this PR (that's PR05/PR06). */
+    tokenAddress: text("token_address"),
+    chain: text("chain"), // "solana" | "robinhood" | null (not yet backfilled)
+    network: text("network"), // "testnet" | "mainnet" | null — see trades.network
     symbol: text("symbol"),
     name: text("name"),
     /* Normalized ticker (see lib/sniper/alpha-candidates.ts#symbolKeyFor),

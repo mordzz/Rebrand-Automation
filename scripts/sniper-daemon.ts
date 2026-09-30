@@ -91,7 +91,10 @@ async function handleNewToken(
     getOrCreateSniperState(),
     getOpenPositions(),
   ]);
-  const risk = canOpenNewPosition(openPositions, state, config);
+  // House desk positions are Solana-only (this daemon never writes
+  // chain="robinhood"), so the same list is both the wallet-global set
+  // and the Solana-scoped set — no separate filter needed here.
+  const risk = canOpenNewPosition(openPositions, openPositions, state, config);
   if (!risk.allowed) {
     log(`SKIP ${event.symbol} (${event.mint}): ${risk.reason}`);
     return;

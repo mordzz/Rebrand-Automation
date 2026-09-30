@@ -47,6 +47,24 @@ export type SniperConfig = {
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
 
+  // Robinhood/EVM-specific entry filters (PR06.5, lib/gmgn/safety-robinhood.ts).
+  // Deliberate new EVM policy choices, not semantic translations of the
+  // Solana fields above — those remain Solana-only and unchanged.
+  /** Requires GMGN's `ownerRenounced` fact to be true. NOT the same
+   * concept as requireMintAuthorityRenounced (Solana). */
+  requireOwnerRenounced: boolean;
+  /** Requires GMGN's `isBlacklistCapable` fact to be false. NOT the same
+   * concept as requireFreezeAuthorityRenounced (Solana). */
+  requireNoBlacklistCapability: boolean;
+  /** Ceiling on the creator's CURRENT holding concentration
+   * (creatorHoldRate), for Robinhood only — NOT the same fact as
+   * maxCreatorBuyPct (Solana initial-buy %), which cannot be reliably
+   * reconstructed on Robinhood. `null` means "not yet configured": the
+   * Robinhood evaluator refuses with an explicit configuration blocker
+   * rather than silently inheriting maxCreatorBuyPct's threshold or any
+   * other default. */
+  maxCreatorHoldPct: number | null;
+
   // Sizing (lib/sniper/risk-limits.ts)
   maxSolPerSnipe: number;
   maxConcurrentPositions: number;
@@ -71,6 +89,22 @@ export type SniperConfig = {
   cooldownAfterLossSec: number;
 
   metadataFetchTimeoutMs: number;
+
+  // PR04 chain-neutral risk fields (schema foundation), now exposed here
+  // for PR07's Robinhood paper trading to actually consume — see
+  // lib/sniper/risk-limits-robinhood.ts. Deliberately nullable and
+  // NOT seeded with any default value: choosing an ETH risk number is a
+  // product decision this PR does not make. `null` (or nativeSymbol not
+  // exactly "ETH") means "not yet configured", and
+  // resolveRobinhoodNativeLimits() fails closed on that rather than
+  // silently reinterpreting maxSolPerSnipe/maxTotalDeployedSol/
+  // maxDailyDrawdownSol as ETH, or treating a historical Solana
+  // nativeSymbol="SOL" backfill as ETH. Solana behavior never reads these
+  // fields at all. */
+  maxNativePerSnipe: number | null;
+  maxNativeDeployed: number | null;
+  maxDailyDrawdownNative: number | null;
+  nativeSymbol: string | null;
 };
 
 /** Master switches — deliberately NOT in sniper_config. Restart-gated by
@@ -132,6 +166,10 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
     maxTokenAgeSec: numOrNull(row.maxTokenAgeSec),
     blockedKeywords: row.blockedKeywords,
 
+    requireOwnerRenounced: row.requireOwnerRenounced,
+    requireNoBlacklistCapability: row.requireNoBlacklistCapability,
+    maxCreatorHoldPct: numOrNull(row.maxCreatorHoldPct),
+
     maxSolPerSnipe: num(row.maxSolPerSnipe),
     maxConcurrentPositions: num(row.maxConcurrentPositions),
     maxTotalDeployedSol: num(row.maxTotalDeployedSol),
@@ -153,12 +191,19 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
     cooldownAfterLossSec: num(row.cooldownAfterLossSec),
 
     metadataFetchTimeoutMs: num(row.metadataFetchTimeoutMs),
+
+    maxNativePerSnipe: numOrNull(row.maxNativePerSnipe),
+    maxNativeDeployed: numOrNull(row.maxNativeDeployed),
+    maxDailyDrawdownNative: numOrNull(row.maxDailyDrawdownNative),
+    nativeSymbol: row.nativeSymbol,
   };
 }
 
 /** Fallback used only when DATABASE_URL isn't configured at all — the
- * daemon still runs in detect-only mode in that case (see main()). */
-function envSeededDefaults(): SniperConfig {
+ * daemon still runs in detect-only mode in that case (see main()).
+ * Exported for testability (asserting the approved v1 defaults without
+ * needing a live DB), not for use as a general-purpose config source. */
+export function envSeededDefaults(): SniperConfig {
   return {
     entrySources: defaultEntrySources(),
     minLiquiditySol: envNumber("SNIPER_MIN_LIQUIDITY_SOL", 20),
@@ -172,6 +217,14 @@ function envSeededDefaults(): SniperConfig {
     minTokenAgeSec: 0,
     maxTokenAgeSec: null,
     blockedKeywords: [],
+
+    requireOwnerRenounced: true,
+    requireNoBlacklistCapability: true,
+    /* Approved v1 default (product decision): Robinhood creator-hold
+     * ceiling of 10%, distinct from and never derived from
+     * maxCreatorBuyPct (Solana, initial-buy %, unchanged). See
+     * drizzle/0003_robinhood_v1_policy.sql for the DB-side counterpart. */
+    maxCreatorHoldPct: 10,
 
     maxSolPerSnipe: envNumber("SNIPER_MAX_SOL_PER_SNIPE", 0.05),
     maxConcurrentPositions: envNumber("SNIPER_MAX_CONCURRENT_POSITIONS", 3),
@@ -201,6 +254,14 @@ function envSeededDefaults(): SniperConfig {
     cooldownAfterLossSec: 0,
 
     metadataFetchTimeoutMs: envNumber("SNIPER_METADATA_TIMEOUT_MS", 3000),
+
+    /* No ETH risk numbers are chosen in PR07 — Robinhood paper entries
+     * fail closed via resolveRobinhoodNativeLimits() until an operator
+     * explicitly sets all three plus nativeSymbol="ETH". */
+    maxNativePerSnipe: null,
+    maxNativeDeployed: null,
+    maxDailyDrawdownNative: null,
+    nativeSymbol: null,
   };
 }
 
@@ -242,6 +303,7 @@ type ConfigPatch = Partial<SniperConfig>;
 
 const NUMERIC_KEYS = new Set<keyof SniperConfig>([
   "maxCreatorBuyPct",
+  "maxCreatorHoldPct",
   "minTokenAgeSec",
   "maxTokenAgeSec",
   "maxSolPerSnipe",
@@ -259,14 +321,50 @@ const NUMERIC_KEYS = new Set<keyof SniperConfig>([
   "maxDailyDrawdownSol",
   "cooldownAfterLossSec",
   "metadataFetchTimeoutMs",
+  "maxNativePerSnipe",
+  "maxNativeDeployed",
+  "maxDailyDrawdownNative",
 ]);
 
 /** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
  * partial expected by drizzle's numeric columns. */
+/**
+ * Authoritative validation for maxCreatorHoldPct — a safety-critical
+ * Robinhood threshold, not a cosmetic display number. Exported so
+ * lib/sniper/effective-config.ts's per-bot sanitizer enforces the exact
+ * same rule rather than re-deriving it, and so this is the one place
+ * that rule lives. `null` means "unconfigured" (the Robinhood evaluator
+ * treats that as a fail-closed configuration blocker) and is always
+ * valid; a non-null value must be a finite number in [0, 100] — anything
+ * else throws rather than silently clamping, because a clamped value
+ * would misrepresent what the operator actually asked for on a check
+ * that gates real money.
+ */
+export function validateMaxCreatorHoldPct(value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("maxCreatorHoldPct must be null or a finite number");
+  }
+  if (value < 0 || value > 100) {
+    throw new Error("maxCreatorHoldPct must be between 0 and 100");
+  }
+  return value;
+}
+
+/** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
+ * partial expected by drizzle's numeric columns. This is the authoritative
+ * write path — app/api/sniper/config/route.ts's PATCH handler passes an
+ * untrusted request body straight to updateSniperConfig() with no prior
+ * sanitize() call, so validation here is what actually protects the house
+ * config, not just the per-bot overlay path. */
 function patchToRow(patch: ConfigPatch): Partial<SniperConfigRow> {
   const row: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
+    if (key === "maxCreatorHoldPct") {
+      row[key] = valueToNumericColumn(validateMaxCreatorHoldPct(value));
+      continue;
+    }
     row[key] = NUMERIC_KEYS.has(key as keyof SniperConfig)
       ? value == null
         ? null
@@ -274,6 +372,10 @@ function patchToRow(patch: ConfigPatch): Partial<SniperConfigRow> {
       : value;
   }
   return row as Partial<SniperConfigRow>;
+}
+
+function valueToNumericColumn(value: number | null): string | null {
+  return value == null ? null : String(value);
 }
 
 /**
