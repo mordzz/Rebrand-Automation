@@ -1,6 +1,4 @@
-import { address } from "@solana/kit";
-
-import { getRpc } from "@/lib/solana/wallet";
+import { assertSolanaAddress, solanaRpc } from "@/lib/solana/json-rpc";
 import type { PumpPortalNewTokenEvent } from "@/lib/solana/pumpportal";
 import { checkAlphaWalletBuy } from "./alpha-wallets";
 import type { SniperConfig } from "./config";
@@ -53,10 +51,9 @@ async function readMintAuthorities(
   extensions: MintExtensionFacts | null;
 }> {
   try {
-    const rpc = getRpc(rpcUrl);
-    const { value } = await rpc
-      .getAccountInfo(address(mint), { encoding: "base64" })
-      .send();
+    const { value } = await solanaRpc<{
+      value: { data: [string, string]; owner: string } | null;
+    }>("getAccountInfo", [assertSolanaAddress(mint), { encoding: "base64" }], rpcUrl);
     if (!value) return { mintRenounced: null, freezeRenounced: null, extensions: null };
 
     const bytes = Buffer.from(value.data[0], "base64");

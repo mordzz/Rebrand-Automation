@@ -4,10 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
-import {
-  generateAgentWallet,
-  isAgentWalletConfigured,
-} from "@/lib/solana/agent-wallet";
+import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { generateRobinhoodAgentWallet } from "@/lib/chain/robinhood-agent-wallet";
 
 export const dynamic = "force-dynamic";
@@ -111,23 +108,11 @@ export async function POST(request: Request) {
     });
   }
 
-  const generated = await generateAgentWallet();
-
-  await db
-    .update(userBots)
-    .set({
-      agentPublicKey: generated.publicKey,
-      agentSecretEnc: generated.secretEnc,
-      agentChain: "solana",
-      agentNetwork: null,
-      agentNativeSymbol: "SOL",
-      updatedAt: new Date(),
-    })
-    .where(eq(userBots.id, bot.id));
-
-  return NextResponse.json({
-    ok: true,
-    walletAddress: generated.publicKey,
-    alreadyExisted: false,
-  });
+  // PR09A: Solana agent-wallet generation is retired — no new Solana key
+  // is ever minted. Fail closed rather than silently creating an EVM
+  // wallet for a Solana-shaped owner.
+  return NextResponse.json(
+    { error: "Solana agent wallets are retired. Connect an EVM wallet to deploy on Robinhood Chain." },
+    { status: 410 }
+  );
 }

@@ -1,6 +1,4 @@
-import { address } from "@solana/kit";
-
-import { getRpc } from "@/lib/solana/wallet";
+import { assertSolanaAddress, solanaRpc } from "@/lib/solana/json-rpc";
 
 /**
  * "Alpha wallet" detection is done by polling on-chain token-account state
@@ -15,18 +13,14 @@ import { getRpc } from "@/lib/solana/wallet";
  */
 async function walletHoldsMint(wallet: string, mint: string): Promise<boolean> {
   try {
-    const rpc = getRpc();
-    const { value } = await rpc
-      .getTokenAccountsByOwner(
-        address(wallet),
-        { mint: address(mint) },
-        { encoding: "jsonParsed" }
-      )
-      .send();
-    return value.some((account) => {
-      const parsed = account.account.data.parsed;
-      return parsed.info.tokenAmount.amount !== "0";
-    });
+    const { value } = await solanaRpc<{
+      value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[];
+    }>("getTokenAccountsByOwner", [
+      assertSolanaAddress(wallet),
+      { mint: assertSolanaAddress(mint) },
+      { encoding: "jsonParsed" },
+    ]);
+    return value.some((account) => account.account.data.parsed.info.tokenAmount.amount !== "0");
   } catch {
     // Malformed address, RPC error, etc. — treat as "not detected", not
     // as a hard failure of the whole check (other wallets may still hit).

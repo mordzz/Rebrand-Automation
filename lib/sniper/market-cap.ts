@@ -1,6 +1,4 @@
-import { address } from "@solana/kit";
-
-import { getRpc } from "@/lib/solana/wallet";
+import { assertSolanaAddress, solanaRpc } from "@/lib/solana/json-rpc";
 import { getSolUsdPrice } from "@/lib/sniper/sol-price";
 
 /**
@@ -38,10 +36,11 @@ export async function getMintSupply(
 
   let result: MintSupply | null = null;
   try {
-    const rpc = getRpc(rpcUrl);
-    const { value } = await rpc
-      .getAccountInfo(address(mint), { encoding: "base64" })
-      .send();
+    const { value } = await solanaRpc<{ value: { data: [string, string] } | null }>(
+      "getAccountInfo",
+      [assertSolanaAddress(mint), { encoding: "base64" }],
+      rpcUrl
+    );
     if (value) {
       const bytes = Buffer.from(value.data[0], "base64");
       if (bytes.length >= 82) {

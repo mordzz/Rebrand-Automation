@@ -3,7 +3,6 @@
 import { ArrowUpRight, Check, Copy, Loader2, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { RevealKey } from "@/components/deploy/reveal-key";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,15 +28,7 @@ type WalletResponse = {
  * into this address is ever at risk, which is the whole reason the agent
  * gets a wallet of its own rather than borrowing the operator's.
  */
-export function AgentWalletPanel({
-  walletQuery,
-  ownerAddress,
-}: {
-  walletQuery: string;
-  /** The operator's connected Phantom address — needed to pick the right
-   * wallet when proving ownership to export the agent key. */
-  ownerAddress: string;
-}) {
+export function AgentWalletPanel({ walletQuery }: { walletQuery: string }) {
   const [data, setData] = useState<WalletResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -293,11 +284,6 @@ export function AgentWalletPanel({
             </p>
           </div>
 
-          <RevealKey
-            walletQuery={walletQuery}
-            ownerAddress={ownerAddress}
-            agentAddress={wallet.address}
-          />
         </>
       )}
     </div>

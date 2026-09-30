@@ -1103,7 +1103,7 @@ function BotDesk({
         emptyHint="No lessons yet — the first losing trade gets a written post-mortem here."
       />
 
-      <AgentWalletPanel walletQuery={walletQuery} ownerAddress={address} />
+      <AgentWalletPanel walletQuery={walletQuery} />
 
       {goLiveOpen && (
         <GoLiveModal

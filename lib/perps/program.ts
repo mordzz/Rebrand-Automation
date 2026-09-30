@@ -1,30 +1,24 @@
 /**
- * Shared Perpspad program constants. Safe to import from client
- * components — nothing secret lives here.
+ * Perpspad program constants.
  *
- * Devnet by default and on purpose: mainnet is a separate, explicit,
- * later decision (see the Perpspad plan). Overriding the cluster is
- * deliberately an env-var change rather than a UI toggle.
+ * PR09A: the Solana/Drift on-chain Perpspad runtime is retired with the
+ * Solana stack. Perps move to Robinhood Chain's Lighter instance in
+ * PR11–PR13; until then the on-chain launch/read paths fail closed (see
+ * lib/perps/launch.ts and lib/perps/onchain.ts). These constants remain
+ * only so historical Perpspad rows keep rendering truthful Solana explorer
+ * links.
  */
-import { address, type Address } from "@solana/kit";
 
-export const PERPSPAD_PROGRAM_ID: Address = address(
-  process.env.NEXT_PUBLIC_PERPSPAD_PROGRAM_ID ||
-    "CUsgyc49DaWgRcRyLfKjrR5SnCRcDi4CAyuBuU692VQa"
-);
+/** True while perps on-chain actions are unavailable pending the
+ * Robinhood Lighter migration (PR11). */
+export const PERPS_ONCHAIN_AVAILABLE = false as const;
 
-export const PERPSPAD_RPC_URL: string =
-  process.env.NEXT_PUBLIC_PERPSPAD_RPC_URL || "https://api.devnet.solana.com";
-
-/** CAIP-2 chain id, which is what wallet-standard signers (Privy) expect
- * when told where to broadcast. */
-export const PERPSPAD_CHAIN = "solana:devnet" as const;
+export const PERPS_MIGRATION_MESSAGE =
+  "Perps launches are paused while Perpspad migrates from Solana to Robinhood Chain (Lighter).";
 
 export const PERPSPAD_CLUSTER = "devnet" as const;
 
-/** Explorer link for a signature or address, pinned to the same cluster
- * the program is actually on — a mainnet-defaulting link for a devnet tx
- * silently 404s and looks like the launch failed. */
+/** Explorer link for a historical Solana Perpspad signature or address. */
 export function explorerUrl(kind: "tx" | "address", value: string): string {
   return `https://explorer.solana.com/${kind}/${value}?cluster=${PERPSPAD_CLUSTER}`;
 }

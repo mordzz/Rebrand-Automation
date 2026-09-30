@@ -4,18 +4,13 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
-import {
-  generateAgentWallet,
-  isAgentWalletConfigured,
-} from "@/lib/solana/agent-wallet";
+import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { generateRobinhoodAgentWallet } from "@/lib/chain/robinhood-agent-wallet";
 
-/** Owner wallet shape decides which chain's agent wallet gets generated —
- * never inferred from anything else. A Solana-shaped (base58) owner
- * wallet gets the existing Solana agent-wallet path, unchanged; an
- * EVM-shaped (0x...) owner wallet gets the new Robinhood agent-wallet
- * path. Never routes one chain's owner into the other chain's agent
- * generation. */
+/** Only an EVM-shaped (0x...) owner wallet ever gets a new agent wallet,
+ * and it is always a Robinhood/EVM one. Solana agent-wallet generation is
+ * retired (PR09A): a legacy Solana-owned bot keeps whatever it already
+ * has, but no new Solana key is ever minted. */
 function isEvmOwnerWallet(wallet: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(wallet);
 }
@@ -130,22 +125,13 @@ export async function POST(request: Request) {
   let agentChain = existing?.agentChain ?? null;
   let agentNetwork = existing?.agentNetwork ?? null;
   let agentNativeSymbol = existing?.agentNativeSymbol ?? null;
-  if (!agentPublicKey && isAgentWalletConfigured()) {
-    if (isEvmOwnerWallet(wallet)) {
-      const generated = await generateRobinhoodAgentWallet();
-      agentPublicKey = generated.address;
-      agentSecretEnc = generated.secretEnc;
-      agentChain = generated.chain;
-      agentNetwork = generated.network;
-      agentNativeSymbol = generated.nativeSymbol;
-    } else {
-      const generated = await generateAgentWallet();
-      agentPublicKey = generated.publicKey;
-      agentSecretEnc = generated.secretEnc;
-      agentChain = "solana";
-      agentNetwork = null;
-      agentNativeSymbol = "SOL";
-    }
+  if (!agentPublicKey && isAgentWalletConfigured() && isEvmOwnerWallet(wallet)) {
+    const generated = await generateRobinhoodAgentWallet();
+    agentPublicKey = generated.address;
+    agentSecretEnc = generated.secretEnc;
+    agentChain = generated.chain;
+    agentNetwork = generated.network;
+    agentNativeSymbol = generated.nativeSymbol;
   }
 
   const [bot] = await db

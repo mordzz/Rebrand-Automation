@@ -1,88 +1,13 @@
-// Server-only module: PRIVATE_KEY_SOLANA_WALLET is read here and never
-// crosses to the client. Only imported by the /api/wallet route handler
-// (and, for signing, by lib/eliza/actions/solana-transfer.ts).
-import {
-  AccountRole,
-  address,
-  appendTransactionMessageInstruction,
-  assertIsTransactionWithBlockhashLifetime,
-  assertIsTransactionWithinSizeLimit,
-  createKeyPairSignerFromBytes,
-  createSolanaRpc,
-  createTransactionMessage,
-  getBase58Encoder,
-  getCompiledTransactionMessageDecoder,
-  getTransactionDecoder,
-  getTransactionLifetimeConstraintFromCompiledTransactionMessage,
-  pipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransaction,
-  signTransactionMessageWithSigners,
-  type Instruction,
-} from "@solana/kit";
-
-import { sendAndConfirmOverHttp } from "@/lib/solana/confirm";
+// Server-only module.
+//
+// PR09A: the Solana signing runtime (house wallet from
+// PRIVATE_KEY_SOLANA_WALLET, SOL transfers, raw-transaction signing) is
+// retired — Robinhood Chain is the active settlement layer. What remains is
+// read-only balance lookup for existing Solana addresses, kept so historical
+// Solana bots/wallets still display truthfully.
+import { assertSolanaAddress, solanaRpc, solanaRpcUrl } from "@/lib/solana/json-rpc";
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
-
-const RPC_URL =
-  process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
-
-const SYSTEM_PROGRAM_ADDRESS = address(
-  "11111111111111111111111111111111"
-);
-
-/** Shared RPC client for read-only queries elsewhere (e.g. lib/sniper/*).
- *
- * `overrideUrl` lets a deployed bot use its own provider for its own
- * reads (see userBots.rpcUrl). The point is not raw speed: when the
- * shared public endpoint rate-limits, readMintAuthorities returns null,
- * which evaluateSafety treats as "could not verify" and refuses the
- * token. A private endpoint removes that failure mode, so the effect is
- * fewer refusals the operator never intended, not faster transactions. */
-export function getRpc(overrideUrl?: string | null) {
-  return createSolanaRpc(overrideUrl?.trim() || RPC_URL);
-}
-
-/**
- * Accepts the two formats wallets export:
- *  - base58 string (Phantom / Solflare "export private key")
- *  - JSON byte array (Solana CLI keypair file contents)
- * Returns the 64-byte secret key.
- */
-export function decodeSecretKey(raw: string): Uint8Array {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith("[")) {
-    return Uint8Array.from(JSON.parse(trimmed) as number[]);
-  }
-  return new Uint8Array(getBase58Encoder().encode(trimmed));
-}
-
-/**
- * Raw System Program "Transfer" instruction: u32 discriminant (2) + u64
- * lamports, both little-endian. This layout is part of the base Solana
- * protocol and has never changed; encoded by hand rather than pulling in
- * @solana-program/system, whose latest release peer-depends on
- * @solana/kit@^6 and conflicts with the ^7 already used in this project.
- */
-function encodeTransferInstructionData(lamports: bigint): Uint8Array {
-  const data = new Uint8Array(12);
-  new DataView(data.buffer).setUint32(0, 2, true);
-  new DataView(data.buffer).setBigUint64(4, lamports, true);
-  return data;
-}
-
-/**
- * Derive the wallet's public address from PRIVATE_KEY_SOLANA_WALLET.
- * The secret key never leaves this server module.
- */
-export async function getWalletAddress(): Promise<string | null> {
-  const raw = process.env.PRIVATE_KEY_SOLANA_WALLET;
-  if (!raw) return null;
-  const signer = await createKeyPairSignerFromBytes(decodeSecretKey(raw));
-  return signer.address;
-}
 
 export type WalletSnapshot = {
   connected: boolean;
@@ -108,38 +33,11 @@ async function fetchSolPrice(): Promise<number | undefined> {
   }
 }
 
-/**
- * Read-only snapshot of the automation wallet: address + SOL balance + USD.
- * No signing, no transactions — safe to call on every dashboard load.
- */
+/** The house Solana signing wallet is retired with the Solana runtime; it
+ * always reports not-connected rather than deriving an address from a
+ * private key. */
 export async function getWalletSnapshot(): Promise<WalletSnapshot> {
-  const addr = await getWalletAddress().catch(() => null);
-  if (!addr) return { connected: false };
-
-  try {
-    const rpc = createSolanaRpc(RPC_URL);
-    const [{ value: lamports }, solPriceUsd] = await Promise.all([
-      rpc.getBalance(address(addr)).send(),
-      fetchSolPrice(),
-    ]);
-
-    const balanceSol = Number(lamports) / LAMPORTS_PER_SOL;
-    return {
-      connected: true,
-      address: addr,
-      balanceSol,
-      balanceUsd: solPriceUsd ? balanceSol * solPriceUsd : undefined,
-      solPriceUsd,
-      rpc: new URL(RPC_URL).host,
-    };
-  } catch (error) {
-    // Address derived, but the RPC read failed (rate limit / network).
-    return {
-      connected: true,
-      address: addr,
-      error: error instanceof Error ? error.message : "RPC error",
-    };
-  }
+  return { connected: false };
 }
 
 export type AddressBalanceSnapshot = {
@@ -150,27 +48,19 @@ export type AddressBalanceSnapshot = {
   error?: string;
 };
 
-/**
- * Read-only balance lookup for an arbitrary public address (e.g. a wallet
- * connected client-side via Privy) — no private key involved, so this is
- * safe to expose through an API route unlike getWalletSnapshot above.
- */
-export async function getAddressBalance(
-  addr: string
-): Promise<AddressBalanceSnapshot> {
+/** Read-only SOL balance for an existing (historical) Solana address. */
+export async function getAddressBalance(addr: string): Promise<AddressBalanceSnapshot> {
   try {
-    const rpc = createSolanaRpc(RPC_URL);
     const [{ value: lamports }, solPriceUsd] = await Promise.all([
-      rpc.getBalance(address(addr)).send(),
+      solanaRpc<{ value: number }>("getBalance", [assertSolanaAddress(addr)]),
       fetchSolPrice(),
     ]);
-
     const balanceSol = Number(lamports) / LAMPORTS_PER_SOL;
     return {
       address: addr,
       balanceSol,
       balanceUsd: solPriceUsd ? balanceSol * solPriceUsd : undefined,
-      rpc: new URL(RPC_URL).host,
+      rpc: new URL(solanaRpcUrl()).host,
     };
   } catch (error) {
     return {
@@ -178,118 +68,4 @@ export async function getAddressBalance(
       error: error instanceof Error ? error.message : "Invalid address or RPC error",
     };
   }
-}
-
-export type SolTransferResult = {
-  signature: string;
-  destination: string;
-  amountSol: number;
-};
-
-/**
- * Signs and sends a real SOL transfer from the automation wallet. Only
- * called from lib/eliza/actions/solana-transfer.ts, itself only reachable
- * after that action's own ELIZA_ENABLE_TRADING + size-cap + exact-phrase
- * confirmation checks pass — this function performs no authorization
- * checks of its own and trusts its caller.
- */
-export async function sendSolTransfer(
-  destination: string,
-  amountSol: number
-): Promise<SolTransferResult> {
-  const raw = process.env.PRIVATE_KEY_SOLANA_WALLET;
-  if (!raw) throw new Error("PRIVATE_KEY_SOLANA_WALLET not configured");
-
-  const signer = await createKeyPairSignerFromBytes(decodeSecretKey(raw));
-  const destinationAddress = address(destination);
-  const lamports = BigInt(Math.round(amountSol * LAMPORTS_PER_SOL));
-
-  const instruction: Instruction = {
-    programAddress: SYSTEM_PROGRAM_ADDRESS,
-    accounts: [
-      { address: signer.address, role: AccountRole.WRITABLE_SIGNER },
-      { address: destinationAddress, role: AccountRole.WRITABLE },
-    ],
-    data: encodeTransferInstructionData(lamports),
-  };
-
-  const rpc = createSolanaRpc(RPC_URL);
-  const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(signer, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, m),
-    (m) => appendTransactionMessageInstruction(instruction, m)
-  );
-
-  const signed = await signTransactionMessageWithSigners(message);
-  assertIsTransactionWithBlockhashLifetime(signed);
-  assertIsTransactionWithinSizeLimit(signed);
-
-  const signature = await sendAndConfirmOverHttp(rpc, signed);
-
-  return { signature, destination, amountSol };
-}
-
-/**
- * Signs and sends a transaction built by a third party (e.g. PumpPortal's
- * Local Transaction API, which returns unsigned wire bytes rather than
- * building via our own TransactionMessage pipeline). Shared signing path
- * for the Sniper's buy/sell — same "the key never leaves this module"
- * property as sendSolTransfer. Performs no authorization/size-limit checks
- * of its own; the caller (lib/sniper/*) is responsible for all risk gating
- * before this is ever invoked.
- */
-export async function signAndSendRawTransaction(
-  unsignedTxBytes: Uint8Array
-): Promise<string> {
-  const raw = process.env.PRIVATE_KEY_SOLANA_WALLET;
-  if (!raw) throw new Error("PRIVATE_KEY_SOLANA_WALLET not configured");
-
-  const signer = await createKeyPairSignerFromBytes(decodeSecretKey(raw));
-  const transaction = getTransactionDecoder().decode(unsignedTxBytes);
-  const signed = await signTransaction([signer.keyPair], transaction);
-
-  const rpc = createSolanaRpc(RPC_URL);
-
-  /* Same rule as lib/jupiter/swap.ts: the lifetime must describe the bytes
-     we are sending. A decoded transaction exposes only `messageBytes` and
-     `signatures`, so the blockhash is read back out of the compiled
-     message rather than replaced with a freshly fetched one the signature
-     does not cover. */
-  const compiledMessage = getCompiledTransactionMessageDecoder().decode(
-    signed.messageBytes
-  );
-  const lifetime =
-    await getTransactionLifetimeConstraintFromCompiledTransactionMessage(
-      compiledMessage
-    );
-  if (!("blockhash" in lifetime)) {
-    throw new Error("Builder returned a durable-nonce transaction, unsupported");
-  }
-
-  // Widened explicitly: the blockhash-lifetime predicate demands bigint and
-  // rejects anything else as "no blockhash lifetime" (#5663002).
-  const blockHeight = await rpc.getBlockHeight({ commitment: "confirmed" }).send();
-  if (typeof blockHeight !== "bigint") {
-    throw new Error(
-      `RPC returned no usable block height (got ${typeof blockHeight})`
-    );
-  }
-
-  const signedWithLifetime = {
-    ...signed,
-    lifetimeConstraint: {
-      blockhash: lifetime.blockhash,
-      // A blockhash is accepted for roughly 150 further blocks. BigInt(150)
-      // rather than 150n: this project targets ES2017.
-      lastValidBlockHeight: blockHeight + BigInt(150),
-    },
-  };
-
-  assertIsTransactionWithBlockhashLifetime(signedWithLifetime);
-  assertIsTransactionWithinSizeLimit(signedWithLifetime);
-
-  return sendAndConfirmOverHttp(rpc, signedWithLifetime);
 }
