@@ -7,11 +7,11 @@
  *   - autonomous signing (assertTestnetSigningEnabled via the signer)
  *   - broadcasting (assertTestnetBroadcastEnabled)
  *   - Lighter order execution and API-key registration (mainnet config)
- * and that the readiness-only mainnet constants are well-formed. With
- * `--live`, re-verifies their bytecode + wiring read-only on mainnet RPC.
+ * and that the mainnet handoff constants are well-formed. Fully offline:
+ * makes NO mainnet RPC/API call (mainnet is deferred to Bang Rey).
  * Never signs or sends anything.
  *
- * Run: npm run test:mainnet-guards [-- --live]
+ * Run: npm run test:mainnet-guards
  */
 import { spawnSync } from "node:child_process";
 
@@ -95,21 +95,6 @@ async function main() {
   process.stderr.write(child.stderr ?? "");
   assert(child.status === 0, "all mainnet guards refused in a mainnet-configured process");
 
-  // ═══ Optional live read-only re-verification ══════════════════════════
-  if (process.argv.includes("--live")) {
-    const { createPublicClient, http, parseAbi } = await import("viem");
-    const c = createPublicClient({ transport: http("https://rpc.mainnet.chain.robinhood.com") });
-    assert((await c.getChainId()) === 4663, "live: mainnet RPC chain id 4663");
-    for (const k of ["poolManager", "quoter", "stateView", "positionManager", "universalRouter", "permit2", "weth", "usdg"] as const) {
-      const code = await c.getCode({ address: M[k] });
-      assert(!!code && code.length > 2, `live: ${k} has deployed bytecode`);
-    }
-    const pm = parseAbi(["function poolManager() view returns (address)"]);
-    for (const k of ["quoter", "stateView", "universalRouter"] as const) {
-      const v = await c.readContract({ address: M[k], abi: pm, functionName: "poolManager" });
-      assert(v.toLowerCase() === M.poolManager.toLowerCase(), `live: ${k}.poolManager() == verified PoolManager`);
-    }
-  }
   finish();
 }
 
