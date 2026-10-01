@@ -5,7 +5,7 @@
 // effective config (house base + saved overlay), writing real positions/
 // trades rows scoped to that bot's wallet address — the same schema the
 // house desk uses, just with walletAddress set instead of null (see the
-// "null = house desk" convention documented on lib/db/schema.ts#trades).
+// "null = house desk" convention documented on drizzle/schema/trading.ts#trades).
 //
 // This process is structurally incapable of moving real funds: it never
 // imports lib/solana/wallet.ts's signing helpers or reads
@@ -30,7 +30,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import { writeLog } from "@/lib/logs";
-import { positions, userBots, type SniperState, type UserBot } from "@/lib/db/schema";
+import { positions, userBots, type SniperState, type UserBot } from "@/drizzle/schema";
 import { isGmgnConfigured } from "@/lib/gmgn/client";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { DUST_THRESHOLD_NATIVE, DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";

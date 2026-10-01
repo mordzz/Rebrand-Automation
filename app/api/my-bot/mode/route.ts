@@ -4,7 +4,7 @@ import { formatEther } from "viem";
 
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { getNativeBalance } from "@/lib/chain/rpc";

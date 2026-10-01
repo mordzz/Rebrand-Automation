@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 
 import { signLighterApiKeyRegistration } from "@/lib/chain/lighter-registration-signing";
 import { getDb } from "@/lib/db";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { getLighterConfig } from "@/lib/lighter/config";
 import { registerAgentApiKey, type LighterBotCredential, type LighterCredentialStore } from "@/lib/lighter/registration";
 import { LighterSigner } from "@/lib/lighter/signer-adapter";

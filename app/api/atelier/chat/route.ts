@@ -9,7 +9,7 @@ import {
 } from "@/lib/agent/agent-chat";
 import { isLlmConfigured, llmLabel } from "@/lib/agent/llm";
 import { getDb } from "@/lib/db";
-import { lessons, trades, userBots } from "@/lib/db/schema";
+import { lessons, trades, userBots } from "@/drizzle/schema";
 import { getOpenPositions } from "@/lib/sniper/positions";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";

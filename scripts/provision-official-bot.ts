@@ -5,7 +5,7 @@
 // agent-wallet generator a normal /deploy uses, so it's picked up by
 // the already-running scripts/paper-daemon.ts roster loop (unconditional
 // `select * from user_bots`, refreshed every 20s) with zero daemon
-// changes. See lib/db/schema.ts#userBots.isOfficial for why this needs
+// changes. See drizzle/schema/bots.ts#userBots.isOfficial for why this needs
 // its own flag rather than just being another row: its wallet address is
 // permanently public, so every mutating /api/my-bot route refuses to
 // touch it (lib/db/official-bot.ts#assertNotOfficial) and a database
@@ -20,7 +20,7 @@
 import "dotenv/config";
 
 import { getDb } from "@/lib/db";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { generateRobinhoodAgentWallet, isAgentWalletConfigured } from "@/lib/chain/robinhood-agent-wallet";
 import { getOfficialBot } from "@/lib/db/official-bot";
 

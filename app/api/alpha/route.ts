@@ -2,7 +2,7 @@ import { desc, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { alphaCandidates } from "@/lib/db/schema";
+import { alphaCandidates } from "@/drizzle/schema";
 import { getTrackedTokenIndex } from "@/lib/gmgn/track";
 import { getRobinhoodAlpha } from "@/lib/alpha/robinhood-alpha";
 import { getTokenMarkets } from "@/lib/sniper/token-market";
@@ -37,7 +37,7 @@ function positiveInt(raw: string | null, fallback: number, max?: number): number
  * house's Solana entry criteria — populated by the retired Solana engine. Chain-wide, no wallet scoping.
  *
  * One row per ticker: duplicate launches are rejected at insert time by a
- * unique index (see lib/db/schema.ts#alphaCandidates.symbolKey), so no
+ * unique index (see drizzle/schema/discovery.ts#alphaCandidates.symbolKey), so no
  * de-duplication is needed here and `total` is a true count of distinct
  * tickers.
  *

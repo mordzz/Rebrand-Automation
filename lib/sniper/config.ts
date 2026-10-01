@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { sniperConfig, sniperConfigHistory, type SniperConfigRow } from "@/lib/db/schema";
+import { sniperConfig, sniperConfigHistory, type SniperConfigRow } from "@/drizzle/schema";
 
 export type TakeProfitTier = { atPct: number; sellPortionPct: number };
 
 /**
  * Live trading configuration for the Sniper daemon — hot-reloadable, backed
- * by the sniper_config singleton row (see lib/db/schema.ts). The daemon
+ * by the sniper_config singleton row (see drizzle/schema). The daemon
  * calls getSniperConfig() fresh every cycle, so a change here takes effect
  * without a restart, the same way sniper_state.tradingPaused already does.
  */

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { sniperState, type Position, type SniperState, type Trade } from "@/lib/db/schema";
+import { sniperState, type Position, type SniperState, type Trade } from "@/drizzle/schema";
 import { getSniperConfig, type SniperConfig } from "./config";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;

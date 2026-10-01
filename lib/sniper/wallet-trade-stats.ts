@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { trades, type Trade } from "@/lib/db/schema";
+import { trades, type Trade } from "@/drizzle/schema";
 
 /**
  * Per-wallet trade aggregates backing the derived (not persisted) per-user

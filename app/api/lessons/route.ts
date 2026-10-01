@@ -2,7 +2,7 @@ import { desc, eq, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { lessons, trades } from "@/lib/db/schema";
+import { lessons, trades } from "@/drizzle/schema";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** Agent memory: lessons joined with the trades that taught them.

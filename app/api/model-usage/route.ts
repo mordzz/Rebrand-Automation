@@ -2,7 +2,7 @@ import { gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { modelRequests } from "@/lib/db/schema";
+import { modelRequests } from "@/drizzle/schema";
 import { getProviderStatuses, type ProviderId } from "@/lib/eliza/model-providers";
 
 export const dynamic = "force-dynamic";

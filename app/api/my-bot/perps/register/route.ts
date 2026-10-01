@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { registerBotLighterApiKey } from "@/lib/lighter/bot-credentials";
 import { LighterRegistrationError } from "@/lib/lighter/registration";
 

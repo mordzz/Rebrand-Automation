@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getEffectiveConfig, sanitize } from "@/lib/sniper/effective-config";
 

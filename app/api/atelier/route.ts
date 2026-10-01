@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { trades, userBots } from "@/lib/db/schema";
+import { trades, userBots } from "@/drizzle/schema";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 import { getOpenPositions } from "@/lib/sniper/positions";

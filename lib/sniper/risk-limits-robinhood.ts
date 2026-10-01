@@ -1,4 +1,4 @@
-import type { Position, SniperState } from "@/lib/db/schema";
+import type { Position, SniperState } from "@/drizzle/schema";
 import { STREAK_RESET_MS } from "@/lib/sniper/risk-limits";
 import type { SniperConfig } from "@/lib/sniper/config";
 

@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { perpspadTokens, type PerpspadToken as PerpspadTokenRow } from "@/lib/db/schema";
+import { perpspadTokens, type PerpspadToken as PerpspadTokenRow } from "@/drizzle/schema";
 import type { PerpspadToken, PerpsDirection } from "./perpspad-types";
 import { SUPPORTED_MARKETS } from "./markets";
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getDb } from "@/lib/db";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { openBotLighterSigner } from "@/lib/lighter/bot-credentials";
 import { LighterClient } from "@/lib/lighter/client";
 import { getLighterConfig } from "@/lib/lighter/config";

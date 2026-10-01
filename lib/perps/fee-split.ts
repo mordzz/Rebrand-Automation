@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { perpspadConfig } from "@/lib/db/schema";
+import { perpspadConfig } from "@/drizzle/schema";
 import { DEFAULT_FEE_SPLIT, type FeeSplitConfig } from "./perpspad-types";
 
 /** Basis points, sum must be exactly 10000 — the app-level half of the
@@ -36,7 +36,7 @@ function bpsToPct(bps: number): number {
  * Source-of-truth note: this table is authoritative only until the
  * Phase 1 on-chain Config account exists — from then on this becomes a
  * read-cache synced FROM chain, not edited independently (see
- * lib/db/schema.ts#perpspadConfig).
+ * drizzle/schema/perpspad.ts#perpspadConfig).
  */
 export async function getFeeSplitConfig(): Promise<FeeSplitConfig> {
   const db = getDb();

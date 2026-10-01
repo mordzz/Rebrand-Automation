@@ -2,7 +2,7 @@ import { desc, eq, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { positions } from "@/lib/db/schema";
+import { positions } from "@/drizzle/schema";
 import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
 // Position state changes continuously while the sniper daemon runs —

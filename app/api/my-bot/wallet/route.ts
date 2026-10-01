@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";

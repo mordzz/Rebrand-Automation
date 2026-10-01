@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { lessons } from "@/lib/db/schema";
+import { lessons } from "@/drizzle/schema";
 import { updateSniperConfig } from "@/lib/sniper/config";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 

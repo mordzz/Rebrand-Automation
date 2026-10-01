@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { logs } from "@/lib/db/schema";
+import { logs } from "@/drizzle/schema";
 
 export type LogLevel = "info" | "buy" | "sell" | "guard" | "warn" | "error";
 

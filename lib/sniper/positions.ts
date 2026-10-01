@@ -2,7 +2,7 @@ import { and, eq, isNull, or } from "drizzle-orm";
 
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
-import { positions, type Position } from "@/lib/db/schema";
+import { positions, type Position } from "@/drizzle/schema";
 
 /**
  * Remaining notional after selling `sold` off a `current` amount, never

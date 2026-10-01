@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
-import { userBots } from "@/lib/db/schema";
+import { userBots } from "@/drizzle/schema";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
 
 /** Manually clears a deployed bot's circuit breaker (see the breakerResetAt
- * comment on lib/db/schema.ts#userBots) — the escape hatch for a bot whose
+ * comment on drizzle/schema/bots.ts#userBots) — the escape hatch for a bot whose
  * opening trades tripped maxConsecutiveLosses and, being paused, can never
  * earn the win that would otherwise clear it on its own. Same client-
  * asserted wallet trust model as the rest of app/api/my-bot (demo-stage). */

@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import type { ClosedTradeInput } from "@/lib/agent/analyze-loss";
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
-import { trades } from "@/lib/db/schema";
+import { trades } from "@/drizzle/schema";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** `?wallet=` scopes to one deployed bot's own trade history; omitted

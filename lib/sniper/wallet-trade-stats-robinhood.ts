@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, lt } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { trades, type Trade } from "@/lib/db/schema";
+import { trades, type Trade } from "@/drizzle/schema";
 
 /**
  * Robinhood-scoped counterparts to lib/sniper/wallet-trade-stats.ts —

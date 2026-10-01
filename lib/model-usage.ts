@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { modelRequests } from "@/lib/db/schema";
+import { modelRequests } from "@/drizzle/schema";
 import { primaryEnabledProvider } from "@/lib/eliza/model-providers";
 
 /**

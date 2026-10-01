@@ -4,7 +4,7 @@ import {
   type LossAnalysis,
 } from "@/lib/agent/analyze-loss";
 import { getDb } from "@/lib/db";
-import { lessons, trades, type Lesson, type Trade } from "@/lib/db/schema";
+import { lessons, trades, type Lesson, type Trade } from "@/drizzle/schema";
 import { llmModelId } from "@/lib/agent/llm";
 
 export type RecordTradeResult =
