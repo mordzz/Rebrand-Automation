@@ -147,6 +147,12 @@ export function getPrivyAuthBackend(): PrivyAuthBackend | null {
 
   cachedBackend = {
     verifyAccessToken: (token) => client.utils().auth().verifyAccessToken(token),
+    // PR17 review (docs.privy.io "Querying users" / "Get user by ID"):
+    // users()._get(userId) is Privy's documented by-ID lookup. Privy also
+    // offers identity-token parsing (users().get({ id_token })) to skip the
+    // API call, but the SDK notes that user "may be incomplete due to the
+    // size constraints of the identity token" — for an ownership check we
+    // want the authoritative, fresh linked-account list, so we keep _get.
     getUserLinkedAccounts: async (userId) => (await client.users()._get(userId)).linked_accounts,
   };
   return cachedBackend;

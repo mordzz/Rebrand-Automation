@@ -35,8 +35,8 @@ export const LIGHTER_SIGNER_PROVENANCE = {
   tag: "v1.0.10",
   commit: "9d38261d1a4cc5c7211b383ba07a4d6e41604708",
   goToolchain: "golang:1.23.2-bullseye",
-  build: "GOOS=js GOARCH=wasm go build -trimpath -o lighter-signer.wasm ./wasm/",
-  wasmSha256: "85cdfcf2ae52315aee75a1c90fa81d986cfdd362e1e137ba16a1759eb804f8ba",
+  build: "GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o lighter-signer.wasm ./wasm/",
+  wasmSha256: "411a3280862c2d9445f74472a360882d5ecfd272276e3c961ca2431c4f1a2c54",
   wasmExecSha256: "45ce9dfe7211247544ab6f4268eb8cb5b6f3d5ae602dc3b51447b7eada99c229",
 } as const;
 

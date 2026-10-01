@@ -15,7 +15,7 @@ set -eu
 
 REPO=https://github.com/elliottech/lighter-go.git
 COMMIT=9d38261d1a4cc5c7211b383ba07a4d6e41604708
-WASM_SHA=85cdfcf2ae52315aee75a1c90fa81d986cfdd362e1e137ba16a1759eb804f8ba
+WASM_SHA=411a3280862c2d9445f74472a360882d5ecfd272276e3c961ca2431c4f1a2c54
 EXEC_SHA=45ce9dfe7211247544ab6f4268eb8cb5b6f3d5ae602dc3b51447b7eada99c229
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,7 +26,7 @@ git clone --quiet "$REPO" "$WORK/lighter-go"
 git -C "$WORK/lighter-go" checkout --quiet "$COMMIT"
 
 MSYS_NO_PATHCONV=1 docker run --rm -v "$WORK/lighter-go:/src" -w /src golang:1.23.2-bullseye sh -c \
-  'GOOS=js GOARCH=wasm go build -trimpath -o /src/build/lighter-signer.wasm ./wasm/ && cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" /src/build/wasm_exec.js'
+  'GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o /src/build/lighter-signer.wasm ./wasm/ && cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" /src/build/wasm_exec.js'
 
 mkdir -p "$ROOT/vendor/lighter-signer"
 cp "$WORK/lighter-go/build/lighter-signer.wasm" "$WORK/lighter-go/build/wasm_exec.js" "$ROOT/vendor/lighter-signer/"
