@@ -13,7 +13,10 @@
 import { encodeFunctionData, type Address, type Hex } from "viem";
 
 import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
-import type { RobinhoodExecutionConfig } from "@/lib/chain/robinhood-execution-config";
+import {
+  assertExecutionConfigOnActiveNetwork,
+  type RobinhoodExecutionConfig,
+} from "@/lib/chain/robinhood-execution-config";
 import { NATIVE_CURRENCY } from "@/lib/chain/robinhood-v4-pool";
 import { assertNoWrapCommands, encodeV4SwapExactInSingle } from "@/lib/chain/robinhood-v4-actions";
 import type { QuoteSwapResult } from "@/lib/chain/robinhood-v4-quote";
@@ -33,16 +36,67 @@ export type UnsignedSwapTransaction = UnsignedTransaction & {
   amountOutMinimum: bigint;
 };
 
-const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes — matches the window used in the audit's live simulation
+export const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes — matches the window used in the audit's live simulation
+/** A generous but finite upper bound (7 days) — rejects absurd/overflow
+ * values without constraining any legitimate use of this adapter.
+ * Exported so PR09's signing-time semantic validation checks a decoded
+ * deadline/expiration against the exact same bound PR08 used to build
+ * it, rather than a second, possibly-drifted copy of "7 days". */
+export const MAX_DEADLINE_SECONDS = 7 * 24 * 60 * 60;
 
 /** Permit2's `amount` field is `uint160` — `2**160 - 1`. */
 const UINT160_MAX = BigInt("0xffffffffffffffffffffffffffffffffffffff");
+/** Permit2's `expiration` field is `uint48` — `2**48 - 1`. */
+const UINT48_MAX = BigInt("0xffffffffffff");
 
-function deadlineFromNow(seconds: number = DEFAULT_DEADLINE_SECONDS): bigint {
-  return BigInt(Math.floor(Date.now() / 1000) + seconds);
+/** Validates a caller-supplied `deadlineSeconds`/`expirationSeconds`
+ * option before it's used in any arithmetic. Fails closed on anything
+ * that isn't a finite positive integer within a sane bound — never lets
+ * a negative, zero, NaN, Infinity, or absurdly large value silently
+ * produce a nonsensical or overflowing deadline. */
+export function validateBoundedSeconds(seconds: number, label: string): number {
+  if (!Number.isFinite(seconds) || !Number.isInteger(seconds)) {
+    throw new Error(`${label} must be a finite integer, got ${seconds}`);
+  }
+  if (seconds <= 0) {
+    throw new Error(`${label} must be positive, got ${seconds}`);
+  }
+  if (seconds > MAX_DEADLINE_SECONDS) {
+    throw new Error(`${label} exceeds the maximum bound of ${MAX_DEADLINE_SECONDS}s, got ${seconds}`);
+  }
+  return seconds;
 }
 
-const UNIVERSAL_ROUTER_EXECUTE_ABI = [
+function deadlineFromNow(seconds: number = DEFAULT_DEADLINE_SECONDS): bigint {
+  const validated = validateBoundedSeconds(seconds, "deadlineSeconds");
+  return BigInt(Math.floor(Date.now() / 1000) + validated);
+}
+
+/**
+ * A quote produced against one network's execution config must never be
+ * handed to a builder constructing calldata against a different
+ * network's config — that could target the wrong chain's router with
+ * the wrong chain's PoolKey/addresses. Checked here at runtime (not left
+ * as a TypeScript-only guarantee) since `quote` and `config` are two
+ * independent values a caller could mismatch.
+ */
+function assertQuoteMatchesConfigNetwork(
+  quote: { network: RobinhoodExecutionConfig["network"]; chainId: number },
+  config: RobinhoodExecutionConfig
+): void {
+  if (quote.network !== config.network || quote.chainId !== config.chainId) {
+    throw new Error(
+      `quote was produced for ${quote.network}/chainId ${quote.chainId}, but this builder was called with a ` +
+        `config for ${config.network}/chainId ${config.chainId} — refusing to build calldata across networks`
+    );
+  }
+}
+
+/** Exported so PR09's signing-time calldata decoder
+ * (lib/chain/robinhood-agent-signing.ts) decodes the exact same ABI this
+ * module encodes with — one definition, never a second hand-copied one
+ * that could silently drift out of sync. */
+export const UNIVERSAL_ROUTER_EXECUTE_ABI = [
   {
     type: "function",
     name: "execute",
@@ -71,6 +125,7 @@ export function buildNativeBuyTransaction(
   if (quote.side !== "buy") {
     throw new Error(`buildNativeBuyTransaction requires quote.side === "buy", got "${quote.side}"`);
   }
+  assertQuoteMatchesConfigNetwork(quote, config);
   if (quote.currencyIn !== NATIVE_CURRENCY) {
     throw new Error("buildNativeBuyTransaction requires the quote's input currency to be native ETH");
   }
@@ -130,6 +185,7 @@ export function buildNativeSellTransaction(
   if (quote.side !== "sell") {
     throw new Error(`buildNativeSellTransaction requires quote.side === "sell", got "${quote.side}"`);
   }
+  assertQuoteMatchesConfigNetwork(quote, config);
   if (quote.currencyOut !== NATIVE_CURRENCY) {
     throw new Error("buildNativeSellTransaction requires the quote's output currency to be native ETH");
   }
@@ -173,7 +229,9 @@ export function buildNativeSellTransaction(
 
 // ── Sell-path prerequisites: ERC-20 → Permit2 → UniversalRouter ────────
 
-const ERC20_ABI = [
+/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above —
+ * PR09's signer decodes with this exact ABI, never a hand-copied one. */
+export const ERC20_ABI = [
   {
     type: "function",
     name: "approve",
@@ -196,7 +254,8 @@ const ERC20_ABI = [
   },
 ] as const;
 
-const PERMIT2_ABI = [
+/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above. */
+export const PERMIT2_ABI = [
   {
     type: "function",
     name: "approve",
@@ -233,6 +292,7 @@ export async function checkErc20AllowanceToPermit2(
   owner: Address
 ): Promise<bigint> {
   const client = getRobinhoodPublicClient();
+  await assertExecutionConfigOnActiveNetwork(config, client);
   return client.readContract({
     address: token,
     abi: ERC20_ABI,
@@ -248,6 +308,7 @@ export async function checkPermit2AllowanceToRouter(
   owner: Address
 ): Promise<{ amount: bigint; expiration: number; nonce: number }> {
   const client = getRobinhoodPublicClient();
+  await assertExecutionConfigOnActiveNetwork(config, client);
   const [amount, expiration, nonce] = await client.readContract({
     address: config.permit2,
     abi: PERMIT2_ABI,
@@ -294,7 +355,23 @@ export function buildPermit2AuthorizationTransaction(
     // wouldn't fit rather than silently truncating.
     throw new Error("buildPermit2AuthorizationTransaction: amount exceeds uint160 range");
   }
-  const expiration = Math.floor(Date.now() / 1000) + (options?.expirationSeconds ?? DEFAULT_DEADLINE_SECONDS);
+  const expirationSeconds = validateBoundedSeconds(
+    options?.expirationSeconds ?? DEFAULT_DEADLINE_SECONDS,
+    "expirationSeconds"
+  );
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const expiration = nowSeconds + expirationSeconds;
+  if (BigInt(expiration) > UINT48_MAX) {
+    throw new Error(
+      `buildPermit2AuthorizationTransaction: computed expiration ${expiration} exceeds uint48 range`
+    );
+  }
+  if (expiration <= nowSeconds) {
+    // Unreachable given validateBoundedSeconds already requires a
+    // positive expirationSeconds, but checked explicitly so this
+    // invariant is enforced at the point it matters, not just implied.
+    throw new Error("buildPermit2AuthorizationTransaction: computed expiration must be in the future");
+  }
   const data = encodeFunctionData({
     abi: PERMIT2_ABI,
     functionName: "approve",

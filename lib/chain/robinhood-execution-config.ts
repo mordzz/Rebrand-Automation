@@ -37,7 +37,10 @@
  * deliberate gap, not an oversight.
  */
 
-import type { RobinhoodNetwork } from "@/lib/chain/config";
+import type { PublicClient } from "viem";
+
+import { ROBINHOOD_CHAIN_ID, ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
+import { assertCorrectChain, getRobinhoodPublicClient, RobinhoodRpcError } from "@/lib/chain/rpc";
 
 export type RobinhoodExecutionMode = "native_v4";
 
@@ -100,4 +103,35 @@ export function resolveRobinhoodExecutionConfig(
       "were the ones actually eth_getCode-confirmed in ROBINHOOD_SWAP_EXECUTION_AUDIT.md. " +
       "Failing closed rather than guessing; see that audit before adding mainnet v4 addresses here.",
   };
+}
+
+/**
+ * Execution-context invariant: every RPC-dependent PR08B operation
+ * (pool validation, quoting, allowance reads, receipt interpretation)
+ * must call this before touching the network. Fails closed if:
+ *   - the supplied `config` wasn't resolved for the process's actually
+ *     active network (`ROBINHOOD_NETWORK`/`ROBINHOOD_CHAIN_ID` from
+ *     lib/chain/config.ts) — this prevents a caller from constructing or
+ *     passing around a mismatched config (e.g. testnet addresses while
+ *     the process is pointed at mainnet, or vice versa)
+ *   - the RPC endpoint itself doesn't actually report that chain id
+ *     (the existing PR03 `assertCorrectChain` check) — this prevents a
+ *     misconfigured `ROBINHOOD_RPC_URL` from silently serving the wrong
+ *     chain's state under an otherwise-correct config object
+ *
+ * Never silently proceeds on a mismatch in either direction.
+ */
+export async function assertExecutionConfigOnActiveNetwork(
+  config: RobinhoodExecutionConfig,
+  client: PublicClient = getRobinhoodPublicClient()
+): Promise<void> {
+  if (config.network !== ROBINHOOD_NETWORK || config.chainId !== ROBINHOOD_CHAIN_ID) {
+    throw new RobinhoodRpcError(
+      "wrong_chain",
+      `Execution config is for ${config.network}/chainId ${config.chainId}, but the active ` +
+        `Robinhood network is ${ROBINHOOD_NETWORK}/chainId ${ROBINHOOD_CHAIN_ID}. Refusing to use ` +
+        `a mismatched network's execution addresses.`
+    );
+  }
+  await assertCorrectChain(client);
 }

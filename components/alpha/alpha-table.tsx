@@ -242,12 +242,12 @@ export function AlphaTable() {
         <div className="flex items-center gap-3">
           <div>
             <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-              Solana
+              Solana · historical
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Newest first, one row per ticker. Every row passed the
-              Raven&apos;s own entry criteria: mint/freeze authority,
-              creator buy %, socials.
+              Archive from the retired Solana engine, newest first, one row
+              per ticker. Every row passed the Raven&apos;s Solana entry
+              criteria at the time: mint/freeze authority, creator buy %, socials.
             </p>
           </div>
         </div>

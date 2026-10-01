@@ -13,6 +13,13 @@ type SniperConfigValue = {
   requireFreezeAuthorityRenounced: boolean;
   requireSocialLink: boolean;
   maxCreatorBuyPct: number;
+  /* Robinhood/EVM fields the active runtime reads (PR06.5/PR07). */
+  requireOwnerRenounced: boolean;
+  requireNoBlacklistCapability: boolean;
+  maxCreatorHoldPct: number | null;
+  maxNativePerSnipe: number | null;
+  maxNativeDeployed: number | null;
+  maxDailyDrawdownNative: number | null;
   minTokenAgeSec: number;
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
@@ -76,18 +83,21 @@ function buildSections(c: SniperConfigValue): { title: string; rows: SpecRow[] }
       title: "Entry Filters",
       rows: [
         {
-          label: "Mint authority",
-          value: c.requireMintAuthorityRenounced ? "Renounced only" : "Any",
+          label: "Contract ownership",
+          value: c.requireOwnerRenounced ? "Renounced only" : "Any",
         },
         {
-          label: "Freeze authority",
-          value: c.requireFreezeAuthorityRenounced ? "Renounced only" : "Any",
+          label: "Blacklist capability",
+          value: c.requireNoBlacklistCapability ? "Rejected" : "Allowed",
         },
         {
           label: "Social link",
           value: c.requireSocialLink ? "Required" : "Optional",
         },
-        { label: "Max creator buy", value: `${c.maxCreatorBuyPct}%` },
+        {
+          label: "Max creator holding",
+          value: c.maxCreatorHoldPct != null ? `${c.maxCreatorHoldPct}%` : "Not set (entries refused)",
+        },
         { label: "Min token age", value: `${c.minTokenAgeSec}s` },
         {
           label: "Max queue age",
@@ -102,11 +112,11 @@ function buildSections(c: SniperConfigValue): { title: string; rows: SpecRow[] }
     {
       title: "Sizing · Circuit Breaker",
       rows: [
-        { label: "Per snipe", value: `${c.maxSolPerSnipe} SOL` },
+        { label: "Per snipe", value: c.maxNativePerSnipe != null ? `${c.maxNativePerSnipe} ETH` : "Not set (entries refused)" },
         { label: "Max concurrent positions", value: String(c.maxConcurrentPositions) },
-        { label: "Max total deployed", value: `${c.maxTotalDeployedSol} SOL` },
+        { label: "Max total deployed", value: c.maxNativeDeployed != null ? `${c.maxNativeDeployed} ETH` : "Not set (entries refused)" },
         { label: "Max consecutive losses", value: String(c.maxConsecutiveLosses) },
-        { label: "Daily drawdown halt", value: `${c.maxDailyDrawdownSol} SOL` },
+        { label: "Daily drawdown halt", value: c.maxDailyDrawdownNative != null ? `${c.maxDailyDrawdownNative} ETH` : "Not set (entries refused)" },
         { label: "Cooldown after a loss", value: `${c.cooldownAfterLossSec}s` },
         { label: "Exit check interval", value: `${c.exitCheckIntervalMs}ms` },
       ],

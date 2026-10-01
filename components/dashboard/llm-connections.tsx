@@ -15,6 +15,8 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { nativeSymbolFor, rowPnl } from "@/lib/chain/display";
+import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 
 type ProviderId = "openrouter" | "anthropic" | "openai";
 
@@ -78,11 +80,13 @@ type LessonApiRow = {
   token: string | null;
   strategy: string | null;
   pnlSol: string | null;
+  pnlNative?: string | null;
+  chain?: string | null;
   closedAt: string | null;
 };
 
 function toMemoryRow(row: LessonApiRow): MemoryRow {
-  const pnl = Number(row.pnlSol ?? 0);
+  const pnl = rowPnl(row) ?? 0;
   return {
     id: row.id,
     date: new Date(row.closedAt ?? row.createdAt).toLocaleDateString("en-US", {
@@ -91,7 +95,7 @@ function toMemoryRow(row: LessonApiRow): MemoryRow {
     }),
     token: row.token ?? "—",
     strategy: row.strategy ?? "—",
-    pnl: `${pnl > 0 ? "+" : ""}${pnl} SOL`,
+    pnl: `${pnl > 0 ? "+" : ""}${pnl} ${nativeSymbolFor(row)}`,
     cause: row.cause,
     lesson: row.lesson,
     status: row.status === "applied" ? "applied" : "learning",
@@ -152,11 +156,13 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
   // waiting out the 15s poll before the button's own row updates.
   const [locallyApplied, setLocallyApplied] = useState<Set<string>>(new Set());
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  // PR17: applying a lesson changes the house config — house admin only.
+  const authedFetch = useAuthedFetch();
 
   async function applySuggestion(id: string) {
     setApplyingId(id);
     try {
-      const res = await fetch(`/api/lessons/${id}/apply`, { method: "POST" });
+      const res = await authedFetch(`/api/lessons/${id}/apply`, { method: "POST" });
       if (res.ok) {
         setLocallyApplied((prev) => new Set(prev).add(id));
       }

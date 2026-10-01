@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -376,12 +378,16 @@ export const userBots = pgTable("user_bots", {
    * (`?api-key=…`). Sitting in that blob it would be handed to anyone who
    * knows a wallet address, since that endpoint trusts a client-asserted
    * wallet. Keeping it separate means leaking it has to be a deliberate
-   * act rather than an accident — app/api/my-bot/rpc only ever returns a
-   * masked form, and nothing else selects this column. */
+   * act rather than an accident.
+   *
+   * PR16: historical only. This held a per-bot SOLANA RPC endpoint; the
+   * Robinhood runtime uses the server's ROBINHOOD_RPC_URL, and the panel +
+   * route that edited this column were retired. Never selected into a
+   * browser response. */
   rpcUrl: text("rpc_url"),
   /* This agent's own trading wallet, generated at deploy.
    *
-   * Separate from walletAddress above: that one is the operator's Phantom
+   * Separate from walletAddress above: that one is the operator's owner (EVM)
    * wallet, used only to identify who owns this bot, and its keys are
    * never requested or held. This one is a fresh keypair the agent signs
    * with, so it can trade without the operator present. Only what the
@@ -393,6 +399,29 @@ export const userBots = pgTable("user_bots", {
    * lib/solana/agent-wallet.ts. No API ever returns this column. */
   agentPublicKey: text("agent_public_key"),
   agentSecretEnc: text("agent_secret_enc"),
+  /* Chain/network metadata for the agent wallet above — added in PR09,
+   * additive only (see drizzle/0004_robinhood_agent_wallet.sql). Every
+   * bot deployed before PR09 is unambiguously Solana (no other signer
+   * existed) and was backfilled accordingly; NULL network for those
+   * legacy rows means "never recorded", never a guess. A NEW bot's agent
+   * wallet is chain-aware from the moment it's generated: EVM-owned bots
+   * (0x wallet_address) get "robinhood"/"testnet"/"ETH"; legacy-flow
+   * Solana bots keep getting "solana"/null/"SOL". Runtime code must
+   * dispatch on this column, never infer chain from address shape alone. */
+  agentChain: text("agent_chain"),
+  agentNetwork: text("agent_network"),
+  agentNativeSymbol: text("agent_native_symbol"),
+  /* PR12 Lighter perps credentials (drizzle/0005_lighter_api_credentials.sql).
+   * The Lighter account is owned by the AGENT wallet above, never the owner
+   * wallet. `lighterApiKeyEnc` is an encrypted blob only decryptable inside
+   * the Lighter signer worker — never select it into a browser response. */
+  lighterNetwork: text("lighter_network"),
+  lighterAccountIndex: bigint("lighter_account_index", { mode: "number" }),
+  lighterApiKeyIndex: integer("lighter_api_key_index"),
+  lighterApiPublicKey: text("lighter_api_public_key"),
+  lighterApiKeyEnc: text("lighter_api_key_enc"),
+  lighterApiKeyStatus: text("lighter_api_key_status"),
+  lighterApiKeyRegisteredAt: timestamp("lighter_api_key_registered_at", { withTimezone: true }),
   /* "paper" | "live". Defaults to paper and stays there until the operator
    * turns it on deliberately — Design Principle 3 in the whitepaper: every
    * agent begins in dry-run, and going live is a separate decision, not a

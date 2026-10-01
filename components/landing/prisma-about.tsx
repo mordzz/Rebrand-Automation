@@ -14,7 +14,7 @@ import { WordsPullUpMultiStyle } from "./words-pull-up";
  * results achieved: the document publishes methodology, never projections
  * or observed performance (Design Principle 8). */
 const BODY_TEXT =
-  "Solana produces a flood of new tokens every day. The overwhelming majority are worthless, and a meaningful share are built to take your money. Finding tokens was never the problem. The problem is that almost everything has to be turned away. An agent that buys enthusiastically is trivial to write; an agent that refuses correctly, thousands of times a day, is the hard part, and it is the part that decides whether a wallet survives.";
+  "New tokens launch on Robinhood Chain every day. The overwhelming majority are worthless, and a meaningful share are built to take your money. Finding tokens was never the problem. The problem is that almost everything has to be turned away. An agent that buys enthusiastically is trivial to write; an agent that refuses correctly, thousands of times a day, is the hard part, and it is the part that decides whether a wallet survives.";
 
 function AnimatedLetter({
   char,

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 
 /** Mirrors lib/sniper/config.ts#SniperConfig — kept as a plain type here
  * (not imported) since this file is a client component and the source
@@ -24,6 +25,16 @@ type TakeProfitTier = { atPct: number; sellPortionPct: number };
 type SniperConfigValue = {
   requireMintAuthorityRenounced: boolean;
   requireFreezeAuthorityRenounced: boolean;
+  /* Robinhood/EVM safety + risk fields (PR06.5/PR07) — the ones the active
+     Robinhood runtime actually reads. The Solana fields above stay in the
+     type only so a save round-trips them untouched. */
+  requireOwnerRenounced: boolean;
+  requireNoBlacklistCapability: boolean;
+  maxCreatorHoldPct: number | null;
+  maxNativePerSnipe: number | null;
+  maxNativeDeployed: number | null;
+  maxDailyDrawdownNative: number | null;
+  nativeSymbol: string | null;
   requireSocialLink: boolean;
   requireAlphaWalletBuy: boolean;
   alphaWallets: string[];
@@ -74,6 +85,13 @@ function usePolledJson<T>(url: string, intervalMs: number): T | null {
   return data;
 }
 
+/** Display a slider value at its step's precision (no float noise such as
+ * 0.0022104315514197086). */
+function formatStepValue(value: number, step: number): string {
+  const decimals = Math.min(8, Math.max(0, (String(step).split(".")[1] ?? "").length));
+  return Number(value.toFixed(decimals)).toString();
+}
+
 function Field({
   label,
   hint,
@@ -97,8 +115,8 @@ function Field({
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
         <Label className="text-sm font-normal">{label}</Label>
-        <span className="text-sm font-medium">
-          {value}
+        <span className="text-sm font-medium tabular-nums">
+          {formatStepValue(value, step)}
           {unit ? ` ${unit}` : ""}
         </span>
       </div>
@@ -158,8 +176,8 @@ function NullableField({
             step={step}
             className="flex-1"
           />
-          <span className="ml-4 w-16 shrink-0 text-right text-sm font-medium">
-            {value}
+          <span className="ml-4 w-24 shrink-0 text-right text-sm font-medium tabular-nums">
+            {formatStepValue(value, step)}
             {unit ? ` ${unit}` : ""}
           </span>
         </div>
@@ -194,11 +212,18 @@ export function SniperConfigPanel({
   endpoint = "/api/sniper/config",
   title = "The Raven · Live Config",
   description = "Changes take effect on the daemon's next cycle — no restart needed.",
+  saveFetch,
 }: {
   endpoint?: string;
   title?: string;
   description?: string;
+  /** Used for the PATCH only. Defaults to the app-wide authed fetch
+   * (lib/auth/use-privy-authed-fetch.ts) — both the per-bot and the house
+   * config PATCH routes require a verified Privy user. */
+  saveFetch?: typeof fetch;
 }) {
+  const contextFetch = useAuthedFetch();
+  const doFetch = saveFetch ?? contextFetch;
   const response = usePolledJson<{ configured: boolean; config: SniperConfigValue | null }>(
     endpoint,
     10_000
@@ -208,6 +233,7 @@ export function SniperConfigPanel({
   const [alphaWalletsInput, setAlphaWalletsInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Seed the draft once from the first fetched config, adjusting state
   // during render (React's documented pattern for this) rather than an
@@ -227,17 +253,23 @@ export function SniperConfigPanel({
   async function save() {
     if (!draft) return;
     setSaving(true);
+    setSaveError(null);
     try {
-      const res = await fetch(endpoint, {
+      const res = await doFetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      const json = await res.json();
-      if (json.config) {
+      const json = (await res.json().catch(() => ({}))) as { config?: SniperConfigValue; error?: string };
+      if (res.ok && json.config) {
         setDraft(json.config);
         setSavedAt(Date.now());
+      } else {
+        // Surface the failure instead of silently leaving the draft unsaved.
+        setSaveError(json.error ?? `Couldn't save (HTTP ${res.status}). Your changes are still here — try again.`);
       }
+    } catch {
+      setSaveError("Couldn't reach the server. Your changes are still here — try again.");
     } finally {
       setSaving(false);
     }
@@ -253,6 +285,15 @@ export function SniperConfigPanel({
 
   function set<K extends keyof SniperConfigValue>(key: K, value: SniperConfigValue[K]) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  /** Robinhood risk limits are only trusted with nativeSymbol="ETH"
+   * (lib/sniper/risk-limits-robinhood.ts), so setting one records it. */
+  function setNative(
+    key: "maxNativePerSnipe" | "maxNativeDeployed" | "maxDailyDrawdownNative",
+    value: number | null,
+  ) {
+    setDraft((prev) => (prev ? { ...prev, [key]: value, nativeSymbol: value == null ? prev.nativeSymbol : "ETH" } : prev));
   }
 
   function updateTier(index: number, patch: Partial<TakeProfitTier>) {
@@ -307,8 +348,12 @@ export function SniperConfigPanel({
           <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          {savedAt && !dirty && (
-            <span className="text-xs text-muted-foreground">Saved</span>
+          {saveError ? (
+            <span role="alert" className="max-w-xs text-right text-xs text-destructive">
+              {saveError}
+            </span>
+          ) : (
+            savedAt && !dirty && <span className="text-xs text-muted-foreground">Saved</span>
           )}
           {dirty && (
             <Button variant="ghost" size="sm" onClick={reset} className="text-xs text-muted-foreground">
@@ -330,14 +375,16 @@ export function SniperConfigPanel({
             Entry filters
           </p>
           <SwitchField
-            label="Require mint authority renounced"
-            checked={draft.requireMintAuthorityRenounced}
-            onChange={(v) => set("requireMintAuthorityRenounced", v)}
+            label="Require contract ownership renounced"
+            hint="ERC-20 owner must be renounced — the EVM stand-in for Solana's mint/freeze authority checks."
+            checked={draft.requireOwnerRenounced}
+            onChange={(v) => set("requireOwnerRenounced", v)}
           />
           <SwitchField
-            label="Require freeze authority renounced"
-            checked={draft.requireFreezeAuthorityRenounced}
-            onChange={(v) => set("requireFreezeAuthorityRenounced", v)}
+            label="Require no blacklist capability"
+            hint="Reject tokens whose contract can blacklist holders."
+            checked={draft.requireNoBlacklistCapability}
+            onChange={(v) => set("requireNoBlacklistCapability", v)}
           />
           <SwitchField
             label="Require a social link"
@@ -345,15 +392,16 @@ export function SniperConfigPanel({
             checked={draft.requireSocialLink}
             onChange={(v) => set("requireSocialLink", v)}
           />
-          <Field
-            label="Max creator buy"
-            hint="Reject if the creator's own initial buy exceeds this % of supply."
-            value={draft.maxCreatorBuyPct}
+          <NullableField
+            label="Max creator holding"
+            hint="Reject if the creator currently holds more than this % of supply. Off = not configured: Robinhood entries are refused until it is set."
+            value={draft.maxCreatorHoldPct}
             unit="%"
             min={1}
             max={50}
             step={1}
-            onChange={(v) => set("maxCreatorBuyPct", v)}
+            fallback={10}
+            onChange={(v) => set("maxCreatorHoldPct", v)}
           />
           <Field
             label="Minimum token age before evaluating"
@@ -431,14 +479,16 @@ export function SniperConfigPanel({
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
             Sizing
           </p>
-          <Field
+          <NullableField
             label="Position size per snipe"
-            value={draft.maxSolPerSnipe}
-            unit="SOL"
-            min={0.01}
-            max={1}
-            step={0.01}
-            onChange={(v) => set("maxSolPerSnipe", v)}
+            hint="Off = not configured: the agent refuses every entry until sizing is set."
+            value={draft.maxNativePerSnipe}
+            unit="ETH"
+            min={0.001}
+            max={0.5}
+            step={0.001}
+            fallback={0.01}
+            onChange={(v) => setNative("maxNativePerSnipe", v)}
           />
           <Field
             label="Max concurrent positions"
@@ -448,14 +498,16 @@ export function SniperConfigPanel({
             step={1}
             onChange={(v) => set("maxConcurrentPositions", v)}
           />
-          <Field
+          <NullableField
             label="Max total deployed"
-            value={draft.maxTotalDeployedSol}
-            unit="SOL"
-            min={0.05}
+            hint="Off = not configured: entries are refused."
+            value={draft.maxNativeDeployed}
+            unit="ETH"
+            min={0.005}
             max={5}
-            step={0.05}
-            onChange={(v) => set("maxTotalDeployedSol", v)}
+            step={0.005}
+            fallback={0.05}
+            onChange={(v) => setNative("maxNativeDeployed", v)}
           />
 
           <p className="pt-2 text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
@@ -470,14 +522,16 @@ export function SniperConfigPanel({
             step={1}
             onChange={(v) => set("maxConsecutiveLosses", v)}
           />
-          <Field
+          <NullableField
             label="Max daily drawdown"
-            value={draft.maxDailyDrawdownSol}
-            unit="SOL"
-            min={0.02}
+            hint="Off = not configured: entries are refused."
+            value={draft.maxDailyDrawdownNative}
+            unit="ETH"
+            min={0.002}
             max={2}
-            step={0.01}
-            onChange={(v) => set("maxDailyDrawdownSol", v)}
+            step={0.001}
+            fallback={0.02}
+            onChange={(v) => setNative("maxDailyDrawdownNative", v)}
           />
           <Field
             label="Cooldown after a loss"

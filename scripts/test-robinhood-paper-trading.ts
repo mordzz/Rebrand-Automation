@@ -456,18 +456,17 @@ async function main() {
   // ═══ Robinhood rows can never enter Solana reconciliation (item 5) ═══
   {
     const source = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
+    // PR09A retired Solana live execution, so the Solana chain-read
+    // reconciliation path (reconcileOnStart/heldTokenAmount) no longer
+    // exists at all — a Robinhood row cannot reach a Solana chain read
+    // because there is none. Stronger than the old ordering guard.
     assert(
-      source.includes('if (position.chain === "robinhood") continue;'),
-      'reconcileOnStart checks position.chain === "robinhood" before ever reaching heldTokenAmount'
+      !source.includes("async function reconcileOnStart") && !source.includes("heldTokenAmount("),
+      "no Solana chain-read reconciliation path (reconcileOnStart/heldTokenAmount) remains in the paper daemon"
     );
-    // The chain guard must appear strictly before the first
-    // heldTokenAmount call inside reconcileOnStart.
-    const reconcileFn = source.match(/async function reconcileOnStart[\s\S]*?\n}/)?.[0] ?? "";
-    const guardIndex = reconcileFn.indexOf('if (position.chain === "robinhood") continue;');
-    const heldCallIndex = reconcileFn.indexOf("heldTokenAmount(bot, position.token)");
     assert(
-      guardIndex !== -1 && heldCallIndex !== -1 && guardIndex < heldCallIndex,
-      "the Robinhood chain guard in reconcileOnStart appears before the heldTokenAmount call, so it always short-circuits first"
+      !/@solana\/kit|executeRealSell|executeRealBuy|executeSwap/.test(source),
+      "the paper daemon imports no Solana SDK and has no Solana live buy/sell execution path"
     );
   }
 

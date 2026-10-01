@@ -49,7 +49,7 @@ function Pill({ token }: { token: TopToken }) {
   const change = token.changePct;
   return (
     <a
-      href={`https://dexscreener.com/solana/${token.mint}`}
+      href={`https://dexscreener.com/robinhood/${token.mint}`}
       target="_blank"
       rel="noreferrer"
       className="flex shrink-0 items-center gap-2 border-r border-white/5 px-4 py-3 text-xs transition-colors hover:bg-white/[0.02]"

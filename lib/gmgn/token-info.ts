@@ -46,7 +46,7 @@ function remember(socials: TokenSocials): void {
 
 async function fetchOne(mint: string): Promise<TokenSocials> {
   const data = await gmgnGet<RawTokenInfo>("/v1/token/info", {
-    chain: "sol",
+    chain: "robinhood", // PR16: Robinhood Chain (was "sol")
     address: mint,
   });
   const socials: TokenSocials = {

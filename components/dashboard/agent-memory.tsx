@@ -3,6 +3,7 @@
 import { Brain } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { nativeSymbolFor, rowPnl } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 /** Shape of a row returned by GET /api/lessons */
@@ -16,6 +17,8 @@ type LessonApiRow = {
   token: string | null;
   strategy: string | null;
   pnlSol: string | null;
+  pnlNative?: string | null;
+  chain?: string | null;
   closedAt: string | null;
 };
 
@@ -100,7 +103,8 @@ export function AgentMemory({
       ) : (
         <ul className="max-h-80 overflow-y-auto border-t border-white/5">
           {rows.map((row) => {
-            const pnl = Number(row.pnlSol ?? 0);
+            const pnl = rowPnl(row) ?? 0;
+            const symbol = nativeSymbolFor(row);
             const applied = row.status === "applied";
             return (
               <li key={row.id} className="border-b border-white/5 px-4 py-3 last:border-b-0">
@@ -114,7 +118,7 @@ export function AgentMemory({
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-destructive text-xs font-medium tabular-nums">
                       {pnl > 0 ? "+" : ""}
-                      {pnl.toFixed(4)} SOL
+                      {pnl.toFixed(symbol === "ETH" ? 5 : 4)} {symbol}
                     </span>
                     <span
                       className={cn(

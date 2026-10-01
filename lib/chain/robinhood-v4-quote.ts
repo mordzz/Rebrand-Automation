@@ -9,7 +9,10 @@
  */
 
 import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
-import type { RobinhoodExecutionConfig } from "@/lib/chain/robinhood-execution-config";
+import {
+  assertExecutionConfigOnActiveNetwork,
+  type RobinhoodExecutionConfig,
+} from "@/lib/chain/robinhood-execution-config";
 import {
   NATIVE_CURRENCY,
   validatePoolKey,
@@ -53,6 +56,12 @@ export type QuoteSwapResult =
         currencyIn: `0x${string}`;
         /** The currency the caller receives. */
         currencyOut: `0x${string}`;
+        /** Provenance of the execution config this quote was produced
+         * against — a builder consuming this quote must refuse to use it
+         * with a different network/chainId's config. See
+         * robinhood-v4-swap-tx.ts's builders. */
+        network: RobinhoodExecutionConfig["network"];
+        chainId: number;
       };
     }
   | { ok: false; reason: string };
@@ -130,6 +139,15 @@ export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult>
   }
 
   const client = getRobinhoodPublicClient();
+  try {
+    await assertExecutionConfigOnActiveNetwork(input.config, client);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `execution config/network guard failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
   let amountOutQuoted: bigint;
   let quoterGasEstimate: bigint;
   try {
@@ -172,6 +190,8 @@ export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult>
       quoterGasEstimate,
       currencyIn,
       currencyOut,
+      network: input.config.network,
+      chainId: input.config.chainId,
     },
   };
 }

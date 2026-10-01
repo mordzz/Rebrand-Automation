@@ -17,18 +17,17 @@ import { useEffect, useRef, useState } from "react";
 
 import type { CharacterMood } from "@/components/dashboard/character-canvas";
 import { ChatPanel, type ChatMessage } from "@/components/dashboard/chat-panel";
-import { LiveMints } from "@/components/dashboard/live-mints";
 import { NewLaunches } from "@/components/dashboard/new-launches";
 import { SniperConfigReadout } from "@/components/dashboard/sniper-config-readout";
 import {
   TradeHistoryTable,
-  formatSignedSol,
 } from "@/components/dashboard/trade-history-table";
 import {
   TradePerformanceChart,
   type TradeRow,
 } from "@/components/dashboard/trade-performance-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatNative, nativeSymbolFor, rowSize } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 import { formatMarketCap } from "@/lib/sniper/market-cap";
 
@@ -52,8 +51,9 @@ type Tone = "positive" | "muted" | "negative";
 type WalletState = {
   connected: boolean;
   address?: string;
-  balanceSol?: number;
-  balanceUsd?: number;
+  /** Agent wallet balance in `nativeSymbol` (Robinhood: ETH). */
+  balanceNative?: number;
+  nativeSymbol?: string;
   error?: string;
   /** Why there's no wallet yet, when `connected` is false — replaces a
    * fabricated balance rather than inventing one (Design Principle 8). */
@@ -68,7 +68,9 @@ type StatsResponse = {
   configured: boolean;
   openPositionsCount?: number;
   openPositionsInProfit?: number;
-  pnl24hSol?: number;
+  /** Robinhood realized PnL, last 24h, in `nativeSymbol` (ETH). */
+  pnl24hNative?: number;
+  nativeSymbol?: string;
   winRate30d?: number | null;
   trades30dCount?: number;
   wins30dCount?: number;
@@ -88,6 +90,9 @@ type PositionRow = {
   status: string;
   entryPrice: string;
   sizeSol: string;
+  /** PR04 neutral size + chain — unit per position (PR14). */
+  sizeNative?: string | null;
+  chain?: string | null;
   lastPrice: string | null;
   entryMarketCapUsd: number | null;
   currentMarketCapUsd: number | null;
@@ -185,8 +190,9 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           configured: boolean;
           wallet: {
             address: string;
-            balanceSol: number | null;
-            balanceUsd: number | null;
+            /** Decimal string in `nativeSymbol` (Robinhood agent wallet). */
+            balanceNative: string | null;
+            nativeSymbol?: string;
             error: string | null;
           } | null;
           reason?: "not_generated" | "encryption_key_missing";
@@ -196,8 +202,11 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
         setWallet({
           connected: w != null,
           address: w?.address,
-          balanceSol: w?.balanceSol ?? undefined,
-          balanceUsd: w?.balanceUsd ?? undefined,
+          balanceNative:
+            w?.balanceNative != null && Number.isFinite(Number(w.balanceNative))
+              ? Number(w.balanceNative)
+              : undefined,
+          nativeSymbol: w?.nativeSymbol ?? "ETH",
           error: w?.error ?? undefined,
           hint:
             w == null
@@ -219,13 +228,10 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
   }, [walletQuery]);
 
   const walletCard: { value: string; hint: string; tone: Tone } =
-    wallet?.connected && typeof wallet.balanceSol === "number"
+    wallet?.connected && typeof wallet.balanceNative === "number"
       ? {
-          value: `${wallet.balanceSol.toFixed(2)} SOL`,
-          hint:
-            typeof wallet.balanceUsd === "number"
-              ? `≈ $${wallet.balanceUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-              : "Live balance",
+          value: `${wallet.balanceNative.toFixed(4)} ${wallet.nativeSymbol ?? "ETH"}`,
+          hint: "Live balance",
           tone: "positive",
         }
       : wallet?.connected
@@ -252,12 +258,12 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
   const pnl24hCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured
       ? {
-          value: formatSignedSol(statsData.pnl24hSol ?? 0),
+          value: formatNative(statsData.pnl24hNative ?? 0, statsData.nativeSymbol ?? "ETH", 4, true),
           hint: "Realized, last 24h",
           tone:
-            (statsData.pnl24hSol ?? 0) > 0
+            (statsData.pnl24hNative ?? 0) > 0
               ? "positive"
-              : (statsData.pnl24hSol ?? 0) < 0
+              : (statsData.pnl24hNative ?? 0) < 0
                 ? "negative"
                 : "muted",
         }
@@ -587,7 +593,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
                             {formatMarketCap(p.currentMarketCapUsd)}
                           </td>
                           <td className="px-4 py-3 font-mono text-[0.8rem]">
-                            {Number(p.sizeSol).toFixed(3)} SOL
+                            {formatNative(rowSize(p), nativeSymbolFor(p), 4)}
                           </td>
                           <td
                             className={cn(
@@ -656,12 +662,9 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           </TabsContent>
 
           <TabsContent value="mints">
-            {/* Two feeds, deliberately: LiveMints is the real-time pump.fun
-                WebSocket the engine actually snipes from; NewLaunches is
-                the wider multi-launchpad view (bags, believe, letsbonk,
-                boop, moonshot, …) that PumpPortal alone cannot see. */}
+            {/* Robinhood Chain launches from the same GMGN discovery the
+                agent reads (PR16 retired the Solana PumpPortal stream). */}
             <div className="flex flex-col gap-5">
-              <LiveMints />
               <NewLaunches />
             </div>
           </TabsContent>

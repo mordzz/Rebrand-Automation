@@ -1,34 +1,52 @@
 import { NextResponse } from "next/server";
 
 import { isGmgnConfigured } from "@/lib/gmgn/client";
-import { discoverTokens } from "@/lib/gmgn/discovery";
-import { getTokenIcons } from "@/lib/jupiter/token-icons";
+import { discoverRobinhoodTokens } from "@/lib/gmgn/discovery-robinhood";
 
-// Fresh launches change every few seconds — never cache.
+// Launches appear by the second — never cache.
 export const dynamic = "force-dynamic";
 
-const ROW_LIMIT = 40;
+const ROW_LIMIT = 30;
 
-/** Multi-launchpad new-token feed (GMGN `/v1/trenches`), covering every
- * Solana launchpad rather than just pump.fun. `configured: false` when
- * GMGN_API_KEY is unset so the panel can say so instead of looking empty.
- *
- * Icons are resolved through Jupiter rather than used as GMGN returns
- * them: GMGN's own image host answers 403 to anything that isn't gmgn.ai,
- * so those URLs render as broken images in our pages. See
- * lib/jupiter/token-icons.ts. */
+/** Fresh Robinhood Chain launches for the dashboard's "New launches"
+ * panel (PR16) — the same GMGN `/v1/trenches` adapter the agent's own
+ * discovery uses (lib/gmgn/discovery-robinhood.ts), including its
+ * launchpad allow-list. Logos come from GMGN itself. `configured: false`
+ * when GMGN_API_KEY is unset. Display only — the agent decides on its own
+ * safety/strategy/risk pipeline, not on this feed. */
 export async function GET() {
   if (!isGmgnConfigured()) {
     return NextResponse.json({ configured: false, tokens: [] });
   }
 
-  const discovered = (await discoverTokens(["new_creation"], 60)).slice(0, ROW_LIMIT);
-  const icons = await getTokenIcons(discovered.map((t) => t.mint));
+  const result = await discoverRobinhoodTokens(undefined, 60);
+  if (!result.ok) {
+    return NextResponse.json({ configured: true, tokens: [], error: result.reason });
+  }
 
-  const tokens = discovered.map((token) => ({
-    ...token,
-    logo: icons.get(token.mint) ?? null,
-  }));
+  const tokens = result.tokens
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, ROW_LIMIT)
+    .map((t) => ({
+      tokenAddress: t.tokenAddress,
+      chain: t.chain,
+      symbol: t.symbol,
+      name: t.name,
+      logo: t.logo,
+      launchpad: t.launchpad,
+      createdAt: t.createdAt,
+      hasSocialLink: t.hasSocialLink,
+      isHoneypot: t.isHoneypot,
+      buyTaxPct: t.buyTaxPct,
+      sellTaxPct: t.sellTaxPct,
+      rugRatio: t.rugRatio,
+      top10HolderRate: t.top10HolderRate,
+      bundlerRate: t.bundlerRate,
+      marketCapUsd: t.marketCapUsd,
+      holderCount: t.holderCount,
+      smartMoneyCount: t.smartMoneyCount,
+      kolCount: t.kolCount,
+    }));
 
   return NextResponse.json({ configured: true, tokens });
 }

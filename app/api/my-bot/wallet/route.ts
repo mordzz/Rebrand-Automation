@@ -2,20 +2,15 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
-import {
-  isAgentWalletConfigured,
-  withdrawFromAgentWallet,
-} from "@/lib/solana/agent-wallet";
+import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { getAddressBalance } from "@/lib/solana/wallet";
+import { getNativeBalance } from "@/lib/chain/rpc";
+import { loadRobinhoodAgentAccountView } from "@/lib/chain/robinhood-agent-wallet-view";
 
 export const dynamic = "force-dynamic";
 
-/** Leave enough behind to pay the transaction fee, so "withdraw
- * everything" cannot pass the balance check and then fail on-chain. */
-const FEE_HEADROOM_SOL = 0.00001;
 
 /** Mirrors LIVE_FEE_HEADROOM_SOL in scripts/paper-daemon.ts: held back from
  * every live buy for the swap fee and the token account rent, so a wallet
@@ -35,8 +30,8 @@ function isPlausibleSolanaAddress(addr: string): boolean {
  * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
  * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
  * may legitimately be either shape depending on when the bot was deployed.
- * NOTE (demo): the wallet is client-asserted. Before real deploys, verify
- * Privy's access token server-side instead of trusting this parameter. */
+ * GET is read-only (address + balance, never key material), so the wallet
+ * is client-asserted here; the only mutation (POST withdraw) is retired. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return isPlausibleSolanaAddress(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
@@ -81,6 +76,30 @@ export async function GET(request: Request) {
     });
   }
 
+  /* Chain-aware dispatch: a Robinhood/EVM agent wallet's address is never
+     a valid input to the Solana balance reader below (getAddressBalance
+     decodes it as a Solana base58 address, which a 0x-shaped address is
+     not) — this branch must run BEFORE that call, never after a failed
+     attempt. */
+  if (bot.agentChain === "robinhood") {
+    // loadRobinhoodAgentAccountView validates agentNetwork BEFORE ever
+    // calling getBalance — a network-mismatched bot never triggers a
+    // Robinhood RPC read at all.
+    const view = await loadRobinhoodAgentAccountView(
+      { agentPublicKey: bot.agentPublicKey, agentNetwork: bot.agentNetwork },
+      { getBalance: (address) => getNativeBalance(address) }
+    );
+    if ("reason" in view) {
+      return NextResponse.json(view);
+    }
+    return NextResponse.json({
+      configured: true,
+      wallet: view,
+      tradingMode: bot.tradingMode,
+      active: bot.active,
+    });
+  }
+
   const [balance, config] = await Promise.all([
     getAddressBalance(bot.agentPublicKey),
     getEffectiveConfig(bot),
@@ -115,83 +134,15 @@ export async function GET(request: Request) {
   });
 }
 
-/** Withdraws SOL from the agent wallet to any address the operator names. */
-export async function POST(request: Request) {
-  const db = getDb();
-  if (!db) {
-    return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 503 });
-  }
-
-  const owner = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(owner)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
-
-  let body: { destination?: string; amountSol?: number };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const destination = (body.destination ?? "").trim();
-  if (!isPlausibleSolanaAddress(destination)) {
-    return NextResponse.json(
-      { error: "Enter a valid Solana destination address." },
-      { status: 400 }
-    );
-  }
-
-  const amountSol = Number(body.amountSol);
-  if (!Number.isFinite(amountSol) || amountSol <= 0) {
-    return NextResponse.json(
-      { error: "Enter an amount greater than zero." },
-      { status: 400 }
-    );
-  }
-
-  const bot = await loadBot(owner);
-  if (!bot?.agentSecretEnc || !bot.agentPublicKey) {
-    return NextResponse.json({ error: "This agent has no wallet." }, { status: 404 });
-  }
-  const blocked = assertNotOfficial(bot);
-  if (blocked) return blocked;
-
-  /* Check the balance server-side rather than trusting the amount the
-     browser sent. Without this a request could ask for more than the
-     wallet holds and fail on-chain after the operator was told it was
-     submitted. */
-  const balance = await getAddressBalance(bot.agentPublicKey);
-  if (balance.balanceSol == null) {
-    return NextResponse.json(
-      { error: "Could not read the wallet balance — try again shortly." },
-      { status: 503 }
-    );
-  }
-  const spendable = balance.balanceSol - FEE_HEADROOM_SOL;
-  if (amountSol > spendable) {
-    return NextResponse.json(
-      {
-        error: `Only ${Math.max(0, spendable).toFixed(5)} SOL is available after leaving room for the fee.`,
-      },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const result = await withdrawFromAgentWallet(
-      bot.agentSecretEnc,
-      destination,
-      amountSol
-    );
-    return NextResponse.json({ ok: true, ...result });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Withdrawal failed.",
-      },
-      { status: 500 }
-    );
-  }
+/** Agent-wallet withdrawal — RETIRED/UNAVAILABLE (PR09A).
+ *
+ * The Solana withdrawal path (signing with a Solana agent key) is retired
+ * with the Solana runtime. Robinhood agent-wallet withdrawal needs the
+ * controlled broadcast layer and server-side owner authentication, neither
+ * of which exists for withdrawals yet, so this fails closed for every bot. */
+export async function POST() {
+  return NextResponse.json(
+    { error: "Agent-wallet withdrawal is unavailable: the Solana path is retired and Robinhood withdrawal is not implemented yet." },
+    { status: 501 }
+  );
 }

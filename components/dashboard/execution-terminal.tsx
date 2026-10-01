@@ -3,6 +3,7 @@
 import { ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { explorerName, tokenLink, txLink } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 type Level = "info" | "buy" | "sell" | "guard" | "warn" | "error";
@@ -12,10 +13,15 @@ type LogRow = {
   level: string;
   source: string;
   message: string;
-  txSignature: string | null;
-  /** Present on per-bot feeds. Paper fills never broadcast a transaction,
-   * so the token account is the only real thing there is to open. */
+  /** Neutral tx hash (PR04/PR14); legacy rows only have txSignature. */
+  txHash?: string | null;
+  txSignature?: string | null;
+  /** Token contract (or historical Solana mint). Paper fills never
+   * broadcast a transaction, so the token is the only real thing to open. */
+  tokenAddress?: string | null;
   tokenMint?: string | null;
+  /** "robinhood" | "solana" | null — picks explorer (PR14). */
+  chain?: string | null;
   createdAt: string;
 };
 
@@ -154,32 +160,40 @@ export function ExecutionTerminal({
                 </span>
                 <span className="min-w-0 flex-1 break-words text-[#d8d2c4]">
                   {row.message}
-                  {row.txSignature && row.txSignature !== "dry-run" ? (
-                    <a
-                      href={`https://solscan.io/tx/${row.txSignature}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="View transaction"
-                      className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
-                    >
-                      {row.txSignature.slice(0, 8)}…{row.txSignature.slice(-8)}
-                      <ExternalLink className="size-3" />
-                    </a>
-                  ) : row.tokenMint ? (
-                    /* No signature to show: a paper fill never hit the
-                       chain. The mint is real though, so link that and
-                       label it as the token, not as a transaction. */
-                    <a
-                      href={`https://solscan.io/token/${row.tokenMint}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="View token on Solscan"
-                      className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
-                    >
-                      {row.tokenMint.slice(0, 4)}…{row.tokenMint.slice(-4)}
-                      <ExternalLink className="size-3" />
-                    </a>
-                  ) : null}
+                  {(() => {
+                    const raw = row.txHash ?? row.txSignature ?? null;
+                    const hash = raw && raw !== "dry-run" && raw !== "paper" ? raw : null;
+                    const token = row.tokenAddress ?? row.tokenMint ?? null;
+                    if (hash) {
+                      return (
+                        <a
+                          href={txLink(row, hash)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`View transaction on ${explorerName(row)}`}
+                          className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
+                        >
+                          {hash.slice(0, 8)}…{hash.slice(-8)}
+                          <ExternalLink className="size-3" />
+                        </a>
+                      );
+                    }
+                    /* No tx to show: a paper fill never hit the chain. The
+                       token is real though, so link that, labeled as the
+                       token rather than as a transaction. */
+                    return token ? (
+                      <a
+                        href={tokenLink(row, token)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`View token on ${explorerName(row)}`}
+                        className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
+                      >
+                        {token.slice(0, 6)}…{token.slice(-4)}
+                        <ExternalLink className="size-3" />
+                      </a>
+                    ) : null;
+                  })()}
                 </span>
               </div>
             );

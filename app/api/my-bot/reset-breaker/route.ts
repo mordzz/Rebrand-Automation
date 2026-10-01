@@ -4,14 +4,9 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
-
-/** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
-function isPlausibleWalletAddress(addr: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
 
 /** Manually clears a deployed bot's circuit breaker (see the breakerResetAt
  * comment on lib/db/schema.ts#userBots) — the escape hatch for a bot whose
@@ -25,9 +20,9 @@ export async function POST(request: Request) {
   }
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   const [bot] = await db.select().from(userBots).where(eq(userBots.walletAddress, wallet)).limit(1);
   if (!bot) {

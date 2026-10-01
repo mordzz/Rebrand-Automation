@@ -23,7 +23,14 @@
 import { encodeAbiParameters, isAddress, keccak256, zeroAddress, type Address } from "viem";
 
 import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
-import type { RobinhoodExecutionConfig } from "@/lib/chain/robinhood-execution-config";
+import {
+  assertExecutionConfigOnActiveNetwork,
+  type RobinhoodExecutionConfig,
+} from "@/lib/chain/robinhood-execution-config";
+
+const UINT24_MAX = 16_777_215; // 2**24 - 1
+const INT24_MIN = -8_388_608; // -(2**23)
+const INT24_MAX = 8_388_607; // 2**23 - 1
 
 /** v4's native-currency sentinel — NOT a WETH address. See
  * robinhood-execution-config.ts's module comment for why this codebase
@@ -122,6 +129,22 @@ export async function validatePoolKey(
   if (!isAddress(poolKey.hooks)) {
     return { ok: false, reason: `hooks "${poolKey.hooks}" is not a valid address` };
   }
+  if (!Number.isInteger(poolKey.fee) || poolKey.fee < 0 || poolKey.fee > UINT24_MAX) {
+    return {
+      ok: false,
+      reason: `fee ${poolKey.fee} must be an integer in [0, ${UINT24_MAX}] (uint24 range)`,
+    };
+  }
+  if (
+    !Number.isInteger(poolKey.tickSpacing) ||
+    poolKey.tickSpacing < INT24_MIN ||
+    poolKey.tickSpacing > INT24_MAX
+  ) {
+    return {
+      ok: false,
+      reason: `tickSpacing ${poolKey.tickSpacing} must be an integer in [${INT24_MIN}, ${INT24_MAX}] (int24 range)`,
+    };
+  }
   if (poolKey.currency0 === poolKey.currency1) {
     return { ok: false, reason: "currency0 and currency1 must differ" };
   }
@@ -137,8 +160,29 @@ export async function validatePoolKey(
     };
   }
 
+  let poolId: `0x${string}`;
+  try {
+    poolId = computePoolId(poolKey);
+  } catch (error) {
+    // Belt-and-suspenders: the explicit range checks above should make
+    // this unreachable, but a future PoolKey field or ABI-encoding
+    // change must never crash the caller (e.g. a daemon processing
+    // externally-sourced route data) — fail closed instead.
+    return {
+      ok: false,
+      reason: `failed to compute poolId: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
   const client = getRobinhoodPublicClient();
-  const poolId = computePoolId(poolKey);
+  try {
+    await assertExecutionConfigOnActiveNetwork(config, client);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `execution config/network guard failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 
   let slot0: readonly [bigint, number, number, number];
   let liquidity: bigint;

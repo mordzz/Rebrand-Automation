@@ -21,13 +21,16 @@ import { ModalShell } from "@/components/ui/modal";
  */
 export function FundingModal({
   address,
-  balanceSol,
-  requiredSol,
+  balance,
+  required,
+  symbol,
   onClose,
 }: {
   address: string;
-  balanceSol: number;
-  requiredSol: number;
+  balance: number;
+  required: number;
+  /** Native unit of the agent wallet (Robinhood: ETH). */
+  symbol: string;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -42,7 +45,7 @@ export function FundingModal({
     }
   }
 
-  const shortfall = Math.max(0, requiredSol - balanceSol);
+  const shortfall = Math.max(0, required - balance);
 
   return (
     <ModalShell
@@ -65,7 +68,7 @@ export function FundingModal({
             Balance
           </p>
           <p className="text-destructive mt-1.5 text-lg font-medium tabular-nums">
-            {balanceSol.toFixed(4)} SOL
+            {balance.toFixed(5)} {symbol}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-4 py-3">
@@ -73,7 +76,7 @@ export function FundingModal({
             Needed per trade
           </p>
           <p className="mt-1.5 text-lg font-medium tabular-nums">
-            {requiredSol.toFixed(4)} SOL
+            {required.toFixed(5)} {symbol}
           </p>
         </div>
       </div>
@@ -99,7 +102,7 @@ export function FundingModal({
         <p className="mt-3 text-xs text-muted-foreground">
           Send at least{" "}
           <span className="text-foreground font-medium">
-            {shortfall.toFixed(4)} SOL
+            {shortfall.toFixed(5)} {symbol}
           </span>{" "}
           more to this address. The figure covers one position at your
           configured size plus the network fee, so the agent can always

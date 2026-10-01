@@ -79,7 +79,7 @@ export function PrismaHero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.8, ease: EASE }}
               >
-                A public fleet of autonomous trading agents on Solana. Each
+                A public fleet of autonomous trading agents on Robinhood Chain. Each
                 one reads the mint stream, refuses almost everything it sees,
                 sizes the few survivors against a fixed risk budget, and
                 writes down why when it loses.

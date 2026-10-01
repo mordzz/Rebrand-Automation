@@ -21,23 +21,28 @@
  * fails loudly (in tests and at call time) instead of silently shipping.
  */
 
-import { encodeAbiParameters, type Address, type Hex } from "viem";
+import { decodeAbiParameters, encodeAbiParameters, type Address, type Hex } from "viem";
 
 import type { PoolKey } from "@/lib/chain/robinhood-v4-pool";
 
 /** `Commands.sol` command bytes this module knows about. Only `V4_SWAP`
  * is ever emitted by the builders below — the others are listed only so
- * `assertNoWrapCommands` can name what it's checking for. */
-const COMMAND_V4_SWAP = 0x10;
-const COMMAND_WRAP_ETH = 0x0b;
-const COMMAND_UNWRAP_WETH = 0x0c;
+ * `assertNoWrapCommands`/`decodeV4SwapCommandsAndInputs` can name what
+ * they're checking for. Exported so PR09's signing-time decoder checks
+ * against these exact values, never a second hand-copied set. */
+export const COMMAND_V4_SWAP = 0x10;
+export const COMMAND_WRAP_ETH = 0x0b;
+export const COMMAND_UNWRAP_WETH = 0x0c;
 
-/** `Actions.sol` action bytes for the one sequence this module builds. */
-const ACTION_SWAP_EXACT_IN_SINGLE = 0x06;
-const ACTION_SETTLE_ALL = 0x0c;
-const ACTION_TAKE_ALL = 0x0f;
+/** `Actions.sol` action bytes for the one sequence this module builds.
+ * Exported for the same reason as the command bytes above. */
+export const ACTION_SWAP_EXACT_IN_SINGLE = 0x06;
+export const ACTION_SETTLE_ALL = 0x0c;
+export const ACTION_TAKE_ALL = 0x0f;
 
-const POOL_KEY_ABI_TYPE = {
+/** Exported so PR09's decoder decodes with the exact same tuple shape
+ * this module encodes with. */
+export const POOL_KEY_ABI_TYPE = {
   type: "tuple",
   components: [
     { name: "currency0", type: "address" },
@@ -55,6 +60,20 @@ export type ExactInputSingleParams = {
   amountOutMinimum: bigint;
   hookData: Hex;
 };
+
+/** Exported so PR09's decoder decodes with the exact same tuple shape
+ * `encodeV4SwapExactInSingle` below encodes with — one definition, never
+ * a second hand-copied one that could silently drift out of sync. */
+export const EXACT_INPUT_SINGLE_ABI_TYPE = {
+  type: "tuple",
+  components: [
+    { name: "poolKey", ...POOL_KEY_ABI_TYPE },
+    { name: "zeroForOne", type: "bool" },
+    { name: "amountIn", type: "uint128" },
+    { name: "amountOutMinimum", type: "uint128" },
+    { name: "hookData", type: "bytes" },
+  ],
+} as const;
 
 /**
  * Encodes the `[commands, inputs]` pair for
@@ -76,18 +95,7 @@ export function encodeV4SwapExactInSingle(params: {
   takeMinAmount: bigint;
 }): { commands: Hex; inputs: Hex[] } {
   const exactInputSingleEncoded = encodeAbiParameters(
-    [
-      {
-        type: "tuple",
-        components: [
-          { name: "poolKey", ...POOL_KEY_ABI_TYPE },
-          { name: "zeroForOne", type: "bool" },
-          { name: "amountIn", type: "uint128" },
-          { name: "amountOutMinimum", type: "uint128" },
-          { name: "hookData", type: "bytes" },
-        ],
-      },
-    ],
+    [EXACT_INPUT_SINGLE_ABI_TYPE],
     [params.exactInputSingle]
   );
 
@@ -157,4 +165,122 @@ function hexToByteArray(hex: Hex): number[] {
     bytes.push(parseInt(clean.slice(i, i + 2), 16));
   }
   return bytes;
+}
+
+export type DecodedV4SwapExactInSingle = {
+  exactInputSingle: ExactInputSingleParams;
+  settleCurrency: Address;
+  settleMaxAmount: bigint;
+  takeCurrency: Address;
+  takeMinAmount: bigint;
+};
+
+export type DecodeV4SwapResult =
+  | { ok: true; decoded: DecodedV4SwapExactInSingle }
+  | { ok: false; reason: string };
+
+/**
+ * The exact inverse of `encodeV4SwapExactInSingle` — decodes a
+ * UniversalRouter `execute()` call's `[commands, inputs]` pair and
+ * validates it is EXACTLY the one shape this codebase has ever built or
+ * verified working (`ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §21d): a single
+ * `V4_SWAP` command carrying a single input whose actions are exactly
+ * `SWAP_EXACT_IN_SINGLE` → `SETTLE_ALL` → `TAKE_ALL`, nothing more,
+ * nothing reordered, nothing substituted.
+ *
+ * This exists so PR09's signer can validate full calldata SEMANTICS
+ * (not just which contract calldata is addressed to) before ever
+ * touching a private key — see robinhood-agent-signing.ts. Any shape
+ * this function doesn't recognize returns `{ ok: false }`, never a
+ * partial/best-guess decode.
+ */
+export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly Hex[]): DecodeV4SwapResult {
+  try {
+    const commandBytes = hexToByteArray(commands);
+    if (commandBytes.length !== 1 || commandBytes[0] !== COMMAND_V4_SWAP) {
+      return {
+        ok: false,
+        reason: `commands must be exactly one byte, V4_SWAP (0x${COMMAND_V4_SWAP.toString(16)}) — got ${commands}`,
+      };
+    }
+    if (inputs.length !== 1) {
+      return { ok: false, reason: `expected exactly one UniversalRouter input for V4_SWAP, got ${inputs.length}` };
+    }
+
+    const [actionsHex, paramsList] = decodeAbiParameters(
+      [{ type: "bytes" }, { type: "bytes[]" }],
+      inputs[0]
+    ) as [Hex, readonly Hex[]];
+
+    const actionBytes = hexToByteArray(actionsHex);
+    if (
+      actionBytes.length !== 3 ||
+      actionBytes[0] !== ACTION_SWAP_EXACT_IN_SINGLE ||
+      actionBytes[1] !== ACTION_SETTLE_ALL ||
+      actionBytes[2] !== ACTION_TAKE_ALL
+    ) {
+      return {
+        ok: false,
+        reason: `actions must be exactly [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL] — got ${actionsHex}`,
+      };
+    }
+    if (paramsList.length !== 3) {
+      return { ok: false, reason: `expected exactly 3 action params (one per action), got ${paramsList.length}` };
+    }
+
+    const [exactInputSingle] = decodeAbiParameters(
+      [EXACT_INPUT_SINGLE_ABI_TYPE],
+      paramsList[0]
+    ) as [ExactInputSingleParams];
+    const [settleCurrency, settleMaxAmount] = decodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      paramsList[1]
+    ) as [Address, bigint];
+    const [takeCurrency, takeMinAmount] = decodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      paramsList[2]
+    ) as [Address, bigint];
+
+    // Canonical re-encode check: `decodeAbiParameters` only proves the
+    // supplied bytes START WITH a value of the expected shape — it does
+    // NOT prove there's no trailing/non-canonical payload appended after
+    // it (ABI decoding is not required to consume every byte to
+    // succeed). Re-encoding the decoded values with the exact same
+    // encoder this module's own builder uses, and requiring byte-for-byte
+    // equality against what was supplied, closes that gap: any trailing
+    // bytes, reordered dynamic-tail data, or non-canonical encoding of an
+    // otherwise-valid-looking payload is rejected here, not silently
+    // accepted because the decode call happened not to throw.
+    const canonical = encodeV4SwapExactInSingle({
+      exactInputSingle,
+      settleCurrency,
+      settleMaxAmount,
+      takeCurrency,
+      takeMinAmount,
+    });
+    if (canonical.commands.toLowerCase() !== commands.toLowerCase()) {
+      return {
+        ok: false,
+        reason: "commands is not the canonical encoding for the decoded V4_SWAP command — refusing non-canonical calldata",
+      };
+    }
+    if (canonical.inputs.length !== 1 || canonical.inputs[0].toLowerCase() !== inputs[0].toLowerCase()) {
+      return {
+        ok: false,
+        reason:
+          "the V4_SWAP input is not the exact canonical re-encoding of its own decoded values — possible " +
+          "trailing or non-canonical bytes in the nested payload (actions/exactInputSingle/settle/take)",
+      };
+    }
+
+    return {
+      ok: true,
+      decoded: { exactInputSingle, settleCurrency, settleMaxAmount, takeCurrency, takeMinAmount },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `failed to decode V4_SWAP commands/inputs: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }

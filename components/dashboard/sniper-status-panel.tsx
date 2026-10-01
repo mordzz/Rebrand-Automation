@@ -67,10 +67,10 @@ const DAEMON_DOT: Record<DaemonStatus, string> = {
 };
 
 /** Read-only view of the Raven's safety state — daemon heartbeat and
- * circuit-breaker status. No pause/resume control here on purpose:
- * /api/sniper/toggle has no auth check, so a working kill switch on this
- * public demo dashboard would let any visitor halt or resume the real
- * house bot. Wiring that up needs auth first, not a UI decision. */
+ * circuit-breaker status. No pause/resume control here: since PR17
+ * /api/sniper/toggle requires a house administrator (HOUSE_ADMIN_WALLETS),
+ * and adding a kill switch to this public dashboard is a separate UI
+ * decision. */
 export function SniperStatusPanel() {
   const statusData = usePolledJson<StatusResponse>("/api/sniper/status", 10_000);
   const configData = usePolledJson<{ configured: boolean; config: ConfigValue | null }>(

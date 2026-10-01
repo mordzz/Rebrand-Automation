@@ -32,25 +32,6 @@ import { getDb } from "@/lib/db";
 import { writeLog } from "@/lib/logs";
 import { positions, userBots, type SniperState, type UserBot } from "@/lib/db/schema";
 import { isGmgnConfigured } from "@/lib/gmgn/client";
-import { deriveEntryPriceSol, discoverTokens, type DiscoveredToken } from "@/lib/gmgn/discovery";
-import { evaluateGmgnSafety } from "@/lib/gmgn/safety";
-import {
-  checkRoundTrip,
-  roundTripRefusalReasons,
-  type RoundTripResult,
-} from "@/lib/jupiter/round-trip";
-import { getSolUsdPrice } from "@/lib/sniper/sol-price";
-import {
-  executeSwap,
-  getSwapQuote,
-  SOL_MINT,
-  solToLamports,
-  SwapSimulationFailure,
-} from "@/lib/jupiter/swap";
-import { getAddressBalance, getRpc } from "@/lib/solana/wallet";
-import { address } from "@solana/kit";
-import { recordAlphaCandidate } from "@/lib/sniper/alpha-candidates";
-import { getMintSupply } from "@/lib/sniper/market-cap";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { DUST_THRESHOLD_NATIVE, DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
 import { getCurrentPrice } from "@/lib/sniper/exit-price";
@@ -62,20 +43,7 @@ import {
   recordPartialExit,
   updatePositionPrice,
 } from "@/lib/sniper/positions";
-import { canOpenNewPosition, deriveTradingPause, sizeForSnipe } from "@/lib/sniper/risk-limits";
-import {
-  evaluateSafety,
-  fetchTokenSafetyData,
-  type SafetyCheckResult,
-  type TokenSafetyData,
-} from "@/lib/sniper/safety-checks";
-import {
-  getDailyPnlSol,
-  getLastLossAt,
-  getRecentOutcomes,
-} from "@/lib/sniper/wallet-trade-stats";
-import { getSniperConfig, type SniperConfig } from "@/lib/sniper/config";
-import { subscribeNewTokenStream, type PumpPortalNewTokenEvent } from "@/lib/solana/pumpportal";
+import type { SniperConfig } from "@/lib/sniper/config";
 
 // ── PR07: Robinhood Chain paper trading ─────────────────────────────────
 // Read-only discovery/security/safety/price adapters and chain-scoped
@@ -96,7 +64,7 @@ import {
   sizeForRobinhoodSnipe,
   type RobinhoodNativeLimits,
 } from "@/lib/sniper/risk-limits-robinhood";
-import { getOpenPositionsByChain, getOpenSolanaPositions } from "@/lib/sniper/positions";
+import { getOpenPositionsByChain } from "@/lib/sniper/positions";
 import {
   getDailyPnlNativeRobinhood,
   getLastLossAtRobinhood,
@@ -104,13 +72,10 @@ import {
 } from "@/lib/sniper/wallet-trade-stats-robinhood";
 
 const ROSTER_REFRESH_INTERVAL_MS = 20_000;
-const QUEUE_DRAIN_INTERVAL_MS = 1_000;
-const MAX_PENDING_QUEUE = 500;
 // A token stays in the pending queue until every active bot has had one
 // evaluation attempt against it (respecting that bot's own minTokenAgeSec),
 // or until it's aged out entirely — whichever comes first.
 const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
-const DEFAULT_METADATA_TIMEOUT_MS = 3000;
 const MIN_EXIT_CHECK_INTERVAL_MS = 2000;
 const DEFAULT_EXIT_CHECK_INTERVAL_MS = 4000;
 // Circuit-breaker state is re-derived from the trades table (see
@@ -118,9 +83,6 @@ const DEFAULT_EXIT_CHECK_INTERVAL_MS = 4000;
 // so a burst of pending-token evaluations for the same wallet doesn't
 // re-run three DB queries per token.
 const BREAKER_CACHE_TTL_MS = 8_000;
-// Held back from every live buy for the swap fee and the token account's
-// rent, so a wallet can always afford to sell back out of what it bought.
-const LIVE_FEE_HEADROOM_SOL = 0.01;
 
 function log(...args: unknown[]) {
   console.log(`[paper ${new Date().toISOString()}]`, ...args);
@@ -133,26 +95,16 @@ function short(addr: string): string {
 type RosterEntry = { bot: UserBot; config: SniperConfig };
 let roster: RosterEntry[] = [];
 
-// The house's own Sniper config — used to evaluate every fresh mint for
-// the "Alpha" discovery feed (app/alpha), independent of whether anyone
-// has deployed a bot yet. Refreshed alongside the roster.
-let houseConfig: SniperConfig | null = null;
-
 async function refreshRoster(): Promise<void> {
   const db = getDb();
   if (!db) {
     roster = [];
-    houseConfig = null;
     return;
   }
-  const [bots, config] = await Promise.all([
-    db.select().from(userBots),
-    getSniperConfig(),
-  ]);
+  const bots = await db.select().from(userBots);
   roster = await Promise.all(
     bots.map(async (bot) => ({ bot, config: await getEffectiveConfig(bot) }))
   );
-  houseConfig = config;
 }
 
 type BreakerState = Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt">;
@@ -160,24 +112,6 @@ const breakerCache = new Map<string, { state: BreakerState; expiresAt: number }>
 
 function invalidateBreakerCache(wallet: string): void {
   breakerCache.delete(wallet);
-}
-
-async function getCachedBreakerState(
-  wallet: string,
-  breakerResetAt: Date | null,
-  config: Pick<SniperConfig, "maxConsecutiveLosses" | "maxDailyDrawdownSol">
-): Promise<BreakerState> {
-  const cached = breakerCache.get(wallet);
-  if (cached && cached.expiresAt > Date.now()) return cached.state;
-
-  const [recentOutcomes, dailyPnlSol, lastLossAt] = await Promise.all([
-    getRecentOutcomes(wallet, 50, breakerResetAt),
-    getDailyPnlSol(wallet, breakerResetAt),
-    getLastLossAt(wallet, breakerResetAt),
-  ]);
-  const state = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
-  breakerCache.set(wallet, { state, expiresAt: Date.now() + BREAKER_CACHE_TTL_MS });
-  return state;
 }
 
 // Serializes the risk-check-then-write critical section per wallet.
@@ -201,29 +135,10 @@ function runExclusive<T>(wallet: string, fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
-/** A vetted Solana entry candidate, whichever discovery source produced
- * it. Both Solana sources converge here so risk limits, sizing and
- * position writes have exactly one implementation — a second copy is how
- * the two paths would drift apart on the rules that matter most. */
-type EntryCandidate = {
-  chain: "solana";
-  mint: string;
-  symbol: string | undefined;
-  /** SOL per token. Must be in SOL: exits price against DexScreener's
-   * priceNative, and a mismatched unit here silently corrupts every P&L. */
-  entryPrice: number;
-  safety: SafetyCheckResult;
-  source: "pump" | "gmgn";
-  launchpad?: string | null;
-};
 
 /** A vetted Robinhood entry candidate — PR07. Structurally separate from
- * EntryCandidate above (a Solana mint address, a SOL price, and a
- * pump/gmgn safety result are simply not the same kind of thing as an
- * EVM address, a USD price, and a Robinhood safety result) rather than
- * folding a `0x...` address into a field whose every other consumer
- * assumes a base58 Solana mint. Never passed to openPaperPosition/
- * executeRealBuy/checkRoundTrip — only to openRobinhoodPaperPosition. */
+ * the retired Solana entry candidate (PR09A). Only ever passed to
+ * openRobinhoodPaperPosition. */
 type RobinhoodEntryCandidate = {
   chain: "robinhood";
   tokenAddress: string;
@@ -239,162 +154,6 @@ type RobinhoodEntryCandidate = {
   launchpad: string | null;
 };
 
-/* Sell simulation is the most expensive gate (two router quotes), so it runs
-   last, only for a candidate that already cleared everything cheaper, and is
-   memoised per mint: five bots liking the same token costs one round trip,
-   not five. Short TTL because pool depth on a minutes-old mint is exactly
-   the thing that moves. */
-const MAX_ROUND_TRIP_LOSS_PCT = 25;
-const ROUND_TRIP_TTL_MS = 20_000;
-const roundTripCache = new Map<string, { at: number; result: Promise<RoundTripResult> }>();
-
-function roundTripFor(mint: string, sizeSol: number, slippageBps: number): Promise<RoundTripResult> {
-  const hit = roundTripCache.get(mint);
-  if (hit && Date.now() - hit.at < ROUND_TRIP_TTL_MS) return hit.result;
-  const result = checkRoundTrip({ mint, sizeSol, slippageBps }).catch(
-    // A router outage must not read as "unsellable" and refuse everything.
-    (): RoundTripResult => ({ kind: "no-route-either-way" })
-  );
-  roundTripCache.set(mint, { at: Date.now(), result });
-  if (roundTripCache.size > 500) {
-    for (const [k, v] of roundTripCache) {
-      if (Date.now() - v.at > ROUND_TRIP_TTL_MS) roundTripCache.delete(k);
-    }
-  }
-  return result;
-}
-
-async function openPaperPosition(
-  bot: UserBot,
-  config: SniperConfig,
-  candidate: EntryCandidate
-): Promise<void> {
-  await runExclusive(bot.walletAddress, async () => {
-    const [allOpenPositions, solanaOpenPositions, breakerState] = await Promise.all([
-      // Wallet-global, ALL chains — maxConcurrentPositions keeps its
-      // existing single meaning.
-      getOpenPositions(bot.walletAddress),
-      // Solana-scoped (chain IS NULL or "solana") — the deployed-SOL sum
-      // must never include a Robinhood row's ETH-notional sizeSol shadow.
-      getOpenSolanaPositions(bot.walletAddress),
-      getCachedBreakerState(bot.walletAddress, bot.breakerResetAt, config),
-    ]);
-
-    const risk = canOpenNewPosition(allOpenPositions, solanaOpenPositions, breakerState, config);
-    if (!risk.allowed) return;
-
-    const sizeSol = sizeForSnipe(config);
-
-    /* Sell simulation at this bot's own size (§9.6). Placed after the risk
-       gate so it only costs quotes for a candidate that would otherwise be
-       bought. Refuses a mint that can be bought but not sold, and one whose
-       round trip already costs more than the trade could plausibly make. */
-    const roundTrip = await roundTripFor(
-      candidate.mint,
-      sizeSol,
-      Math.round(config.stopLossPct * 100)
-    );
-    const sellReasons = roundTripRefusalReasons(roundTrip, MAX_ROUND_TRIP_LOSS_PCT);
-    if (sellReasons.length > 0) {
-      log(`REFUSED ${candidate.symbol} for ${bot.name}: ${sellReasons[0]}`);
-      void writeLog({
-        level: "guard",
-        source: "manifest",
-        walletAddress: bot.walletAddress,
-        tokenMint: candidate.mint,
-        message: `Refused $${candidate.symbol ?? "?"}: ${sellReasons[0]}`,
-      });
-      return;
-    }
-
-    const via = candidate.source === "gmgn"
-      ? ` via ${candidate.launchpad ?? "gmgn"}`
-      : "";
-
-    /* Live execution needs every one of these, and the absence of any one
-       falls back to paper rather than erroring. Pressing Start alone is
-       deliberately not enough: `active` says the bot may trade, tradingMode
-       says whether those trades spend real money. */
-    const live = await liveExecutionState(bot, sizeSol);
-
-    if (live.ready) {
-      try {
-        const result = await executeRealBuy(bot, config, candidate, sizeSol);
-        if (result) return;
-        // Quote or submission failed. Skip this candidate rather than
-        // recording a paper fill that never happened — a live bot's
-        // ledger claiming a position it does not hold is worse than a
-        // missed trade.
-        return;
-      } catch (error) {
-        /* A failed pre-trade simulation is a refusal, not a fault: nothing
-           was signed and nothing was sent. It is logged at `guard` so it
-           reads as one more thing the agent turned away, alongside the
-           Manifest's refusals, rather than as an execution error. That also
-           makes it measurable: if this ever starts refusing candidates that
-           would have filled, it is visible in the feed with its reason. */
-        if (error instanceof SwapSimulationFailure) {
-          log(`REFUSED ${candidate.symbol} for ${bot.name}: ${error.message}`);
-          void writeLog({
-            level: "guard",
-            source: "live",
-            walletAddress: bot.walletAddress,
-            tokenMint: candidate.mint,
-            message: `Refused $${candidate.symbol ?? "?"}: swap would revert (${error.message})`,
-          });
-          return;
-        }
-
-        log(`LIVE buy failed for ${bot.name}:`, error);
-        void writeLog({
-          level: "error",
-          source: "live",
-          walletAddress: bot.walletAddress,
-          tokenMint: candidate.mint,
-          message: `Buy failed on $${candidate.symbol ?? "?"}: ${
-            error instanceof Error ? error.message : "unknown error"
-          }`,
-        });
-        return;
-      }
-    }
-
-    if (live.blockedReason) {
-      log(`${bot.name}: live wanted but ${live.blockedReason} — paper fill instead`);
-    }
-
-    log(
-      `PAPER buy — ${bot.name} (${short(bot.walletAddress)}): ${sizeSol} SOL of ${candidate.symbol}${via} (${candidate.mint}) @ ~${candidate.entryPrice.toExponential(3)} SOL/token`
-    );
-    // Wallet-scoped: this surfaces in that operator's own console on
-    // /deploy, never in the house dashboard's terminal.
-    void writeLog({
-      level: "buy",
-      source: "paper",
-      walletAddress: bot.walletAddress,
-      tokenMint: candidate.mint,
-      message: `Bought ${sizeSol} SOL of $${candidate.symbol ?? "?"}${via} at ${candidate.entryPrice.toExponential(3)} SOL`,
-    });
-
-    await openPosition({
-      token: candidate.mint,
-      symbol: candidate.symbol,
-      entryPrice: candidate.entryPrice,
-      sizeSol,
-      takeProfitPct: config.takeProfitPct,
-      stopLossPct: config.stopLossPct,
-      entryTxSignature: "paper",
-      context: {
-        dryRun: true,
-        engine: "paper",
-        source: candidate.source,
-        launchpad: candidate.launchpad ?? null,
-        safety: candidate.safety,
-      },
-      walletAddress: bot.walletAddress,
-    });
-  });
-}
 
 // ══════════════════════════════════════════════════════════════════════
 // ROBINHOOD-PAPER-ONLY-START
@@ -411,10 +170,8 @@ async function openPaperPosition(
 // either here would be exactly the "Robinhood live fallback" this PR
 // must not create.
 // scripts/test-robinhood-paper-trading.ts statically greps this file for
-// the forbidden identifiers (executeRealBuy, executeRealSell,
-// executeSwap, getSwapQuote, checkRoundTrip, getRpc, address( ) between
-// these two markers, so this boundary is regression-tested, not just
-// documented.
+// forbidden swap/signing/Solana-RPC identifiers, so this boundary is
+// regression-tested, not just documented.
 // ══════════════════════════════════════════════════════════════════════
 
 /** Per-wallet Robinhood-only breaker cache — deliberately separate from
@@ -545,194 +302,6 @@ async function openRobinhoodPaperPosition(
 }
 // ROBINHOOD-PAPER-ONLY-END
 
-/** Every condition that must hold before real money moves. Reported as a
- * reason rather than a bare boolean so the operator can see in their own
- * console why a bot they switched to live is still filling on paper. */
-async function liveExecutionState(
-  bot: UserBot,
-  sizeSol: number
-): Promise<{ ready: boolean; blockedReason?: string }> {
-  if (bot.tradingMode !== "live") return { ready: false };
-  if (!bot.agentSecretEnc || !bot.agentPublicKey) {
-    return { ready: false, blockedReason: "no agent wallet" };
-  }
-
-  const balance = await getAddressBalance(bot.agentPublicKey);
-  if (balance.balanceSol == null) {
-    return { ready: false, blockedReason: "could not read agent wallet balance" };
-  }
-  // Leave headroom for the swap fee and rent on the token account, or the
-  // buy lands the wallet somewhere it cannot afford to sell back out of.
-  if (balance.balanceSol < sizeSol + LIVE_FEE_HEADROOM_SOL) {
-    return {
-      ready: false,
-      blockedReason: `agent wallet holds ${balance.balanceSol.toFixed(4)} SOL, needs ${(sizeSol + LIVE_FEE_HEADROOM_SOL).toFixed(4)}`,
-    };
-  }
-  return { ready: true };
-}
-
-/**
- * A real buy: quote, sign with the agent wallet, submit, and only then
- * record the position.
- *
- * Order matters. The position row is written *after* the swap confirms,
- * using the signature as its identity, so a failure can never leave a
- * ledger entry for a fill that did not happen. There is no retry here —
- * see executeSwap's note on why resubmitting is how one signal turns into
- * two positions.
- */
-const LAMPORTS_PER_SOL = 1_000_000_000;
-
-/**
- * SOL per **whole** token, from an executed fill.
- *
- * The two legs of a swap are denominated in different bases: SOL amounts
- * are lamports (9 decimals), token amounts are that mint's own smallest
- * unit. Dividing them raw does not cancel to a price, it leaves a factor
- * of 10^(9 − tokenDecimals) behind. At the 6 decimals a pump.fun mint
- * uses that is 1000x.
- *
- * That mattered because exits are decided against DexScreener's
- * `priceNative`, which is SOL per whole token: an entry recorded 1000x too
- * high made every live position read as roughly −99.9% on its first exit
- * check, so the stop fired immediately and the trade closed for the
- * round-trip cost before the configured rules ever applied.
- *
- * Returns null rather than guessing when the mint's decimals cannot be
- * read. A hardcoded exponent here would be the same bug with a different
- * constant, and Token-2022 mints do not all use 6.
- */
-async function fillPriceSol(
-  mint: string,
-  lamports: number,
-  tokenSmallestUnits: number,
-  rpcUrl?: string | null
-): Promise<number | null> {
-  if (!(lamports > 0) || !(tokenSmallestUnits > 0)) return null;
-  const supply = await getMintSupply(mint, rpcUrl);
-  if (!supply) return null;
-  const wholeTokens = tokenSmallestUnits / 10 ** supply.decimals;
-  if (!(wholeTokens > 0)) return null;
-  return lamports / LAMPORTS_PER_SOL / wholeTokens;
-}
-
-async function executeRealBuy(
-  bot: UserBot,
-  config: SniperConfig,
-  candidate: EntryCandidate,
-  sizeSol: number
-): Promise<boolean> {
-  const quote = await getSwapQuote({
-    inputMint: SOL_MINT,
-    outputMint: candidate.mint,
-    amount: solToLamports(sizeSol),
-    slippageBps: Math.round(config.stopLossPct * 100),
-  });
-  if (!quote) {
-    log(`LIVE buy — no route for ${candidate.symbol} (${candidate.mint})`);
-    return false;
-  }
-
-  const result = await executeSwap({
-    agentSecretEnc: bot.agentSecretEnc!,
-    quote,
-    rpcUrl: bot.rpcUrl,
-  });
-
-  /* Entry price from the fill actually executed, not the pre-trade
-     estimate, converted to SOL per whole token so it is in the same unit
-     the exit logic prices against. Falls back to the discovery price when
-     the mint's decimals cannot be read, which is already in that unit. */
-  const filled = await fillPriceSol(
-    candidate.mint,
-    Number(result.inAmount),
-    Number(result.outAmount),
-    bot.rpcUrl
-  );
-  const entryPrice = filled ?? candidate.entryPrice;
-
-  /* Cheap tripwire for exactly the class of bug this replaced. The
-     executed price should sit within slippage and impact of the price
-     discovery quoted moments earlier; an order-of-magnitude gap means the
-     two are not in the same unit, and every exit decision that follows
-     would be nonsense. Logged rather than acted on: the buy has already
-     landed by this point, so there is nothing left to refuse. */
-  if (filled != null && candidate.entryPrice > 0) {
-    const ratio = filled / candidate.entryPrice;
-    if (ratio > 10 || ratio < 0.1) {
-      log(
-        `WARNING ${candidate.symbol}: executed entry ${filled.toExponential(3)} is ${ratio.toFixed(1)}x the discovery price ${candidate.entryPrice.toExponential(3)} — exits for this position will be priced against a mismatched unit`
-      );
-    }
-  }
-
-  log(
-    `LIVE buy — ${bot.name} (${short(bot.walletAddress)}): ${sizeSol} SOL of ${candidate.symbol} @ ${entryPrice.toExponential(3)} · ${result.signature}`
-  );
-  void writeLog({
-    level: "buy",
-    source: "live",
-    walletAddress: bot.walletAddress,
-    tokenMint: candidate.mint,
-    txSignature: result.signature,
-    message: `LIVE bought ${sizeSol} SOL of $${candidate.symbol ?? "?"} at ${entryPrice.toExponential(3)} SOL`,
-  });
-
-  await openPosition({
-    token: candidate.mint,
-    symbol: candidate.symbol,
-    entryPrice,
-    sizeSol,
-    takeProfitPct: config.takeProfitPct,
-    stopLossPct: config.stopLossPct,
-    entryTxSignature: result.signature,
-    context: {
-      dryRun: false,
-      engine: "live",
-      source: candidate.source,
-      launchpad: candidate.launchpad ?? null,
-      tokensBought: result.outAmount,
-      safety: candidate.safety,
-    },
-    walletAddress: bot.walletAddress,
-  });
-  return true;
-}
-
-/** Every refusal, with its reason, written where the operator can see it.
- *
- * Both entry paths used to drop a failed verdict on the floor with a bare
- * `return`, so the only visible evidence a gate had done anything was the
- * absence of a trade. That makes tuning a filter guesswork, and it is the
- * feed §9.7 promises to publish. Only the first reason is stored: the
- * refusal is what matters, and a token failing six checks is not six times
- * more interesting than one failing a single check. */
-function logRefusal(
-  bot: UserBot,
-  mint: string,
-  symbol: string | undefined,
-  source: string,
-  reasons: string[]
-): void {
-  const reason = reasons[0] ?? "failed entry criteria";
-
-  /* Backlog, not a verdict. "too old by the time it was evaluated" says the
-     queue fell behind, not that anything was found wrong with the token,
-     and it fires once per bot per stale candidate. On the first run after
-     deploy that alone wrote 1,827 rows in twenty minutes, drowning the
-     reasons a reader actually needs and putting the refusal feed's write
-     volume on the critical path of a process that also has to guard live
-     positions. It belongs in the daemon's own log, not the fleet's. */
-  if (reason.startsWith("too old by the time it was evaluated")) return;
-  void writeLog({
-    level: "guard",
-    source: "manifest",
-    walletAddress: bot.walletAddress,
-    tokenMint: mint,
-    message: `Refused $${symbol ?? "?"} (${source}): ${reason}`,
-  });
-}
 
 /** Robinhood counterpart to logRefusal — writes tokenAddress/chain/
  * network instead of tokenMint, so an EVM `0x...` address is never
@@ -761,332 +330,6 @@ function logRobinhoodRefusal(
   });
 }
 
-async function tryOpenPaperPosition(
-  bot: UserBot,
-  config: SniperConfig,
-  event: PumpPortalNewTokenEvent,
-  tokenData: TokenSafetyData,
-  ageSec: number
-): Promise<void> {
-  /* Source gate. The push stream carries no risk data, so an operator who
-     has not opted into it should never take an entry from it — see
-     EntrySource in lib/sniper/config.ts. Checked before the safety work so
-     a disabled source costs nothing. */
-  if (!config.entrySources.includes("pump")) return;
-
-  const safety = await evaluateSafety(event, tokenData, config, ageSec);
-  if (!safety.passed) {
-    logRefusal(bot, event.mint, event.symbol, "pump", safety.reasons);
-    return;
-  }
-
-  await openPaperPosition(bot, config, {
-    chain: "solana",
-    mint: event.mint,
-    symbol: event.symbol,
-    // Same approximation the house daemon uses — bonding-curve reserves at
-    // the create event, before this (simulated) buy would move it.
-    entryPrice: event.vSolInBondingCurve / event.vTokensInBondingCurve,
-    safety,
-    source: "pump",
-  });
-}
-
-async function tryRecordAlphaCandidate(
-  event: PumpPortalNewTokenEvent,
-  tokenData: TokenSafetyData,
-  ageSec: number
-): Promise<void> {
-  if (!houseConfig) return;
-  const safety = await evaluateSafety(event, tokenData, houseConfig, ageSec);
-  if (!safety.passed) return;
-
-  log(`ALPHA candidate — ${event.symbol} (${event.mint}) passed house entry criteria`);
-  await recordAlphaCandidate({
-    token: event.mint,
-    symbol: event.symbol,
-    name: event.name,
-    ageSec,
-    safety,
-  });
-}
-
-/**
- * Sells an entire live position back to SOL.
- *
- * Reads the token balance from the chain rather than trusting the amount
- * recorded at entry: fees, partial fills and any transfer in between mean
- * the stored figure can drift, and quoting more than the wallet holds
- * simply fails. Returns null on any failure so the caller leaves the
- * position open and retries, instead of booking a close that never
- * happened.
- */
-/**
- * Sells a live position, whole or in part.
- *
- * `portion` is what makes a tiered ladder work on real money: without it
- * every exit dumps the entire token balance, so the first tier would
- * liquidate the position while the ledger recorded a 50% trim.
- * `basisSol` is the SOL this slice was bought with, so P&L is measured
- * against what was actually risked on it rather than the whole entry.
- */
-/**
- * Three outcomes, not two.
- *
- * "Could not sell" and "there is nothing left to sell" used to collapse
- * into the same `null`, and the caller treated both as retry-next-tick.
- * That is right for the first and permanently wrong for the second: a
- * position whose tokens have already left the wallet can never be sold
- * again, so it stayed open forever, holding a concurrency slot and showing
- * on the dashboard as exposure that does not exist.
- */
-type SellOutcome =
-  | { kind: "sold"; signature: string; exitPrice: number; pnlSol: number }
-  /** Wallet holds none of this mint: it exited outside this process. */
-  | { kind: "already-exited" }
-  /** Genuine failure; the tokens are still held and this is worth retrying. */
-  | { kind: "failed" };
-
-/** A freshly confirmed buy can briefly read as a zero balance on an RPC
- * node that has not caught up. Inside this window an empty wallet is
- * treated as lag and retried; past it, as a real exit. */
-const RECONCILE_GRACE_MS = 60_000;
-
-async function executeRealSell(
-  bot: UserBot,
-  position: {
-    id: string;
-    token: string;
-    symbol: string | null;
-    sizeSol: string;
-    entryPrice: string;
-    context: unknown;
-    openedAt: Date;
-  },
-  reason: string,
-  portion?: { sellPortionPct: number; basisSol: number }
-): Promise<SellOutcome> {
-  try {
-    const rpc = getRpc(bot.rpcUrl);
-    const { value: accounts } = await rpc
-      .getTokenAccountsByOwner(
-        address(bot.agentPublicKey!),
-        { mint: address(position.token) },
-        { encoding: "jsonParsed" }
-      )
-      .send();
-
-    let held = BigInt(0);
-    for (const acc of accounts) {
-      const parsed = acc.account.data as unknown as {
-        parsed?: { info?: { tokenAmount?: { amount?: string } } };
-      };
-      const amount = parsed?.parsed?.info?.tokenAmount?.amount;
-      if (amount) held += BigInt(amount);
-    }
-
-    if (held <= BigInt(0)) {
-      const age = Date.now() - position.openedAt.getTime();
-      if (age < RECONCILE_GRACE_MS) {
-        log(`LIVE sell — ${position.symbol}: wallet reads empty ${Math.round(age / 1000)}s after entry, treating as RPC lag`);
-        return { kind: "failed" };
-      }
-      log(`LIVE sell — ${position.symbol}: wallet holds none, position already exited`);
-      return { kind: "already-exited" };
-    }
-
-    /* Portion is taken off the balance actually held, not off the original
-       entry: earlier tiers have already reduced it, so a percentage of the
-       entry would oversell. */
-    const sellAmount =
-      portion == null
-        ? held
-        : (held * BigInt(Math.round(portion.sellPortionPct))) / BigInt(100);
-    if (sellAmount <= BigInt(0)) {
-      log(`LIVE sell — ${position.symbol}: portion rounds to zero, skipping`);
-      return { kind: "failed" };
-    }
-
-    const config = configByWalletFor(bot.walletAddress);
-    const quote = await getSwapQuote({
-      inputMint: position.token,
-      outputMint: SOL_MINT,
-      amount: sellAmount,
-      slippageBps: Math.round((config?.stopLossPct ?? 15) * 100),
-    });
-    if (!quote) {
-      log(`LIVE sell — no route for ${position.symbol} (${position.token})`);
-      return { kind: "failed" };
-    }
-
-    const result = await executeSwap({
-      agentSecretEnc: bot.agentSecretEnc!,
-      quote,
-      rpcUrl: bot.rpcUrl,
-    });
-
-    const solOut = Number(result.outAmount) / 1_000_000_000;
-    const basisSol = portion?.basisSol ?? Number(position.sizeSol);
-    const pnlSol = solOut - basisSol;
-    /* Same unit as the entry above: SOL per whole token. If the decimals
-       cannot be read, derive it from the realised ratio instead of
-       recording a raw quotient in the wrong base — solOut/basisSol is the
-       move this exit actually achieved, whatever unit the entry is in. */
-    const exitPrice =
-      (await fillPriceSol(
-        position.token,
-        Number(result.outAmount),
-        Number(sellAmount),
-        bot.rpcUrl
-      )) ??
-      (basisSol > 0 ? Number(position.entryPrice) * (solOut / basisSol) : 0);
-
-    log(
-      `LIVE ${reason} — ${position.symbol} sold for ${solOut.toFixed(5)} SOL, pnl ${pnlSol.toFixed(5)} · ${result.signature}`
-    );
-    void writeLog({
-      level: pnlSol >= 0 ? "sell" : "guard",
-      source: "live",
-      walletAddress: bot.walletAddress,
-      tokenMint: position.token,
-      txSignature: result.signature,
-      message: `LIVE ${reason} on $${position.symbol ?? "?"}: ${pnlSol >= 0 ? "+" : ""}${pnlSol.toFixed(5)} SOL`,
-    });
-
-    return { kind: "sold", signature: result.signature, exitPrice, pnlSol };
-  } catch (error) {
-    log(`LIVE sell failed for ${position.symbol}:`, error);
-    void writeLog({
-      level: "error",
-      source: "live",
-      walletAddress: bot.walletAddress,
-      tokenMint: position.token,
-      message: `Sell failed on $${position.symbol ?? "?"}: ${
-        error instanceof Error ? error.message : "unknown error"
-      }`,
-    });
-    return { kind: "failed" };
-  }
-}
-
-/** Config for one wallet from the current roster, for helpers that run
- * outside the exit loop's own scope. */
-function configByWalletFor(wallet: string): SniperConfig | undefined {
-  return roster.find((r) => r.bot.walletAddress === wallet)?.config;
-}
-
-type PendingToken = {
-  event: PumpPortalNewTokenEvent;
-  receivedAt: number;
-  tokenData: TokenSafetyData | null;
-  /** Wallets already given their one evaluation attempt against this
-   * token — mirrors the house daemon's "evaluate exactly once" semantics
-   * per (wallet, token) pair, just staggered across ticks since different
-   * bots can have different minTokenAgeSec thresholds. */
-  attemptedWallets: Set<string>;
-  /** The house-config "Alpha" evaluation is independent of the per-user
-   * roster (it runs even with zero deployed bots), so it needs its own
-   * one-attempt flag rather than piggybacking on attemptedWallets. */
-  alphaAttempted: boolean;
-};
-
-const pendingTokens: PendingToken[] = [];
-
-async function processPendingToken(item: PendingToken): Promise<void> {
-  const ageSec = (Date.now() - item.receivedAt) / 1000;
-  // .active gates new entries only — a stopped bot's existing open
-  // positions must keep being watched and exited by checkAllExits below,
-  // which derives its own per-wallet config from the full (unfiltered)
-  // roster, not this eligible list. Never abandon risk you're already
-  // holding just because the operator hit Stop.
-  const eligible = roster.filter(
-    (r) =>
-      r.bot.active &&
-      !item.attemptedWallets.has(r.bot.walletAddress) &&
-      ageSec >= r.config.minTokenAgeSec
-  );
-  const alphaReady =
-    !item.alphaAttempted && houseConfig != null && ageSec >= houseConfig.minTokenAgeSec;
-  if (eligible.length === 0 && !alphaReady) return;
-
-  // Claim every eligible wallet (and the alpha slot) synchronously, before
-  // the metadata fetch below ever awaits. scheduleQueueDrain fires on a
-  // fixed timer and doesn't wait for this call to finish, so a fetch that
-  // outlasts one drain tick used to leave `eligible` wallets unmarked long
-  // enough for the next tick to compute the same "not yet attempted" list
-  // and double-enter them (observed live: two buys for one wallet on one
-  // token, ~1 drain-interval apart). Marking happens in one synchronous
-  // block with no yield point in between, so no concurrent call can ever
-  // observe these wallets as unclaimed again.
-  for (const { bot } of eligible) item.attemptedWallets.add(bot.walletAddress);
-  if (alphaReady) item.alphaAttempted = true;
-
-  if (!item.tokenData) {
-    const metadataTimeoutMs = Math.max(
-      DEFAULT_METADATA_TIMEOUT_MS,
-      houseConfig?.metadataFetchTimeoutMs ?? 0,
-      ...eligible.map((r) => r.config.metadataFetchTimeoutMs)
-    );
-    item.tokenData = await fetchTokenSafetyData(item.event, metadataTimeoutMs);
-  }
-
-  if (alphaReady) {
-    try {
-      await tryRecordAlphaCandidate(item.event, item.tokenData, ageSec);
-    } catch (error) {
-      log(`alpha evaluation error for ${item.event.symbol} (${item.event.mint}):`, error);
-    }
-  }
-
-  for (const { bot, config } of eligible) {
-    try {
-      /* A bot with its own RPC re-reads the mint through it instead of
-         reusing the shared result. That costs an extra call, but the
-         shared read comes from the public endpoint, and when that
-         rate-limits readMintAuthorities returns null — which
-         evaluateSafety treats as "could not verify" and refuses the
-         token. Paying for one dedicated read is the point of configuring
-         a private endpoint at all. Metadata is unaffected (it's an IPFS
-         fetch, not RPC), so the shared copy is reused for it. */
-      let tokenData = item.tokenData;
-      if (bot.rpcUrl) {
-        const own = await fetchTokenSafetyData(
-          item.event,
-          config.metadataFetchTimeoutMs,
-          bot.rpcUrl
-        );
-        tokenData = { ...own, metadata: tokenData.metadata ?? own.metadata };
-      }
-      await tryOpenPaperPosition(bot, config, item.event, tokenData, ageSec);
-    } catch (error) {
-      log(`entry evaluation error for ${bot.name} (${short(bot.walletAddress)}):`, error);
-    }
-  }
-}
-
-let queueTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function scheduleQueueDrain(): Promise<void> {
-  const now = Date.now();
-  const stillPending: PendingToken[] = [];
-
-  for (const item of pendingTokens) {
-    const tooOld = now - item.receivedAt > PENDING_MAX_AGE_MS;
-    const everyoneAttempted =
-      item.alphaAttempted &&
-      roster.length > 0 &&
-      roster.every((r) => item.attemptedWallets.has(r.bot.walletAddress));
-    if (!tooOld && !everyoneAttempted) stillPending.push(item);
-  }
-  pendingTokens.length = 0;
-  pendingTokens.push(...stillPending);
-
-  for (const item of pendingTokens) {
-    processPendingToken(item).catch((error) => log("processPendingToken error", error));
-  }
-
-  queueTimer = setTimeout(() => void scheduleQueueDrain(), QUEUE_DRAIN_INTERVAL_MS);
-}
 
 /* When each wallet's positions were last evaluated.
  *
@@ -1109,8 +352,6 @@ async function checkAllExits(): Promise<void> {
   if (openPositions.length === 0) return;
 
   const configByWallet = new Map(roster.map((r) => [r.bot.walletAddress, r.config] as const));
-  // Needed for live exits: selling requires the agent wallet's key.
-  const botByWallet = new Map(roster.map((r) => [r.bot.walletAddress, r.bot] as const));
   /* Which wallets are due this tick, decided once up front. Deciding it
      inside the position loop would let the first position of a wallet
      stamp the clock and skip that wallet's remaining positions. */
@@ -1149,7 +390,6 @@ async function checkAllExits(): Promise<void> {
     const walletAddress = position.walletAddress;
     if (!walletAddress) continue;
     const config = configByWallet.get(walletAddress);
-    const bot = botByWallet.get(walletAddress);
     // Bot no longer in the roster (e.g. dropped between refreshes) — leave
     // the position untouched this tick rather than guessing at a config.
     if (!config) continue;
@@ -1192,10 +432,11 @@ async function checkAllExits(): Promise<void> {
        invariant were ever violated by a bug, this line still forces the
        paper-only exit path for every chain="robinhood" row. */
     const positionContext = (position.context ?? {}) as Record<string, unknown>;
-    // Held as the bot itself rather than a boolean so both exit paths are
-    // type-narrowed to a bot that definitely has a wallet to sign with.
-    const liveBot =
-      !isRobinhood && positionContext.engine === "live" && bot?.agentSecretEnc ? bot : null;
+    /* PR09A: the Solana live-execution runtime is retired. A historical
+       Solana position opened with real money cannot be sold from here any
+       more, and closing it on paper would book a fill that never happened,
+       so it is left open and untouched (historical data preserved). */
+    if (!isRobinhood && positionContext.engine === "live") continue;
 
     const decision = evaluateFullExit(
       {
@@ -1212,54 +453,13 @@ async function checkAllExits(): Promise<void> {
     await updatePositionPrice(position.id, currentPrice, decision.peakPrice ?? undefined);
 
     if (decision.exit) {
-      const { reason } = decision;
-      let { pnlSol } = decision;
-      let exitTxSignature = "paper";
+      const { reason, pnlSol } = decision;
+      const exitTxSignature = "paper";
       /* The modelled fill, not the observed mark: a threshold exit is
-         credited at its trigger (see evaluateFullExit). A live sell
-         overwrites this with the executed price below. */
-      let exitPrice = decision.fillPrice;
+         credited at its trigger (see evaluateFullExit). */
+      const exitPrice = decision.fillPrice;
 
-      if (liveBot) {
-        const sold = await executeRealSell(liveBot, position, reason);
-        if (sold.kind === "failed") {
-          // Could not sell — leave the position open and try again next
-          // tick. Recording a close we did not perform would tell the
-          // operator they are flat while they still hold the token.
-          continue;
-        }
-        if (sold.kind === "already-exited") {
-          /* The tokens are gone but this row never got closed: the exit
-             landed and the process stopped before the write. Retrying can
-             never resolve it, because there is nothing left to sell, so the
-             row is squared against the chain here instead.
-
-             The price and P&L recorded are the engine's own modelled exit,
-             not an observed fill — the real one happened outside this
-             process and its number is not recoverable from here. Both the
-             reason and the signature field say so, so this trade is never
-             mistaken for a measured one. */
-          log(`RECONCILED ${position.symbol} for ${liveBot.name}: wallet already flat, closing stale row`);
-          void writeLog({
-            level: "guard",
-            source: "live",
-            walletAddress,
-            tokenMint: position.token,
-            message: `Reconciled $${position.symbol ?? "?"}: exit landed outside the engine, position closed against the chain`,
-          });
-          await closePosition(position, {
-            exitPrice,
-            exitTxSignature: "reconciled",
-            pnlSol,
-            reason: `${reason} (reconciled against chain; P&L modelled, not an observed fill)`,
-          });
-          invalidateBreakerCache(walletAddress);
-          continue;
-        }
-        exitTxSignature = sold.signature;
-        exitPrice = sold.exitPrice;
-        pnlSol = sold.pnlSol;
-      } else if (isRobinhood) {
+      if (isRobinhood) {
         log(
           `PAPER ${reason} (Robinhood) — ${position.symbol} (${position.tokenAddress ?? position.token}) wallet ${short(walletAddress)} pnl ${pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"}`
         );
@@ -1313,35 +513,11 @@ async function checkAllExits(): Promise<void> {
     let latestPosition = position;
     let remainingSizeSol = sizeSol;
     for (const tier of tieredResults) {
-      let tierExitSignature = "paper";
-      let tierExitPrice = tier.fillPrice;
-      let tierPnlSol = tier.pnlSol;
+      const tierExitSignature = "paper";
+      const tierExitPrice = tier.fillPrice;
+      const tierPnlSol = tier.pnlSol;
 
-      if (liveBot) {
-        const sold = await executeRealSell(
-          liveBot,
-          latestPosition,
-          `tier ${tier.tierIndex} take-profit`,
-          { sellPortionPct: tier.sellPortionPct, basisSol: tier.soldSol }
-        );
-        /* Stop the ladder rather than recording a trim that never
-           happened — the tier stays untriggered and is retried next tick.
-           Booking it would shrink the ledger's position while the wallet
-           still held every token, and every later figure would be wrong. */
-        if (sold.kind === "failed") break;
-        if (sold.kind === "already-exited") {
-          /* Nothing left to trim: the whole position left the wallet. A
-             partial exit would be meaningless, so close the row outright
-             and stop the ladder. */
-          log(`RECONCILED ${position.symbol} for ${liveBot.name}: wallet flat mid-ladder, closing stale row`);
-          await markPositionClosed(position.id);
-          invalidateBreakerCache(walletAddress);
-          break;
-        }
-        tierExitSignature = sold.signature;
-        tierExitPrice = sold.exitPrice;
-        tierPnlSol = sold.pnlSol;
-      } else if (isRobinhood) {
+      if (isRobinhood) {
         log(
           `PAPER tiered take-profit tier ${tier.tierIndex} (Robinhood) — ${position.symbol} (${position.tokenAddress ?? position.token}) wallet ${short(walletAddress)} sold ${tier.sellPortionPct}% pnl ${tier.pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"}`
         );
@@ -1409,123 +585,6 @@ async function checkAllExits(): Promise<void> {
   }
 }
 
-/* ── GMGN multi-launchpad discovery ──────────────────────────────────────
- *
- * Second entry source, running alongside the PumpPortal stream rather
- * than replacing it: PumpPortal is pump.fun-only but push-based, GMGN
- * covers every indexed launchpad (bags, believe, letsbonk, boop, heaven,
- * moonshot, meteora, …) but is polled. See lib/gmgn/discovery.ts.
- *
- * Deliberately wired into the PAPER daemon only. scripts/sniper-daemon.ts
- * holds the real wallet key, and widening what that process is willing to
- * buy is not a change to make off the back of a new data source that has
- * no live track record here yet.
- */
-const GMGN_POLL_INTERVAL_MS = 5_000;
-/** Bounds the pending map. Well above one poll's worth (80 per stage). */
-const GMGN_MAX_PENDING = 400;
-
-type GmgnPending = {
-  token: DiscoveredToken;
-  firstSeenAt: number;
-  attemptedWallets: Set<string>;
-};
-
-const gmgnPending = new Map<string, GmgnPending>();
-
-async function processGmgnCandidates(): Promise<void> {
-  if (!isGmgnConfigured()) return;
-
-  const discovered = await discoverTokens(["new_creation"]);
-  const now = Date.now();
-
-  for (const token of discovered) {
-    if (gmgnPending.has(token.mint)) continue;
-    gmgnPending.set(token.mint, {
-      token,
-      firstSeenAt: now,
-      attemptedWallets: new Set(),
-    });
-  }
-
-  // Age out, and hard-cap so a long run cannot grow this without bound.
-  for (const [mint, item] of gmgnPending) {
-    const everyoneAttempted =
-      roster.length > 0 &&
-      roster.every((r) => item.attemptedWallets.has(r.bot.walletAddress));
-    if (now - item.firstSeenAt > PENDING_MAX_AGE_MS || everyoneAttempted) {
-      gmgnPending.delete(mint);
-    }
-  }
-  while (gmgnPending.size > GMGN_MAX_PENDING) {
-    const oldest = gmgnPending.keys().next().value;
-    if (oldest == null) break;
-    gmgnPending.delete(oldest);
-  }
-
-  if (gmgnPending.size === 0) return;
-
-  // One rate lookup per cycle, shared by every candidate: GMGN quotes market
-  // cap in USD and positions are denominated in SOL.
-  const solUsd = await getSolUsdPrice();
-  if (solUsd == null) {
-    log("GMGN: no SOL/USD rate available, skipping this cycle");
-    return;
-  }
-
-  for (const item of gmgnPending.values()) {
-    const ageSec = Date.now() / 1000 - item.token.createdAt;
-
-    const eligible = roster.filter(
-      (r) =>
-        r.bot.active &&
-        !item.attemptedWallets.has(r.bot.walletAddress) &&
-        ageSec >= r.config.minTokenAgeSec
-    );
-    if (eligible.length === 0) continue;
-
-    const entryPrice = deriveEntryPriceSol(item.token, solUsd);
-    // No trustworthy price means no position. Claim the wallets anyway so
-    // an unpriceable token isn't retried every cycle for the rest of its life.
-    for (const { bot } of eligible) item.attemptedWallets.add(bot.walletAddress);
-    if (entryPrice == null) continue;
-
-    for (const { bot, config } of eligible) {
-      try {
-        if (!config.entrySources.includes("gmgn")) continue;
-        const safety = await evaluateGmgnSafety(item.token, config, ageSec, solUsd);
-        if (!safety.passed) {
-          logRefusal(
-            bot,
-            item.token.mint,
-            item.token.symbol ?? undefined,
-            item.token.launchpad ?? "gmgn",
-            safety.reasons
-          );
-          continue;
-        }
-        await openPaperPosition(bot, config, {
-          chain: "solana",
-          mint: item.token.mint,
-          symbol: item.token.symbol ?? undefined,
-          entryPrice,
-          safety,
-          source: "gmgn",
-          launchpad: item.token.launchpad,
-        });
-      } catch (error) {
-        log(`GMGN entry error for ${bot.name} (${short(bot.walletAddress)}):`, error);
-      }
-    }
-  }
-}
-
-let gmgnTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function scheduleGmgnPoll(): Promise<void> {
-  await runLoopIteration("GMGN poll", GMGN_POLL_WATCHDOG_MS, processGmgnCandidates);
-  gmgnTimer = setTimeout(() => void scheduleGmgnPoll(), GMGN_POLL_INTERVAL_MS);
-}
 
 // ROBINHOOD-PAPER-ONLY-START (discovery)
 // ── PR07: Robinhood `pons new_creation` discovery ───────────────────────
@@ -1726,7 +785,6 @@ async function scheduleRobinhoodPoll(): Promise<void> {
 /* Watchdog budgets. Generous enough that healthy work never trips them,
    short enough that a stall costs one cycle rather than the process. */
 const EXIT_CHECK_WATCHDOG_MS = 60_000;
-const GMGN_POLL_WATCHDOG_MS = 60_000;
 const ROBINHOOD_POLL_WATCHDOG_MS = 60_000;
 const ROSTER_WATCHDOG_MS = 30_000;
 // scheduleQueueDrain needs none: it never awaits the work it fires, so it
@@ -1787,107 +845,6 @@ async function scheduleRosterRefresh(): Promise<void> {
   rosterTimer = setTimeout(() => void scheduleRosterRefresh(), ROSTER_REFRESH_INTERVAL_MS);
 }
 
-/**
- * State reconciliation on start (§11.4).
- *
- * The ledger and the chain can disagree across a restart, and the dangerous
- * direction is a *live* position the wallet no longer holds: the exit loop
- * would then try to sell nothing on every tick, forever, and the operator
- * would see a position they do not own. Causes include a buy whose
- * confirmation was never observed, a manual sale from the exported key, or a
- * rug that burned the balance.
- *
- * Only positions this process could act on are examined, and only live ones:
- * a paper position has no chain state to disagree with. A read failure is
- * left alone rather than closed, because "could not check" must never
- * become "assumed gone".
- */
-async function reconcileOnStart(): Promise<void> {
-  const db = getDb();
-  if (!db) return;
-
-  const open = await db
-    .select()
-    .from(positions)
-    .where(and(eq(positions.status, "open"), isNotNull(positions.walletAddress)));
-  if (open.length === 0) return;
-
-  const botByWallet = new Map(roster.map((r) => [r.bot.walletAddress, r.bot] as const));
-  let checked = 0;
-  let phantom = 0;
-  let orphaned = 0;
-
-  for (const position of open) {
-    const wallet = position.walletAddress;
-    if (!wallet) continue;
-    const bot = botByWallet.get(wallet);
-    if (!bot) {
-      // The bot was deleted while holding a position. Nothing can exit it.
-      orphaned++;
-      log(
-        `RECONCILE orphan — ${position.symbol ?? position.token.slice(0, 8)} belongs to wallet ${short(wallet)}, which has no deployed bot`
-      );
-      continue;
-    }
-
-    // Explicit chain guard, independent of context.engine: a
-    // chain="robinhood" row must NEVER reach heldTokenAmount/getRpc/
-    // @solana/kit's address() below, even if a corrupt or future row
-    // somehow also carried context.engine === "live" — this check comes
-    // first and short-circuits before that one is even read.
-    if (position.chain === "robinhood") continue;
-
-    const context = (position.context ?? {}) as Record<string, unknown>;
-    if (context.engine !== "live" || !bot.agentPublicKey) continue;
-
-    checked++;
-    const held = await heldTokenAmount(bot, position.token);
-    if (held == null) continue; // could not read; leave it open
-    if (held > BigInt(0)) continue; // ledger and chain agree
-
-    phantom++;
-    log(
-      `RECONCILE phantom — ${position.symbol ?? position.token.slice(0, 8)} marked open but the agent wallet holds none; closing as reconciled`
-    );
-    void writeLog({
-      level: "warn",
-      source: "live",
-      walletAddress: wallet,
-      tokenMint: position.token,
-      message: `Reconciled on restart: $${position.symbol ?? "?"} was open in the ledger but the agent wallet holds none. Closed without a sale.`,
-    });
-    await markPositionClosed(position.id);
-  }
-
-  log(
-    `Reconciled ${open.length} open position(s): ${checked} live checked, ${phantom} phantom closed, ${orphaned} orphaned.`
-  );
-}
-
-/** Token units the agent wallet currently holds, or null if unreadable. */
-async function heldTokenAmount(bot: UserBot, mint: string): Promise<bigint | null> {
-  try {
-    const rpc = getRpc(bot.rpcUrl);
-    const { value: accounts } = await rpc
-      .getTokenAccountsByOwner(
-        address(bot.agentPublicKey!),
-        { mint: address(mint) },
-        { encoding: "jsonParsed" }
-      )
-      .send();
-    let held = BigInt(0);
-    for (const acc of accounts) {
-      const parsed = acc.account.data as unknown as {
-        parsed?: { info?: { tokenAmount?: { amount?: string } } };
-      };
-      const amount = parsed?.parsed?.info?.tokenAmount?.amount;
-      if (amount) held += BigInt(amount);
-    }
-    return held;
-  } catch {
-    return null;
-  }
-}
 
 async function main(): Promise<void> {
   if (!getDb()) {
@@ -1895,55 +852,29 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  /* The name is historical. This process does sign and spend for any bot
-     whose tradingMode is "live", using that bot's own agent wallet key —
-     the previous banner claimed "no wallet, no signing" and was printed
-     twelve seconds before the first real buy of a live session. */
-  log("Paper daemon starting — paper bots get simulated fills; live bots sign real swaps from their own agent wallets.");
+  /* PR09A: Solana entry sources (PumpPortal stream, GMGN Solana discovery)
+     and Solana live execution are retired. Entries come from Robinhood
+     discovery only (paper, PR07); existing Solana paper positions are still
+     watched and exited so their history closes correctly. */
+  log("Paper daemon starting — Robinhood paper trading; Solana entry/execution runtime retired.");
 
   await refreshRoster();
-  const liveCount = roster.filter(
-    (r) => r.bot.tradingMode === "live" && r.bot.active
-  ).length;
-  log(
-    `Roster: ${roster.length} deployed bot(s), ${liveCount} live and active${liveCount > 0 ? " — this process will spend real SOL" : ""}.`
-  );
-  await reconcileOnStart().catch((error) => log("reconcile error", error));
+  log(`Roster: ${roster.length} deployed bot(s).`);
   void scheduleRosterRefresh();
   void scheduleExitCheck();
-  void scheduleQueueDrain();
 
   if (isGmgnConfigured()) {
-    log("GMGN discovery enabled: multi-launchpad entries alongside the pump.fun stream.");
-    void scheduleGmgnPoll();
     log("Robinhood discovery enabled (paper-only, pons new_creation): PR07.");
     void scheduleRobinhoodPoll();
   } else {
-    log("GMGN discovery off (GMGN_API_KEY unset): pump.fun stream only. Robinhood discovery also off (same key).");
+    log("GMGN discovery off (GMGN_API_KEY unset): no Robinhood entries this run.");
   }
-
-  const unsubscribe = subscribeNewTokenStream(
-    (event) => {
-      pendingTokens.push({
-        event,
-        receivedAt: Date.now(),
-        tokenData: null,
-        attemptedWallets: new Set(),
-        alphaAttempted: false,
-      });
-      if (pendingTokens.length > MAX_PENDING_QUEUE) pendingTokens.shift();
-    },
-    (message) => log(message)
-  );
 
   async function shutdown() {
     log("Shutting down paper daemon…");
     if (rosterTimer) clearTimeout(rosterTimer);
     if (exitTimer) clearTimeout(exitTimer);
-    if (queueTimer) clearTimeout(queueTimer);
-    if (gmgnTimer) clearTimeout(gmgnTimer);
     if (robinhoodTimer) clearTimeout(robinhoodTimer);
-    unsubscribe();
     process.exit(0);
   }
   process.on("SIGINT", () => void shutdown());

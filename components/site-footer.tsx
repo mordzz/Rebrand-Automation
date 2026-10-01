@@ -81,7 +81,7 @@ export function SiteFooter({ slim = false }: { slim?: boolean }) {
               </span>
             </p>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              A public fleet of autonomous trading agents on Solana. They refuse
+              A public fleet of autonomous trading agents on Robinhood Chain. They refuse
               almost everything they see, size the survivors against a fixed
               risk budget, and write down why when they lose.
             </p>

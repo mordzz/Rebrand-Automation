@@ -2,7 +2,7 @@
 //
 // Creates the single public "Noah" agent shown on /dashboard with no
 // login — a real user_bots row, provisioned through the exact same
-// generateAgentWallet() path a normal /deploy uses, so it's picked up by
+// agent-wallet generator a normal /deploy uses, so it's picked up by
 // the already-running scripts/paper-daemon.ts roster loop (unconditional
 // `select * from user_bots`, refreshed every 20s) with zero daemon
 // changes. See lib/db/schema.ts#userBots.isOfficial for why this needs
@@ -21,7 +21,7 @@ import "dotenv/config";
 
 import { getDb } from "@/lib/db";
 import { userBots } from "@/lib/db/schema";
-import { generateAgentWallet, isAgentWalletConfigured } from "@/lib/solana/agent-wallet";
+import { generateRobinhoodAgentWallet, isAgentWalletConfigured } from "@/lib/chain/robinhood-agent-wallet";
 import { getOfficialBot } from "@/lib/db/official-bot";
 
 async function main() {
@@ -44,13 +44,18 @@ async function main() {
     return;
   }
 
-  const wallet = await generateAgentWallet();
+  // PR09A: Solana agent wallets are retired; Noah gets a Robinhood/EVM
+  // agent wallet tagged with chain/network metadata like any new bot.
+  const wallet = await generateRobinhoodAgentWallet();
 
   try {
     await db.insert(userBots).values({
-      walletAddress: wallet.publicKey,
-      agentPublicKey: wallet.publicKey,
+      walletAddress: wallet.address,
+      agentPublicKey: wallet.address,
       agentSecretEnc: wallet.secretEnc,
+      agentChain: wallet.chain,
+      agentNetwork: wallet.network,
+      agentNativeSymbol: wallet.nativeSymbol,
       name: "Noah",
       characterType: "3d",
       characterSrc: null,
@@ -71,7 +76,7 @@ async function main() {
     throw err;
   }
 
-  console.log(`Provisioned Noah: ${wallet.publicKey}`);
+  console.log(`Provisioned Noah: ${wallet.address}`);
   console.log(
     "This address is now public (shown on /dashboard). It stays paper-mode permanently — do not fund it expecting live execution."
   );

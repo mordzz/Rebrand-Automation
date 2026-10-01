@@ -1,11 +1,14 @@
 import type { TradeRow } from "@/components/dashboard/trade-performance-chart";
+import { nativeSymbolFor, rowPnl } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 const TABLE_HEAD =
   "px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase";
 
-export function formatSignedSol(n: number, decimals = 2): string {
-  return `${n >= 0 ? "+" : ""}${n.toFixed(decimals)} SOL`;
+/** Signed amount in an explicit native unit — callers pass the row's own
+ * chain unit (lib/chain/display.ts), never assume SOL (PR14). */
+export function formatSignedNative(n: number, symbol: string, decimals = 2): string {
+  return `${n >= 0 ? "+" : ""}${n.toFixed(decimals)} ${symbol}`;
 }
 
 /** Closed-trade table with per-trade realized PnL — shared by the house
@@ -51,7 +54,8 @@ export function TradeHistoryTable({
           </tr>
         ) : (
           trades.map((h) => {
-            const pnl = Number(h.pnlSol);
+            const pnl = rowPnl(h) ?? 0;
+            const symbol = nativeSymbolFor(h);
             return (
               <tr
                 key={h.id}
@@ -78,7 +82,7 @@ export function TradeHistoryTable({
                     pnl >= 0 ? "text-sol-green-ink" : "text-destructive"
                   )}
                 >
-                  {formatSignedSol(pnl, 3)}
+                  {formatSignedNative(pnl, symbol, symbol === "ETH" ? 5 : 3)}
                 </td>
               </tr>
             );

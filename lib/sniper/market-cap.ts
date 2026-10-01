@@ -1,6 +1,7 @@
-import { address } from "@solana/kit";
+import { erc20Abi, isAddress } from "viem";
 
-import { getRpc } from "@/lib/solana/wallet";
+import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
+import { assertSolanaAddress, solanaRpc } from "@/lib/solana/json-rpc";
 import { getSolUsdPrice } from "@/lib/sniper/sol-price";
 
 /**
@@ -38,10 +39,11 @@ export async function getMintSupply(
 
   let result: MintSupply | null = null;
   try {
-    const rpc = getRpc(rpcUrl);
-    const { value } = await rpc
-      .getAccountInfo(address(mint), { encoding: "base64" })
-      .send();
+    const { value } = await solanaRpc<{ value: { data: [string, string] } | null }>(
+      "getAccountInfo",
+      [assertSolanaAddress(mint), { encoding: "base64" }],
+      rpcUrl
+    );
     if (value) {
       const bytes = Buffer.from(value.data[0], "base64");
       if (bytes.length >= 82) {
@@ -92,9 +94,28 @@ export type PositionMarketCaps = {
  * cannot be established, so a display never invents one.
  */
 export async function marketCapsForPositions(
-  positions: { token: string; entryPrice: string | null; lastPrice: string | null }[]
+  positions: { token: string; entryPrice: string | null; lastPrice: string | null; chain?: string | null }[]
 ): Promise<Map<string, PositionMarketCaps>> {
   const out = new Map<string, PositionMarketCaps>();
+  if (positions.length === 0) return out;
+
+  // Robinhood rows (PR16): prices are already USD per whole token (PR07),
+  // so cap = price × ERC-20 supply. No SOL conversion involved.
+  const robinhood = positions.filter((p) => p.chain === "robinhood");
+  const robinhoodSupplies = new Map(
+    await Promise.all(
+      [...new Set(robinhood.map((p) => p.token))].map(async (t) => [t, await getErc20Supply(t)] as const),
+    ),
+  );
+  for (const p of robinhood) {
+    const supply = robinhoodSupplies.get(p.token) ?? null;
+    const cap = (price: string | null) =>
+      price != null && supply ? usdCap(Number(price), supply) : null;
+    out.set(p.token, { entryUsd: cap(p.entryPrice), currentUsd: cap(p.lastPrice) });
+  }
+
+  // Historical Solana rows keep the Solana mint/SOL-price path.
+  positions = positions.filter((p) => p.chain !== "robinhood");
   if (positions.length === 0) return out;
 
   const mints = [...new Set(positions.map((p) => p.token))];
@@ -118,6 +139,37 @@ export async function marketCapsForPositions(
     });
   }
   return out;
+}
+
+const erc20SupplyCache = new Map<string, MintSupply | null>();
+
+/** ERC-20 totalSupply + decimals on Robinhood Chain (cached, bounded). */
+async function getErc20Supply(token: string): Promise<MintSupply | null> {
+  const cached = erc20SupplyCache.get(token);
+  if (cached !== undefined) return cached;
+  let result: MintSupply | null = null;
+  if (isAddress(token)) {
+    try {
+      const client = getRobinhoodPublicClient();
+      const [supply, decimals] = await Promise.all([
+        client.readContract({ address: token, abi: erc20Abi, functionName: "totalSupply" }),
+        client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }),
+      ]);
+      result = { supply, decimals };
+    } catch {
+      result = null;
+    }
+  }
+  if (erc20SupplyCache.size >= SUPPLY_CACHE_MAX) erc20SupplyCache.clear();
+  erc20SupplyCache.set(token, result);
+  return result;
+}
+
+function usdCap(priceUsd: number, supply: MintSupply): number | null {
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) return null;
+  const wholeTokens = Number(supply.supply) / 10 ** supply.decimals;
+  if (!Number.isFinite(wholeTokens) || wholeTokens <= 0) return null;
+  return priceUsd * wholeTokens;
 }
 
 /** Compact market cap for display: $41.2K, $1.8M. */

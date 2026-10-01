@@ -4,17 +4,20 @@ import { ExternalLink, Lock, Rocket, ShieldAlert, ShieldCheck } from "lucide-rea
 import { useEffect, useMemo, useState } from "react";
 
 import { TokenIcon } from "@/components/token-icon";
+import { explorerUrl } from "@/lib/chain/config";
 import { cn } from "@/lib/utils";
 
 type DiscoveredToken = {
-  mint: string;
+  /** ERC-20 contract address on Robinhood Chain. */
+  tokenAddress: string;
   symbol: string | null;
   name: string | null;
   logo: string | null;
   launchpad: string | null;
   createdAt: number;
-  mintAuthorityRenounced: boolean | null;
-  freezeAuthorityRenounced: boolean | null;
+  /** 0-100 percentages (GMGN buy/sell tax on Robinhood Chain). */
+  buyTaxPct: number | null;
+  sellTaxPct: number | null;
   hasSocialLink: boolean;
   isHoneypot: boolean | null;
   rugRatio: number | null;
@@ -71,16 +74,14 @@ function formatUsd(v: number): string {
 function riskFlags(t: DiscoveredToken): string[] {
   const flags: string[] = [];
   if (t.isHoneypot === true) flags.push("honeypot");
-  if (t.mintAuthorityRenounced === false) flags.push("mint live");
-  if (t.freezeAuthorityRenounced === false) flags.push("freeze live");
   if (t.rugRatio != null && t.rugRatio > 0.1) flags.push("dev rug history");
   if (t.bundlerRate != null && t.bundlerRate > 0.3) flags.push("bundled");
   if (t.top10HolderRate != null && t.top10HolderRate > 0.35) flags.push("top-10 heavy");
   return flags;
 }
 
-/** New launches across every Solana launchpad GMGN indexes, not just
- * pump.fun — the coverage gap the PumpPortal stream alone leaves. */
+/** New Robinhood Chain launches from GMGN (the same allow-listed
+ * launchpads the agent's discovery reads). Display only. */
 export function NewLaunches() {
   const response = usePolledJson<DiscoveryResponse>("/api/discovery", 10_000);
   const [now, setNow] = useState(() => Date.now());
@@ -116,10 +117,10 @@ export function NewLaunches() {
           </span>
           <div>
             <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-              New launches · all launchpads
+              New launches · Robinhood Chain
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              pump.fun, bags, believe, letsbonk, boop, moonshot and more.
+              Fresh launches on the launchpads the agent watches.
             </p>
           </div>
         </div>
@@ -185,7 +186,7 @@ export function NewLaunches() {
                 const flags = riskFlags(t);
                 return (
                   <li
-                    key={t.mint}
+                    key={t.tokenAddress}
                     className="flex items-center gap-3 border-b border-white/5 px-4 py-2.5 last:border-b-0"
                   >
                     {/* Icon carries the risk verdict as a ring so the row
@@ -246,7 +247,7 @@ export function NewLaunches() {
                     </div>
 
                     <a
-                      href={`https://pump.fun/coin/${t.mint}`}
+                      href={explorerUrl("address", t.tokenAddress)}
                       target="_blank"
                       rel="noreferrer"
                       aria-label={`Open ${t.symbol ?? "token"}`}

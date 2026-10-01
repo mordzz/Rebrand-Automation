@@ -25,9 +25,12 @@ type FeedRow = {
    * "paper", which is not a transaction and is normalised away here —
    * rendering it as a txid would invite an operator to go looking for
    * something that was never broadcast. */
-  txSignature: string | null;
-  /** The token itself, which IS a real account even for a paper fill. */
-  tokenMint: string | null;
+  txHash: string | null;
+  /** The token itself (ERC-20 contract, or a historical Solana mint) —
+   * real even for a paper fill. */
+  tokenAddress: string | null;
+  /** "robinhood" | "solana" | null — picks the explorer and unit (PR14). */
+  chain: string | null;
   createdAt: string;
 };
 
@@ -81,8 +84,9 @@ export async function GET(request: Request) {
     level: row.level,
     source: row.source,
     message: row.message,
-    txSignature: realSignature(row.txSignature),
-    tokenMint: row.tokenMint,
+    txHash: realSignature(row.txHash ?? row.txSignature),
+    tokenAddress: row.tokenAddress ?? row.tokenMint,
+    chain: row.chain,
     createdAt: row.createdAt.toISOString(),
   }));
 
@@ -102,12 +106,21 @@ export async function GET(request: Request) {
 
   for (const trade of tradeRows) {
     const context = (trade.context ?? {}) as Record<string, unknown>;
-    const mint = typeof context.mint === "string" ? context.mint : null;
+    const robinhood = trade.chain === "robinhood";
+    const mint =
+      typeof context.tokenAddress === "string"
+        ? context.tokenAddress
+        : typeof context.mint === "string"
+          ? context.mint
+          : null;
     const closedAt = trade.closedAt;
-    const pnl = Number(trade.pnlSol);
+    const pnl = Number(robinhood ? (trade.pnlNative ?? trade.pnlSol) : trade.pnlSol);
     const reason =
       typeof context.exitReason === "string" ? context.exitReason : "closed";
-    const message = `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} SOL`;
+    // Same per-chain formats scripts/paper-daemon.ts logs, so dedupe matches.
+    const message = robinhood
+      ? `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(6)} ${trade.nativeSymbol ?? "ETH"} (Robinhood paper)`
+      : `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} SOL`;
 
     const match = loggedByMessage
       .get(message)
@@ -117,12 +130,13 @@ export async function GET(request: Request) {
       // Same event. Keep the log line, but take the mint from the trade —
       // rows logged before the mint column existed have none, and that is
       // exactly the link the console wants to render.
-      if (!feed[match.index].tokenMint && mint) {
-        feed[match.index].tokenMint = mint;
+      if (!feed[match.index].tokenAddress && mint) {
+        feed[match.index].tokenAddress = mint;
       }
-      if (!feed[match.index].txSignature) {
-        feed[match.index].txSignature = realSignature(context.exitTxSignature);
+      if (!feed[match.index].txHash) {
+        feed[match.index].txHash = realSignature(context.exitTxHash ?? context.exitTxSignature);
       }
+      if (!feed[match.index].chain) feed[match.index].chain = trade.chain;
       continue;
     }
 
@@ -131,8 +145,9 @@ export async function GET(request: Request) {
       level: pnl >= 0 ? "sell" : "guard",
       source: typeof context.engine === "string" ? context.engine : "sniper",
       message,
-      txSignature: realSignature(context.exitTxSignature),
-      tokenMint: mint,
+      txHash: realSignature(context.exitTxHash ?? context.exitTxSignature),
+      tokenAddress: mint,
+      chain: trade.chain,
       createdAt: closedAt.toISOString(),
     });
   }

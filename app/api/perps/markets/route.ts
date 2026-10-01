@@ -1,18 +1,37 @@
 import { NextResponse } from "next/server";
 
-import { getMarketPrices, SUPPORTED_MARKETS } from "@/lib/perps/markets";
+import { LighterClient } from "@/lib/lighter/client";
+import { getMarketLogo } from "@/lib/perps/markets";
 
 export const dynamic = "force-dynamic";
 
-/** Curated Drift market list for the create-token market picker. Price
- * fields come from Pyth's Hermes API (see
- * lib/perps/markets.ts#getMarketPrices); null only on an upstream
- * fetch failure — never fabricated. */
+/** Active Lighter (Robinhood Chain) perp markets for the ticker and the
+ * market picker — PR11. Same response shape as the retired Drift list;
+ * `marketIndex` is now Lighter's `market_id` and prices are Lighter's own
+ * mark price. On a Lighter outage the list is empty with an error — never
+ * a stale or fabricated price. (Historical Perpspad rows still resolve
+ * against the Drift list in lib/perps/markets.ts.) */
 export async function GET() {
-  const prices = await getMarketPrices();
-  const data = SUPPORTED_MARKETS.map((m) => ({
-    ...m,
-    ...(prices.get(m.symbol) ?? { markPrice: null, change24h: null }),
-  }));
-  return NextResponse.json({ configured: true, data });
+  try {
+    const markets = await new LighterClient().getMarkets();
+    const data = markets
+      .filter((m) => m.status === "active")
+      .map((m) => {
+        const mark = Number(m.markPrice);
+        return {
+          symbol: m.symbol,
+          name: m.symbol,
+          marketIndex: m.marketId,
+          logoUri: getMarketLogo(m.symbol),
+          markPrice: Number.isFinite(mark) && mark > 0 ? mark : null,
+          change24h: m.dailyPriceChangePct,
+        };
+      });
+    return NextResponse.json({ configured: true, venue: "lighter", data });
+  } catch (error) {
+    return NextResponse.json(
+      { configured: true, venue: "lighter", data: [], error: error instanceof Error ? error.message : "Lighter unavailable" },
+      { status: 503 },
+    );
+  }
 }

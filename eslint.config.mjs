@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Official upstream build output (npm run build:lighter-signer), not our code.
+    "vendor/**",
   ]),
 ]);
 

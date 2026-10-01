@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
 import { userBots } from "@/lib/db/schema";
+import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 import { getEffectiveConfig, sanitize } from "@/lib/sniper/effective-config";
 
 export const dynamic = "force-dynamic";
@@ -50,9 +51,9 @@ export async function PATCH(request: Request) {
   }
 
   const wallet = new URL(request.url).searchParams.get("wallet") ?? "";
-  if (!isPlausibleWalletAddress(wallet)) {
-    return NextResponse.json({ error: "Invalid wallet" }, { status: 400 });
-  }
+  // PR09: mutations require a verified Privy user that owns this EVM wallet.
+  const auth = await authenticateEvmOwner(request, wallet);
+  if (!auth.ok) return authErrorResponse(auth);
 
   const bot = await loadBot(wallet);
   if (!bot) {

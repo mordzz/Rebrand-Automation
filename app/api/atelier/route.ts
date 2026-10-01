@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { trades, userBots } from "@/lib/db/schema";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { getAddressBalance } from "@/lib/solana/wallet";
+import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 import { getOpenPositions } from "@/lib/sniper/positions";
 import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
@@ -57,18 +57,18 @@ export async function GET() {
 
 
       const capsByMint = await marketCapsForPositions(openPositions);
-      const pnl24hSol = trades24h.reduce((sum, t) => sum + Number(t.pnlSol), 0);
-      const wins30d = trades30d.filter((t) => Number(t.pnlSol) > 0).length;
+      const pnl24h = summarizePnl(trades24h);
+      const wins30d = trades30d.filter(tradeWon).length;
       const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
-      const breaker = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+      // Robinhood bots: the breaker the daemon actually enforces.
+      const breaker =
+        bot.agentChain === "robinhood"
+          ? await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config)
+          : deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
 
-      // Read the agent wallet balance for live bots so the fleet view
-      // can show it instead of a paper-only stat set.
-      let agentBalanceSol: number | null = null;
-      if (bot.tradingMode === "live" && bot.agentPublicKey) {
-        const bal = await getAddressBalance(bot.agentPublicKey);
-        agentBalanceSol = bal.balanceSol ?? null;
-      }
+      // Agent wallet balance for live bots (Robinhood RPC, ETH).
+      const agentBalanceNative =
+        bot.tradingMode === "live" ? await agentNativeBalance(bot) : null;
 
       return {
         id: bot.id,
@@ -83,10 +83,12 @@ export async function GET() {
         // Category only — the raw reason embeds a configured
         // threshold, and this payload is public. See redactPauseReason.
         pauseReason: redactPauseReason(breaker.pauseReason),
-        pnl24hSol,
+        pnl24hNative: pnl24h.pnlNative,
+        nativeSymbol: pnl24h.nativeSymbol,
+        pnl24hSol: pnl24h.pnlSolHistorical,
         winRate30d,
         trades30dCount: trades30d.length,
-        agentBalanceSol,
+        agentBalanceNative,
         openPositions: openPositions.map((p) => {
           /* Market cap alongside the raw price: a per-token figure like
              5.76e-8 SOL says nothing about whether an entry was early or
@@ -99,6 +101,8 @@ export async function GET() {
             strategy: p.strategy,
             entryPrice: p.entryPrice,
             sizeSol: p.sizeSol,
+            sizeNative: p.sizeNative,
+            chain: p.chain,
             lastPrice: p.lastPrice,
             openedAt: p.openedAt,
             entryMarketCapUsd: caps?.entryUsd ?? null,

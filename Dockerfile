@@ -7,6 +7,20 @@
 FROM node:24-slim AS base
 WORKDIR /app
 
+# ---- lighter-signer: official Lighter signer, reproducible + verified ----
+# PR17: builds Lighter's OFFICIAL signer (github.com/elliottech/lighter-go,
+# tag v1.0.10 @ 9d38261) to WASM with the Go toolchain upstream's justfile
+# uses, then refuses to continue unless both artifacts match the SHA-256
+# values pinned in lib/lighter/signer-adapter.ts (same as
+# scripts/build-lighter-signer.sh). Go exists only in this stage; nothing is
+# downloaded at runtime and no binary is committed to the repo.
+FROM golang:1.23.2-bullseye AS lighter-signer
+ARG LIGHTER_GO_COMMIT=9d38261d1a4cc5c7211b383ba07a4d6e41604708
+ARG LIGHTER_WASM_SHA256=411a3280862c2d9445f74472a360882d5ecfd272276e3c961ca2431c4f1a2c54
+ARG LIGHTER_WASM_EXEC_SHA256=45ce9dfe7211247544ab6f4268eb8cb5b6f3d5ae602dc3b51447b7eada99c229
+WORKDIR /src
+RUN git clone --quiet https://github.com/elliottech/lighter-go.git .  && git checkout --quiet "$LIGHTER_GO_COMMIT"  && GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o /out/lighter-signer.wasm ./wasm/  && cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" /out/wasm_exec.js  && echo "$LIGHTER_WASM_SHA256  /out/lighter-signer.wasm" | sha256sum -c -  && echo "$LIGHTER_WASM_EXEC_SHA256  /out/wasm_exec.js" | sha256sum -c -
+
 # ---- deps: full install (incl. devDependencies) for the build step ----
 # npm install rather than npm ci — the local lockfile was generated with a
 # different npm minor version than this image's, which resolves some
@@ -46,6 +60,9 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # The daemons import only from lib/ — no app/ or components/ needed here.
 COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/scripts ./scripts
+# Verified official Lighter signer (see the lighter-signer stage above);
+# lib/lighter/signer-adapter.ts re-checks both SHA-256s before loading.
+COPY --from=lighter-signer /out/ ./vendor/lighter-signer/
 
 EXPOSE 3000
 CMD ["npm", "run", "start"]
