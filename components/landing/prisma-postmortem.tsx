@@ -153,6 +153,18 @@ export function PrismaPostMortem() {
                 has closed. Every entry, sizing, and exit decision is made by
                 deterministic rules whose inputs are logged and reproducible.
               </p>
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
+                The execution rules act on the current configuration. The
+                analysis looks back at the recorded trade to explain what may
+                have gone wrong. A model response is never a prerequisite for
+                entering a position or triggering an exit.
+              </p>
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
+                An explanation is a proposal, not an instruction to trade.
+                Repeated causes can become suggested changes, but you still
+                review the evidence and decide whether to accept them. The
+                model helps examine the loss; the rules govern execution.
+              </p>
             </div>
           </motion.div>
 

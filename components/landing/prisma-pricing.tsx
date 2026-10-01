@@ -239,7 +239,7 @@ export function PrismaPricing() {
         {/* Most products in this category never publish this. A serious
             reader computes it in two minutes regardless (§16), so it is
             better computed here, with the assumptions on the label. */}
-        <div className="mx-auto mt-3 max-w-4xl">
+        <div className="mx-auto mt-3 w-full max-w-3xl">
           <motion.div
             className="rounded-2xl bg-[#141414] p-6 ring-1 ring-white/5 sm:p-8"
             initial={{ opacity: 0, scale: 0.95 }}
