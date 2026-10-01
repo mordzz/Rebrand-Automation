@@ -4,7 +4,7 @@
  * lib/chain/alpha-wallets-robinhood.ts.
  *
  * No network calls (alpha-wallet checks use invalid/empty inputs so the
- * RPC path is never actually hit) — same plain-tsx-script convention as
+ * RPC path is never actually hit) - same plain-tsx-script convention as
  * scripts/test-gmgn-robinhood-adapter.ts.
  *
  * Run: npm run test:robinhood-safety
@@ -58,7 +58,7 @@ function baseConfig(overrides: Partial<SniperConfig> = {}): Pick<
     requireOwnerRenounced: false,
     requireNoBlacklistCapability: false,
     // Test-helper default is deliberately null (not the production
-    // default of 10) so each test is explicit about what it's checking —
+    // default of 10) so each test is explicit about what it's checking -
     // the actual approved-default assertion lives in its own test below,
     // against envSeededDefaults() directly.
     maxCreatorHoldPct: null,
@@ -82,7 +82,7 @@ function makeToken(overrides: Record<string, unknown> = {}): RobinhoodDiscovered
     launchpad_platform: "pons",
     ...overrides,
   });
-  if (!token) throw new Error("test fixture failed to normalize — fix the fixture");
+  if (!token) throw new Error("test fixture failed to normalize - fix the fixture");
   return token;
 }
 
@@ -101,7 +101,7 @@ async function main() {
   }
   {
     // "unknown" here means has_at_least_one_social absent AND all three
-    // link fields empty — the normalizer's only way to represent
+    // link fields empty - the normalizer's only way to represent
     // "we don't know" collapses to the same false as "confirmed absent",
     // which is the fail-closed direction (never a silent pass).
     const token = makeToken({});
@@ -237,7 +237,7 @@ async function main() {
   }
   {
     // maxCreatorBuyPct (the legacy Solana field) must never be consulted
-    // by the Robinhood evaluator — proven by the fact its Pick<> type
+    // by the Robinhood evaluator - proven by the fact its Pick<> type
     // doesn't even include it (a TypeScript-level guarantee), plus a
     // runtime check that a wildly-different maxCreatorBuyPct value has
     // zero effect on the creator-hold outcome.
@@ -252,14 +252,14 @@ async function main() {
     );
     assert(
       !result.reasons.some((r) => r.includes("creator holds")),
-      "maxCreatorBuyPct is not consulted for Robinhood — a stray value on the object has no effect"
+      "maxCreatorBuyPct is not consulted for Robinhood - a stray value on the object has no effect"
     );
   }
 
-  // ═══ validateMaxCreatorHoldPct — authoritative write-path validation ═══
+  // ═══ validateMaxCreatorHoldPct - authoritative write-path validation ═══
   // (lib/sniper/config.ts, used directly by updateSniperConfig()'s
   // patchToRow() for the house config PATCH route, and reused by
-  // lib/sniper/effective-config.ts's sanitize() for the per-bot overlay —
+  // lib/sniper/effective-config.ts's sanitize() for the per-bot overlay -
   // one rule, not two independently-maintained copies)
   {
     assertEqual(validateMaxCreatorHoldPct(null), null, "null is accepted (means unconfigured/fail-closed)");
@@ -325,7 +325,7 @@ async function main() {
     const result = await evaluateRobinhoodSafety(token, null, baseConfig(), 30);
     assert(
       result.reasons.some((r) => r.includes("honeypot") && r.includes("unknown")),
-      "is_honeypot=unknown → REFUSED (fails closed — unlike the existing Solana/GMGN path, which lets unknown pass)"
+      "is_honeypot=unknown → REFUSED (fails closed - unlike the existing Solana/GMGN path, which lets unknown pass)"
     );
   }
 
@@ -343,7 +343,7 @@ async function main() {
   {
     // Out-of-range ratio already normalizes to null at the discovery
     // layer (PR05); confirming the safety evaluator treats that null the
-    // same as any other unknown tax — a refusal, not a pass-through zero.
+    // same as any other unknown tax - a refusal, not a pass-through zero.
     const token = makeToken({ buy_tax: 1.5 });
     assertEqual(token.buyTaxPct, null, "out-of-range buy_tax is null by the time it reaches the evaluator");
     const result = await evaluateRobinhoodSafety(token, null, baseConfig(), 30);
@@ -362,7 +362,7 @@ async function main() {
     assert(result.reasons.some((r) => r.includes("wash") && r.includes("unknown")), "unknown wash-trading status fails closed");
   }
   {
-    // All seven GMGN risk floors explicitly known-safe — none of them
+    // All seven GMGN risk floors explicitly known-safe - none of them
     // should contribute a refusal reason (creator-buy/liquidity-disabled
     // aside, which are covered elsewhere).
     const token = makeToken({
@@ -423,7 +423,7 @@ async function main() {
 
   // ═══ EVM alpha-wallet: positive path, via an injected balance reader ══
   // (checkAlphaWalletBuyRobinhood's default reader is the real PR03
-  // getErc20Balance — production callers never pass a substitute. This
+  // getErc20Balance - production callers never pass a substitute. This
   // proves the detection logic itself without a live RPC call.)
   {
     const reader: Erc20BalanceReader = async () => BigInt(1);
@@ -472,12 +472,12 @@ async function main() {
     // an injected-positive reader isn't directly wireable (the evaluator
     // always uses the real default reader), but this confirms the
     // evaluator's gate-on logic reads whatever checkAlphaWalletBuyRobinhood
-    // returns rather than hardcoding a result — see the "no match" case
+    // returns rather than hardcoding a result - see the "no match" case
     // above for the refusal path.
     assert(true, "evaluator's alpha-wallet gate delegates entirely to checkAlphaWalletBuyRobinhood (see above)");
   }
 
-  // ═══ liquidity policy: OBSERVATIONAL ONLY — FINALIZED 2026-09-29 to
+  // ═══ liquidity policy: OBSERVATIONAL ONLY - FINALIZED 2026-09-29 to
   // align with the existing Solana/Pump.fun policy, where launch-time
   // virtual liquidity is not used as a risk discriminator. A `pons
   // new_creation` candidate must never be refused for liquidityUsd alone,
@@ -522,16 +522,16 @@ async function main() {
   }
   {
     // Large liquidity likewise never contributes a refusal or a pass
-    // reason on its own — there is no threshold comparison at all.
+    // reason on its own - there is no threshold comparison at all.
     const token = makeToken(knownSafeTokenFields({ liquidity: 1_000_000 }));
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
     assert(
       !result.reasons.some((r) => r.toLowerCase().includes("liquidity")),
-      "large liquidityUsd alone never contributes a refusal reason either — no threshold exists in either direction"
+      "large liquidityUsd alone never contributes a refusal reason either - no threshold exists in either direction"
     );
   }
   {
-    // Zero liquidity does NOT mask a real, unrelated safety failure — a
+    // Zero liquidity does NOT mask a real, unrelated safety failure - a
     // token with zero liquidity AND a blocked keyword is still refused,
     // for the keyword, proving liquidity isn't silently short-circuiting
     // the rest of the evaluator.
@@ -547,7 +547,7 @@ async function main() {
   }
   {
     // Zero liquidity + unknown honeypot status (a genuine safety-critical
-    // unknown) — still fails closed on the honeypot unknown, not on
+    // unknown) - still fails closed on the honeypot unknown, not on
     // liquidity, and liquidity contributes nothing either way.
     const token = makeToken(knownSafeTokenFields({ liquidity: 0, is_honeypot: "unknown" }));
     const result = await evaluateRobinhoodSafety(token, null, baseConfig({ maxCreatorHoldPct: 10 }), 30);
@@ -560,7 +560,7 @@ async function main() {
   }
   {
     // Compile-time proof minLiquiditySol is not part of the Robinhood
-    // evaluator's config surface at all — passing it would be a type
+    // evaluator's config surface at all - passing it would be a type
     // error, not just a no-op at runtime.
     const configShape: Parameters<typeof evaluateRobinhoodSafety>[2] = baseConfig({ maxCreatorHoldPct: 10 });
     assert(
@@ -571,7 +571,7 @@ async function main() {
 
   // ═══ duplicate security-field parsing: first-valid-wins, not first-non-null ═
   {
-    // Primary field present but malformed; fallback field valid — the
+    // Primary field present but malformed; fallback field valid - the
     // valid fallback must win, not get ignored by a bare `??`.
     const security = normalizeRobinhoodSecurity(TOKEN_ADDRESS, {
       is_renounced: "not-a-valid-value",
@@ -636,7 +636,7 @@ async function main() {
   // ═══ no other launchpad becomes implicitly allowed ════════════════════
   {
     // .env.example now recommends GMGN_ROBINHOOD_LAUNCHPADS=pons, but
-    // that's documentation, not a code default — the resolver must still
+    // that's documentation, not a code default - the resolver must still
     // fail closed (return null) with nothing configured, exactly as
     // before this PR. No launchpad, "pons" included, is hardcoded here.
     const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
@@ -645,7 +645,7 @@ async function main() {
       assertEqual(
         resolveLaunchpadAllowlist(),
         null,
-        "resolveLaunchpadAllowlist() with nothing configured is still null — pons is not a hardcoded default"
+        "resolveLaunchpadAllowlist() with nothing configured is still null - pons is not a hardcoded default"
       );
     } finally {
       if (originalEnv === undefined) delete process.env.GMGN_ROBINHOOD_LAUNCHPADS;
@@ -653,7 +653,7 @@ async function main() {
     }
   }
   {
-    // Only what's explicitly configured is allowed — e.g. an operator
+    // Only what's explicitly configured is allowed - e.g. an operator
     // who sets GMGN_ROBINHOOD_LAUNCHPADS=pons does not implicitly also
     // get flap/flap_pve/longxyz/trench/etc.
     const originalEnv = process.env.GMGN_ROBINHOOD_LAUNCHPADS;
@@ -675,7 +675,7 @@ async function main() {
     // Type-level guarantee: SniperConfig still has the legacy Solana
     // fields, untouched, alongside the new Robinhood ones. A runtime
     // check confirms the values aren't coerced/renamed anywhere in this
-    // module (it never imports or reads them at all — see the Pick<> in
+    // module (it never imports or reads them at all - see the Pick<> in
     // evaluateRobinhoodSafety's signature).
     const legacyFieldsShape: Pick<
       SniperConfig,

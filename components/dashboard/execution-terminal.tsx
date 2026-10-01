@@ -20,7 +20,7 @@ type LogRow = {
    * broadcast a transaction, so the token is the only real thing to open. */
   tokenAddress?: string | null;
   tokenMint?: string | null;
-  /** "robinhood" | "solana" | null — picks explorer (PR14). */
+  /** "robinhood" | "solana" | null - picks explorer (PR14). */
   chain?: string | null;
   createdAt: string;
 };
@@ -68,7 +68,7 @@ export function ExecutionTerminal({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
 
-  // Real events from the sniper daemon (and future sources) — fast polling
+  // Real events from the sniper daemon (and future sources) - fast polling
   // rather than a fake generator. See lib/logs.ts for what actually writes here.
   useEffect(() => {
     let disposed = false;
@@ -114,7 +114,7 @@ export function ExecutionTerminal({
             <span className="size-2.5 rounded-full bg-[#7faE6f]" />
           </div>
           <p className="font-mono text-xs text-[#a8a094]">
-            noah@enginex — execution.log
+            noah@enginex - execution.log
           </p>
         </div>
         <span className="flex items-center gap-1.5 font-mono text-xs text-[#a8a094]">
@@ -140,7 +140,7 @@ export function ExecutionTerminal({
           </p>
         ) : rows.length === 0 ? (
           <p className="text-[#a8a094]">
-            No log entries yet — start the Raven daemon (`npm run sniper`) to
+            No log entries yet - start the Raven daemon (`npm run sniper`) to
             see live activity.
           </p>
         ) : (

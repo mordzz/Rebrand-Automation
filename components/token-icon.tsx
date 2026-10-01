@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * A token's logo, falling back to its ticker initials.
  *
  * Two reasons the fallback is not optional: sources hand us an empty logo
- * for the very freshest mints (GMGN needs a moment to cache the image —
+ * for the very freshest mints (GMGN needs a moment to cache the image -
  * measured at roughly 1 in 60), and the URLs that do arrive point at
  * arbitrary IPFS gateways and CDNs that fail often enough to matter.
  *
@@ -29,8 +29,8 @@ export function TokenIcon({
 
   // A recycled component instance (list re-render, pagination) must retry
   // the new URL rather than stay stuck on a previous token's failure.
-  // Reset during render — React's documented "adjust state on prop change"
-  // pattern — rather than in an effect, which would cost an extra pass.
+  // Reset during render - React's documented "adjust state on prop change"
+  // pattern - rather than in an effect, which would cost an extra pass.
   const [lastSrc, setLastSrc] = useState(src);
   if (src !== lastSrc) {
     setLastSrc(src);

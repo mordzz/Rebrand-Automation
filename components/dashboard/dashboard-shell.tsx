@@ -55,7 +55,7 @@ type WalletState = {
   balanceNative?: number;
   nativeSymbol?: string;
   error?: string;
-  /** Why there's no wallet yet, when `connected` is false — replaces a
+  /** Why there's no wallet yet, when `connected` is false - replaces a
    * fabricated balance rather than inventing one (Design Principle 8). */
   hint?: string;
 };
@@ -74,7 +74,7 @@ type StatsResponse = {
   winRate30d?: number | null;
   trades30dCount?: number;
   wins30dCount?: number;
-  /** Per-bot state (see app/api/stats/route.ts) — replaces the old
+  /** Per-bot state (see app/api/stats/route.ts) - replaces the old
    * daemon-heartbeat panel, which read a table nothing deployed writes to. */
   active?: boolean;
   tradingMode?: "paper" | "live";
@@ -90,7 +90,7 @@ type PositionRow = {
   status: string;
   entryPrice: string;
   sizeSol: string;
-  /** PR04 neutral size + chain — unit per position (PR14). */
+  /** PR04 neutral size + chain - unit per position (PR14). */
   sizeNative?: string | null;
   chain?: string | null;
   lastPrice: string | null;
@@ -126,7 +126,7 @@ function usePolledJson<T>(url: string): T | null {
    are not: no wallet-mirroring, position-guard, or session-authority
    automaton exists as a separately deployable strategy today. They used to
    render with a green "Active" dot and specific weekly trade counts,
-   which read as live telemetry next to a header that says "coming soon" —
+   which read as live telemetry next to a header that says "coming soon" -
    exactly the kind of invented evidence Design Principle 8 exists to rule
    out. Kept as a preview of the intended lineup, not a report of current
    activity. */
@@ -136,7 +136,7 @@ const STRATEGIES = [
   { name: "The Tide", detail: "Session authority: sizing, daily loss limit, post-mortem cadence." },
 ];
 
-/** Shared micro-label style for panel headers — the desk's typographic signature. */
+/** Shared micro-label style for panel headers - the desk's typographic signature. */
 const PANEL_LABEL =
   "text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground";
 
@@ -145,7 +145,7 @@ const TABLE_HEAD =
 
 type OfficialBot = { walletAddress: string; name: string };
 
-/** Always given a real bot — app/dashboard/page.tsx resolves
+/** Always given a real bot - app/dashboard/page.tsx resolves
  * getOfficialBot() server-side and renders a "not provisioned yet" state
  * itself rather than passing null down, so this component never has to
  * conditionally skip its own hooks. */
@@ -163,7 +163,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
 
   const walletQuery = `wallet=${encodeURIComponent(officialBot.walletAddress)}`;
 
-  /* Noah's own agent wallet — the private key stays server-side; this
+  /* Noah's own agent wallet - the private key stays server-side; this
      only ever receives the public address + balance from
      /api/my-bot/wallet, the same read-only endpoint /deploy's BotDesk
      uses for a user's own bot. */
@@ -235,8 +235,8 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           tone: "positive",
         }
       : wallet?.connected
-        ? { value: "—", hint: wallet.error ?? "RPC unavailable", tone: "muted" }
-        : { value: "—", hint: wallet?.hint ?? "Not connected", tone: "muted" };
+        ? { value: "-", hint: wallet.error ?? "RPC unavailable", tone: "muted" }
+        : { value: "-", hint: wallet?.hint ?? "Not connected", tone: "muted" };
 
   const statsData = usePolledJson<StatsResponse>(`/api/stats?${walletQuery}`);
   const positionsData = usePolledJson<{ configured: boolean; data: PositionRow[] }>(
@@ -253,7 +253,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           hint: `${statsData.openPositionsInProfit ?? 0} in profit`,
           tone: (statsData.openPositionsInProfit ?? 0) > 0 ? "positive" : "muted",
         }
-      : { value: "—", hint: "Connect DATABASE_URL", tone: "muted" };
+      : { value: "-", hint: "Connect DATABASE_URL", tone: "muted" };
 
   const pnl24hCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured
@@ -267,7 +267,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
                 ? "negative"
                 : "muted",
         }
-      : { value: "—", hint: "Connect DATABASE_URL", tone: "muted" };
+      : { value: "-", hint: "Connect DATABASE_URL", tone: "muted" };
 
   const winRateCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured && statsData.winRate30d != null
@@ -277,7 +277,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           tone: statsData.winRate30d >= 50 ? "positive" : "negative",
         }
       : {
-          value: "—",
+          value: "-",
           hint: statsData?.configured ? "No trades yet" : "Connect DATABASE_URL",
           tone: "muted",
         };
@@ -288,7 +288,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
     value: string;
     hint: string;
     tone: Tone;
-    /** Tint the value itself, not just the hint — for gain/loss figures. */
+    /** Tint the value itself, not just the hint - for gain/loss figures. */
     colorValue?: boolean;
   }[] = [
     { icon: Wallet, label: "Wallet balance", ...walletCard },
@@ -337,8 +337,8 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
           role: "assistant",
           text:
             error instanceof DOMException && error.name === "AbortError"
-              ? "That's taking too long — try again in a moment."
-              : "Connection trouble — try again.",
+              ? "That's taking too long - try again in a moment."
+              : "Connection trouble - try again.",
         },
       ]);
       setMood("idle");
@@ -350,7 +350,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-      {/* Trading status + circuit-breaker — full width, above both columns.
+      {/* Trading status + circuit-breaker - full width, above both columns.
           Sourced from Noah's own per-bot stats (same fields BotDesk reads
           for a user's own bot), not the old daemon heartbeat: nothing
           deployed ever wrote to the table that read from. */}
@@ -397,12 +397,12 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
         {statsData?.tradingPaused && statsData.pauseReason && (
           <div className="flex items-start gap-2 border-t border-white/5 px-4 py-2.5 text-xs text-destructive">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            Circuit breaker tripped — {statsData.pauseReason}
+            Circuit breaker tripped - {statsData.pauseReason}
           </div>
         )}
       </div>
 
-      {/* Left column — one flat panel: automaton on top, concierge below */}
+      {/* Left column - one flat panel: automaton on top, concierge below */}
       <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:col-span-2">
         <div className="flex items-center justify-between px-4 py-3">
           <p className={PANEL_LABEL}>{officialBot.name} · On Duty</p>
@@ -424,7 +424,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
         </div>
       </div>
 
-      {/* Right column — desk panel + tabs */}
+      {/* Right column - desk panel + tabs */}
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-3">
         {/* The desk: wallet status bar + stat cells in one flat panel */}
         <div className="relative overflow-hidden rounded-2xl bg-card">
@@ -471,7 +471,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
             </span>
           </div>
 
-          {/* Stat cells as mini-cards — the landing features-grid rhythm */}
+          {/* Stat cells as mini-cards - the landing features-grid rhythm */}
           <div className="grid grid-cols-2 gap-1 p-1 pt-0 xl:grid-cols-4">
             {stats.map((stat) => (
               <div key={stat.label} className="rounded-xl bg-secondary px-4 py-4">
@@ -504,7 +504,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
             ))}
           </div>
 
-          {/* Trade performance — per-trade realized P&L + cumulative curve */}
+          {/* Trade performance - per-trade realized P&L + cumulative curve */}
           <TradePerformanceChart
             trades={historyRows}
             configured={!!tradesData?.configured}
@@ -607,7 +607,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
                           >
                             {pnlPct != null
                               ? `${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`
-                              : "—"}
+                              : "-"}
                           </td>
                         </tr>
                       );
@@ -629,7 +629,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
 
           <TabsContent value="strategies">
             <SniperConfigReadout endpoint={`/api/my-bot/config?${walletQuery}`} />
-            {/* Remaining automatons — flat hairline list, not a card grid */}
+            {/* Remaining automatons - flat hairline list, not a card grid */}
             <div className="mt-4 overflow-hidden rounded-2xl bg-card">
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className={PANEL_LABEL}>Other Automatons</p>

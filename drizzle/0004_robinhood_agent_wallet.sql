@@ -6,7 +6,7 @@
 --
 -- This is exactly the "agentPublicKey/agentSecretEnc/rpcUrl ... deferred
 -- to the EVM agent-wallet phase" item PR04's report flagged as
--- out-of-scope for that pass — this is that phase.
+-- out-of-scope for that pass - this is that phase.
 
 -- ── user_bots ───────────────────────────────────────────────────────────
 ALTER TABLE "user_bots" ADD COLUMN IF NOT EXISTS "agent_chain" text;
@@ -17,12 +17,12 @@ ALTER TABLE "user_bots" ADD COLUMN IF NOT EXISTS "agent_native_symbol" text;
 -- Runs exactly once, gated on the "_migrations" marker (created by
 -- 0001_chain_neutral_foundation.sql), not on column nullness. Every
 -- user_bots row that exists AT THE MOMENT THIS MIGRATION FIRST RUNS
--- predates PR09 — no EVM agent-signing path existed before it — and is
+-- predates PR09 - no EVM agent-signing path existed before it - and is
 -- unambiguously Solana, regardless of whether that specific bot ever
 -- had an agent wallet generated (agent_public_key may be NULL; the
 -- chain label describes what chain this bot WOULD use, not whether a
 -- wallet exists yet). "agent_network" is left NULL for this legacy
--- backfill — which network a historical Solana agent wallet ran on was
+-- backfill - which network a historical Solana agent wallet ran on was
 -- never recorded, and preservation means leaving that unknown rather
 -- than guessing, same reasoning PR04 used for trades/positions/logs.
 DO $$

@@ -4,7 +4,7 @@
 -- ceiling) is now the approved default, replacing the PR06.5
 -- "unconfigured/configuration-blocker" NULL default. Additive/safe to
 -- run on top of drizzle/0002_robinhood_safety_policy.sql regardless of
--- whether that migration has already been applied — this only touches
+-- whether that migration has already been applied - this only touches
 -- rows/defaults, adds no columns, drops nothing.
 --
 -- Explicitly configured non-null values are preserved: the backfill only

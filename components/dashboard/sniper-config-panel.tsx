@@ -17,7 +17,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 
-/** Mirrors lib/sniper/config.ts#SniperConfig — kept as a plain type here
+/** Mirrors lib/sniper/config.ts#SniperConfig - kept as a plain type here
  * (not imported) since this file is a client component and the source
  * type lives in server-only code that also touches the DB driver. */
 type TakeProfitTier = { atPct: number; sellPortionPct: number };
@@ -25,7 +25,7 @@ type TakeProfitTier = { atPct: number; sellPortionPct: number };
 type SniperConfigValue = {
   requireMintAuthorityRenounced: boolean;
   requireFreezeAuthorityRenounced: boolean;
-  /* Robinhood/EVM safety + risk fields (PR06.5/PR07) — the ones the active
+  /* Robinhood/EVM safety + risk fields (PR06.5/PR07) - the ones the active
      Robinhood runtime actually reads. The Solana fields above stay in the
      type only so a save round-trips them untouched. */
   requireOwnerRenounced: boolean;
@@ -211,14 +211,14 @@ function SwitchField({
 export function SniperConfigPanel({
   endpoint = "/api/sniper/config",
   title = "The Raven · Live Config",
-  description = "Changes take effect on the daemon's next cycle — no restart needed.",
+  description = "Changes take effect on the daemon's next cycle - no restart needed.",
   saveFetch,
 }: {
   endpoint?: string;
   title?: string;
   description?: string;
   /** Used for the PATCH only. Defaults to the app-wide authed fetch
-   * (lib/auth/use-privy-authed-fetch.ts) — both the per-bot and the house
+   * (lib/auth/use-privy-authed-fetch.ts) - both the per-bot and the house
    * config PATCH routes require a verified Privy user. */
   saveFetch?: typeof fetch;
 }) {
@@ -237,7 +237,7 @@ export function SniperConfigPanel({
 
   // Seed the draft once from the first fetched config, adjusting state
   // during render (React's documented pattern for this) rather than an
-  // effect — `!draft` means this only ever fires once, so a later poll
+  // effect - `!draft` means this only ever fires once, so a later poll
   // tick never clobbers in-progress edits.
   if (response?.config && !draft) {
     setDraft(response.config);
@@ -266,10 +266,10 @@ export function SniperConfigPanel({
         setSavedAt(Date.now());
       } else {
         // Surface the failure instead of silently leaving the draft unsaved.
-        setSaveError(json.error ?? `Couldn't save (HTTP ${res.status}). Your changes are still here — try again.`);
+        setSaveError(json.error ?? `Couldn't save (HTTP ${res.status}). Your changes are still here - try again.`);
       }
     } catch {
-      setSaveError("Couldn't reach the server. Your changes are still here — try again.");
+      setSaveError("Couldn't reach the server. Your changes are still here - try again.");
     } finally {
       setSaving(false);
     }
@@ -323,7 +323,7 @@ export function SniperConfigPanel({
   if (response && !response.configured) {
     return (
       <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground">
-        Connect DATABASE_URL to configure the Raven — trading behavior lives
+        Connect DATABASE_URL to configure the Raven - trading behavior lives
         in Postgres so it can change without a restart.
       </div>
     );
@@ -376,7 +376,7 @@ export function SniperConfigPanel({
           </p>
           <SwitchField
             label="Require contract ownership renounced"
-            hint="ERC-20 owner must be renounced — the EVM stand-in for Solana's mint/freeze authority checks."
+            hint="ERC-20 owner must be renounced - the EVM stand-in for Solana's mint/freeze authority checks."
             checked={draft.requireOwnerRenounced}
             onChange={(v) => set("requireOwnerRenounced", v)}
           />
@@ -405,7 +405,7 @@ export function SniperConfigPanel({
           />
           <Field
             label="Minimum token age before evaluating"
-            hint="Delay entry this long after a launch is first observed — 0 = evaluate immediately."
+            hint="Delay entry this long after a launch is first observed - 0 = evaluate immediately."
             value={draft.minTokenAgeSec}
             unit="s"
             min={0}
@@ -447,7 +447,7 @@ export function SniperConfigPanel({
           </div>
           <SwitchField
             label="Require a tracked alpha wallet to have bought in"
-            hint="Checks on-chain whether any wallet below currently holds the token. Only fires once you add at least one address — empty list is a no-op."
+            hint="Checks on-chain whether any wallet below currently holds the token. Only fires once you add at least one address - empty list is a no-op."
             checked={draft.requireAlphaWalletBuy}
             onChange={(v) => set("requireAlphaWalletBuy", v)}
           />
@@ -546,7 +546,7 @@ export function SniperConfigPanel({
         </div>
       </div>
 
-      {/* Exit strategy — full width, it's the richest section */}
+      {/* Exit strategy - full width, it's the richest section */}
       <div className="m-1 mt-0 rounded-2xl bg-secondary p-6">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">
@@ -591,7 +591,7 @@ export function SniperConfigPanel({
                 </div>
                 {draft.takeProfitTiers.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    No tiers yet — falls back to the fixed take-profit target above.
+                    No tiers yet - falls back to the fixed take-profit target above.
                   </p>
                 )}
                 {draft.takeProfitTiers.map((tier, i) => (
@@ -664,7 +664,7 @@ export function SniperConfigPanel({
           <div className="space-y-5">
             <SwitchField
               label="Trailing stop"
-              hint="Once armed, exits if price falls off its peak — locks in gains instead of riding a fixed target down."
+              hint="Once armed, exits if price falls off its peak - locks in gains instead of riding a fixed target down."
               checked={draft.trailingStopEnabled}
               onChange={(v) => set("trailingStopEnabled", v)}
             />
@@ -692,7 +692,7 @@ export function SniperConfigPanel({
             )}
             <NullableField
               label="Breakeven lock"
-              hint="Once price ever reaches this gain, the stop floor moves to entry price — guarantees no loss from there on."
+              hint="Once price ever reaches this gain, the stop floor moves to entry price - guarantees no loss from there on."
               value={draft.breakevenAfterPct}
               unit="%"
               min={5}
@@ -703,7 +703,7 @@ export function SniperConfigPanel({
             />
             <NullableField
               label="Force time-exit"
-              hint="Exit after holding this long, regardless of P&L — the direct fix for 'stayed too long even though profitable.'"
+              hint="Exit after holding this long, regardless of P&L - the direct fix for 'stayed too long even though profitable.'"
               value={draft.maxHoldTimeSec}
               unit="s"
               min={30}

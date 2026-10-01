@@ -10,7 +10,7 @@ import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server
 
 export const dynamic = "force-dynamic";
 
-/** Loose shape check for the identity/owner wallet — enough to reject
+/** Loose shape check for the identity/owner wallet - enough to reject
  * garbage, not full validation. Accepts either a legacy Solana wallet
  * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
  * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
@@ -24,8 +24,8 @@ function isPlausibleWalletAddress(addr: string): boolean {
 const CHARACTER_TYPES = new Set(["3d", "image", "gif"]);
 
 /** Drops the encrypted agent key from anything sent to a browser. This
- * endpoint's GET trusts a client-asserted wallet, so shipping key material —
- * even encrypted — would put it one guessed address away from anyone who
+ * endpoint's GET trusts a client-asserted wallet, so shipping key material -
+ * even encrypted - would put it one guessed address away from anyone who
  * later obtains the encryption key. */
 function withoutSecret<T extends { agentSecretEnc?: string | null }>(row: T) {
   const copy = { ...row };
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
 /** Creates or updates the caller's automaton (name + character).
  *
  * PR09C: requires `Authorization: Bearer <Privy access token>` whose
- * authoritative Privy user has `wallet` linked as an EVM account — checked
+ * authoritative Privy user has `wallet` linked as an EVM account - checked
  * before any DB read or key generation. Only EVM owners can deploy/refit;
  * legacy Solana-owned bots stay in the DB untouched (read-only via GET). */
 export async function POST(request: Request) {
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   /* Give a first-time deploy its own trading wallet. Only when one is
      missing: a refit re-POSTs this route, and minting a fresh keypair
      there would orphan whatever the operator had already deposited into
-     the old address. Skipped entirely when no encryption key is set —
+     the old address. Skipped entirely when no encryption key is set -
      lib/wallet/secret-encryption.ts refuses to store a secret in the clear,
      and a bot with no wallet is recoverable while a leaked key is not. */
   const [existing] = await db

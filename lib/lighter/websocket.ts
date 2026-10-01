@@ -1,5 +1,5 @@
 /**
- * Lighter realtime account stream — PR12.
+ * Lighter realtime account stream - PR12.
  *
  * Official protocol (lighter-python ws_client.py, live-verified on the
  * Robinhood testnet): connect to `wss://<api host>/stream`, send

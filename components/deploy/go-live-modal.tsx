@@ -55,7 +55,7 @@ export function GoLiveModal({
             Wallet balance
           </p>
           <p className="mt-1.5 text-lg font-medium tabular-nums">
-            {balance == null ? "—" : `${balance.toFixed(5)} ${symbol}`}
+            {balance == null ? "-" : `${balance.toFixed(5)} ${symbol}`}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-4 py-3">
@@ -63,7 +63,7 @@ export function GoLiveModal({
             Size per trade
           </p>
           <p className="mt-1.5 text-lg font-medium tabular-nums">
-            {size == null ? "—" : `${size.toFixed(5)} ${symbol}`}
+            {size == null ? "-" : `${size.toFixed(5)} ${symbol}`}
           </p>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { formatEther, isAddress } from "viem";
 import { ROBINHOOD_NATIVE_SYMBOL, ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { getNativeBalance } from "@/lib/chain/rpc";
 
-// Balance must be fresh on every request — never cache this route.
+// Balance must be fresh on every request - never cache this route.
 export const dynamic = "force-dynamic";
 
 /** Public balance lookup for a wallet address. EVM (0x) addresses are

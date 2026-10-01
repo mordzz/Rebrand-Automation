@@ -1,21 +1,21 @@
 /**
  * Deterministic tests for the PR09 Robinhood Chain autonomous agent
  * wallet/signing layer: lib/chain/robinhood-agent-wallet.ts,
- * lib/chain/robinhood-agent-signing.ts — including the hardening pass
+ * lib/chain/robinhood-agent-signing.ts - including the hardening pass
  * that added full calldata semantic validation (not just target-address
  * allowlisting).
  *
  * No network calls, no broadcast. Key generation, encryption round-trip,
  * validation, and offline transaction signing are all real (not mocked)
- * — only the RPC-dependent prep steps (nonce/fee/gas) are injected via
+ * - only the RPC-dependent prep steps (nonce/fee/gas) are injected via
  * signRobinhoodTransaction's `deps` parameter.
  *
  * Positive fixtures are REAL PR08 builder output
  * (buildNativeBuyTransaction/buildNativeSellTransaction/
- * buildErc20ApprovalTransaction/buildPermit2AuthorizationTransaction) —
+ * buildErc20ApprovalTransaction/buildPermit2AuthorizationTransaction) -
  * never fake/random calldata dressed up as a "successful swap".
  *
- * NEVER prints a raw private key — only derived addresses and encrypted
+ * NEVER prints a raw private key - only derived addresses and encrypted
  * blobs ever reach console.log/assertEqual output.
  *
  * Run: npm run test:robinhood-agent-signing
@@ -127,7 +127,7 @@ function makeBotRow(overrides: Partial<AgentWalletBotRow> = {}): AgentWalletBotR
   };
 }
 
-// The exact pool ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b verified — used
+// The exact pool the PR08 testnet swap audit (git history) verified - used
 // only as a synthetic input here (no RPC), matching PR08's own test
 // fixture in scripts/test-robinhood-v4-adapter.ts.
 const AUDIT_FIXTURE_POOL_KEY: PoolKey = {
@@ -186,7 +186,7 @@ function makeSellQuote(overrides: Partial<Extract<QuoteSwapResult, { ok: true }>
 }
 
 /** Rebuilds a UniversalRouter.execute() calldata blob by hand, for
- * negative-test fixtures ONLY — never used to build a "successful"
+ * negative-test fixtures ONLY - never used to build a "successful"
  * fixture (those always come from the real PR08 builders above). */
 function encodeExecute(commands: Hex, inputs: readonly Hex[], deadline: bigint): Hex {
   return encodeFunctionData({ abi: UNIVERSAL_ROUTER_EXECUTE_ABI, functionName: "execute", args: [commands, inputs, deadline] });
@@ -200,7 +200,7 @@ async function main() {
     assertEqual(wallet.chain, "robinhood", "generated wallet is tagged chain=robinhood");
     assertEqual(wallet.network, "testnet", "generated wallet is tagged with the active network (testnet)");
     // Not a substring check (base64 output can coincidentally contain
-    // "0x") — asserts the actual shape a raw 32-byte hex private key
+    // "0x") - asserts the actual shape a raw 32-byte hex private key
     // would have (0x + 64 hex chars) is absent.
     assert(!/^0x[0-9a-f]{64}$/i.test(wallet.secretEnc), "secretEnc is an encrypted blob, not a raw hex private key");
     const derived = robinhoodAgentAddressFromSecret(wallet.secretEnc);
@@ -236,7 +236,7 @@ async function main() {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // FULL CALLDATA SEMANTIC VALIDATION — the hardening pass
+  // FULL CALLDATA SEMANTIC VALIDATION - the hardening pass
   // ══════════════════════════════════════════════════════════════════════
 
   // ═══ 1-2. real PR08 native-buy builder is accepted end-to-end ════════
@@ -349,7 +349,7 @@ async function main() {
   {
     // Real, valid native-buy calldata with one extra trailing byte
     // appended. decodeFunctionData does NOT throw on this (ABI decoding
-    // isn't required to consume every trailing byte) — only the
+    // isn't required to consume every trailing byte) - only the
     // canonical re-encode check catches it.
     const tx: UnsignedTransaction = { ...realBuyTx, data: `${realBuyTx.data}00` as Hex };
     const input: SignRobinhoodTransactionInput = { bot: makeBotRow(), unsignedTransaction: tx, intent: "swap" };
@@ -364,7 +364,7 @@ async function main() {
   {
     // Nested V4 input trailing bytes: the exactInputSingle payload inside
     // the V4_SWAP input carries extra bytes past what
-    // EXACT_INPUT_SINGLE_ABI_TYPE actually needs — otherwise perfectly
+    // EXACT_INPUT_SINGLE_ABI_TYPE actually needs - otherwise perfectly
     // decodable (decodeAbiParameters ignores the extra bytes), but the
     // canonical re-encode inside decodeV4SwapCommandsAndInputs must
     // reject it.

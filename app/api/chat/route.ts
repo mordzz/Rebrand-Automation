@@ -7,7 +7,7 @@ import {
 } from "@/lib/eliza/runtime";
 import { recordModelUsage } from "@/lib/model-usage";
 
-// Agent state must not be cached — every reply depends on live wallet/lesson data.
+// Agent state must not be cached - every reply depends on live wallet/lesson data.
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       configured: false,
       reply:
-        "The concierge isn't wired up yet — set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY.",
+        "The concierge isn't wired up yet - set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY.",
     });
   }
 
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       ),
     ]);
 
-    // Real, measured round-trip latency for this chat turn — the
+    // Real, measured round-trip latency for this chat turn - the
     // MODEL_USED event ElizaOS emits internally (see lib/eliza/runtime.ts)
     // doesn't carry timing, so this is recorded separately, tagged
     // modelType: "chat_turn" to distinguish it from per-model-call rows.
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       configured: true,
       reply: timedOut
-        ? "The model is taking too long to respond (likely a busy free-tier provider) — try again in a moment."
+        ? "The model is taking too long to respond (likely a busy free-tier provider) - try again in a moment."
         : "Something interrupted the automaton mid-thought. Try again in a moment.",
       error: error instanceof Error ? error.message : "unknown",
     });

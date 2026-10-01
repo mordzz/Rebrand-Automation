@@ -1,5 +1,5 @@
 /**
- * Fixture-based tests for lib/gmgn/liquidity-collector.ts — no network
+ * Fixture-based tests for lib/gmgn/liquidity-collector.ts - no network
  * calls, no real filesystem, no test framework, following
  * scripts/test-perpspad.ts's convention.
  *

@@ -9,7 +9,7 @@ import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/priv
 export const dynamic = "force-dynamic";
 
 /** Merges a lesson's suggestedConfig into the live sniper_config and marks
- * the lesson "applied" — the one-click alternative to hand-editing config
+ * the lesson "applied" - the one-click alternative to hand-editing config
  * after reading a post-mortem in the dashboard's memory table. */
 export async function POST(
   request: Request,

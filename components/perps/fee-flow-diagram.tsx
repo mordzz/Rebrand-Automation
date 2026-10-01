@@ -11,8 +11,8 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
    because the ribbon maths below is unreadable with raw numbers inline. */
 const VB_W = 200;
 const VB_H = 96;
-const X_SRC_EDGE = 48; // right edge of the source node — where ribbons start
-const X_DST_EDGE = 124; // left edge of the destination cards — where they end
+const X_SRC_EDGE = 48; // right edge of the source node - where ribbons start
+const X_DST_EDGE = 124; // left edge of the destination cards - where they end
 const SRC_CY = 48; // source node's vertical centre
 const BAND = 26; // total ribbon thickness representing 100% of fees
 const DST_CY = [16, 48, 80]; // destination card centres, top to bottom
@@ -20,7 +20,7 @@ const CARD_H = 26;
 
 /** One Sankey ribbon: leaves the source stacked at `srcTop..srcBottom`,
  * lands centred on `dstCy` with thickness `w`. Thickness is proportional
- * to the percentage, so the 50% leg is visibly twice the 25% legs —
+ * to the percentage, so the 50% leg is visibly twice the 25% legs -
  * the split is readable from the shape alone, not just the labels. */
 function ribbon(srcTop: number, srcBottom: number, dstCy: number, w: number) {
   const dTop = dstCy - w / 2;
@@ -36,7 +36,7 @@ function ribbon(srcTop: number, srcBottom: number, dstCy: number, w: number) {
 }
 
 /** Every percentage here (the diagram and the detail cards below) is
- * derived from one fetched FeeSplitConfig — this used to be three
+ * derived from one fetched FeeSplitConfig - this used to be three
  * separately-hardcoded copies of "50%/25%/25%" (this file, the
  * create-token preview panel, and lib/perps/perpspad-types.ts's own
  * never-imported DEFAULT_FEE_SPLIT), which is exactly the kind of

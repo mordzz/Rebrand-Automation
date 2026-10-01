@@ -13,7 +13,7 @@ export const lessons = pgTable("lessons", {
   lesson: text("lesson").notNull(),
   status: text("status").notNull().default("learning"), // learning | applied
   model: text("model").notNull().default("claude-opus-4-8"),
-  /* A partial SniperConfig diff Claude proposes alongside the lesson text —
+  /* A partial SniperConfig diff Claude proposes alongside the lesson text -
      null when no concrete config change applies. Applied via
      POST /api/lessons/:id/apply, which sets status to "applied". */
   suggestedConfig: jsonb("suggested_config"),
@@ -25,7 +25,7 @@ export const lessons = pgTable("lessons", {
 /**
  * One row per real model call (from ElizaOS's MODEL_USED event) or per
  * real chat turn (modelType: "chat_turn", written directly by
- * app/api/chat/route.ts to carry an accurate round-trip latency — the
+ * app/api/chat/route.ts to carry an accurate round-trip latency - the
  * event payload itself doesn't include timing). Backs the "Model
  * connections" panel's real requests-per-provider chart and latency stat.
  */
@@ -41,7 +41,7 @@ export const modelRequests = pgTable("model_requests", {
 });
 
 /**
- * UNUSED — nothing reads or writes this table any more.
+ * UNUSED - nothing reads or writes this table any more.
  *
  * It held the /atelier chat as one shared, durable thread per agent. That
  * was the wrong shape: /atelier has no visitor login, so a single thread

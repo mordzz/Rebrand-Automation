@@ -21,7 +21,7 @@ interface NumberTickerProps extends ComponentPropsWithoutRef<"span"> {
   decimalPlaces?: number;
 }
 
-/** Magic UI NumberTicker — counts up (or down) to `value` once scrolled
+/** Magic UI NumberTicker - counts up (or down) to `value` once scrolled
  * into view, with a spring so the last digits settle gently. */
 export function NumberTicker({
   value,

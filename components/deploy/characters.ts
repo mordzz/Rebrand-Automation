@@ -15,7 +15,7 @@ export const CHARACTER_ROSTER: RosterEntry[] = [
     name: "Noah",
     kind: "3d",
     src: null,
-    blurb: "The house automaton — brass manners, machine reflexes.",
+    blurb: "The house automaton - brass manners, machine reflexes.",
   },
   {
     id: "duchess",

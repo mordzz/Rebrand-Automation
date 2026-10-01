@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { getOfficialBot } from "@/lib/db/official-bot";
 
 export const metadata: Metadata = {
-  title: "Dashboard — Noah Engine",
+  title: "Dashboard - Noah Engine",
   description:
     "Your live agent desk: wallet balance, open positions, trade history, and the strategies on duty.",
 };
@@ -16,8 +16,8 @@ export const metadata: Metadata = {
  * Rendered per request, not prerendered at build.
  *
  * This page reads Noah's row from Postgres. The deploy image's build
- * step (Dockerfile) is only given NEXT_PUBLIC_PRIVY_APP_ID — no
- * DATABASE_URL — so during `npm run build` getOfficialBot() has no
+ * step (Dockerfile) is only given NEXT_PUBLIC_PRIVY_APP_ID - no
+ * DATABASE_URL - so during `npm run build` getOfficialBot() has no
  * database to reach and returns null. Without this, that null gets
  * baked into static HTML and every visitor is permanently told Noah
  * isn't provisioned, no matter what the live database actually holds.
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
             <div className="rounded-2xl bg-card p-5 text-sm text-muted-foreground">
               {process.env.NODE_ENV === "development" ? (
                 <>
-                  Noah hasn&apos;t been provisioned on this environment yet —
+                  Noah hasn&apos;t been provisioned on this environment yet -
                   run{" "}
                   <code className="font-mono">
                     npm run provision-official-bot
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
                   .
                 </>
               ) : (
-                "Noah's desk is temporarily unavailable. This is on our side — try again in a moment."
+                "Noah's desk is temporarily unavailable. This is on our side - try again in a moment."
               )}
             </div>
           )}

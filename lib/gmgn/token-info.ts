@@ -5,7 +5,7 @@ import { gmgnGet, isGmgnConfigured } from "./client";
  *
  * Separate from lib/gmgn/discovery.ts and lib/gmgn/track.ts: those cover
  * fresh launches and trade activity, neither of which carries a token's
- * website/telegram/X — that only comes back from this per-mint lookup.
+ * website/telegram/X - that only comes back from this per-mint lookup.
  * Verified directly against the live endpoint (not assumed from docs):
  * fields live under `data.link`.
  */
@@ -29,7 +29,7 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-/* A token's socials rarely change once set — worth remembering across the
+/* A token's socials rarely change once set - worth remembering across the
    short poll windows the KOL table refreshes on, so a page of results
    already seen doesn't re-spend a GMGN call per mint every cycle. Negative
    results are cached too, same reasoning as lib/jupiter/token-icons.ts. */

@@ -1,6 +1,6 @@
 /**
  * Live market data for a set of mints, via DexScreener's free public API
- * (no key required) — the same source lib/sniper/exit-price.ts already
+ * (no key required) - the same source lib/sniper/exit-price.ts already
  * uses for exit pricing, queried in batch here because the Alpha page
  * needs a figure for every row at once.
  *
@@ -18,7 +18,7 @@ export type TokenMarket = {
   changePct: number | null;
   /** Which window `changePct` covers. A mint minutes old usually has only
    * the 24h bucket populated, so the window is surfaced rather than
-   * assumed — labelling a since-launch move as "5m" would be a lie. */
+   * assumed - labelling a since-launch move as "5m" would be a lie. */
   changeWindow: ChangeWindow | null;
   volumeH24Usd: number | null;
 };
@@ -101,7 +101,7 @@ async function fetchBatch(mints: string[]): Promise<Map<string, TokenMarket>> {
       });
     }
   } catch {
-    // Network/API trouble is not fatal — callers render the row without a
+    // Network/API trouble is not fatal - callers render the row without a
     // market figure rather than dropping it.
   }
   return out;
@@ -110,7 +110,7 @@ async function fetchBatch(mints: string[]): Promise<Map<string, TokenMarket>> {
 /**
  * Live market data keyed by mint. Mints with no DexScreener pair yet (a
  * brand-new mint still on its bonding curve often has none) are simply
- * absent from the map — callers should treat "missing" as "not priced
+ * absent from the map - callers should treat "missing" as "not priced
  * yet", never as zero.
  */
 export async function getTokenMarkets(

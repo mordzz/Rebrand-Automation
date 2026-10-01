@@ -10,7 +10,7 @@ import { getEffectiveConfig, sanitize } from "@/lib/sniper/effective-config";
 export const dynamic = "force-dynamic";
 
 /** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
+ * wallet (0x + 40 hex chars) - see app/api/my-bot/route.ts. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
@@ -27,7 +27,7 @@ async function loadBot(wallet: string) {
 }
 
 /** The user's effective config: house config as the base, their saved
- * overlay on top — new users start from the house tune. */
+ * overlay on top - new users start from the house tune. */
 export async function GET(request: Request) {
   if (!getDb()) return NextResponse.json({ configured: false, config: null });
 

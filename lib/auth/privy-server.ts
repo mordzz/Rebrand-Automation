@@ -1,5 +1,5 @@
 /**
- * Privy server-side authentication + EVM owner-wallet ownership — PR09C.
+ * Privy server-side authentication + EVM owner-wallet ownership - PR09C.
  *
  * Server-only module (holds PRIVY_APP_SECRET); never import from a client
  * component.
@@ -16,10 +16,10 @@
  *            → only then may the caller proceed (e.g. generate a key)
  *
  * Status codes:
- *   401 — missing / malformed / invalid / expired access token
- *   403 — valid Privy user, but the claimed EVM wallet is not linked to them
- *   400 — claimed wallet is not an EVM address
- *   503 — Privy server auth not configured, or the user lookup failed
+ *   401 - missing / malformed / invalid / expired access token
+ *   403 - valid Privy user, but the claimed EVM wallet is not linked to them
+ *   400 - claimed wallet is not an EVM address
+ *   503 - Privy server auth not configured, or the user lookup failed
  *         (fail closed: no key is ever generated without a positive check)
  *
  * The owner wallet only identifies who owns a bot; it is never the wallet
@@ -29,12 +29,12 @@ import { PrivyClient } from "@privy-io/node";
 import { NextResponse } from "next/server";
 import { getAddress, isAddress, type Address } from "viem";
 
-/** The two Privy calls this module needs — injectable so the ownership
+/** The two Privy calls this module needs - injectable so the ownership
  * logic is testable offline without real Privy credentials. */
 export type PrivyAuthBackend = {
   /** Throws if the token is invalid/expired/for another app. */
   verifyAccessToken(token: string): Promise<{ user_id: string }>;
-  /** Authoritative user record, fetched from Privy — never from the token
+  /** Authoritative user record, fetched from Privy - never from the token
    * or the request body. */
   getUserLinkedAccounts(userId: string): Promise<ReadonlyArray<LinkedAccountLike>>;
 };
@@ -98,7 +98,7 @@ export async function authenticateEvmOwnerWith(
   try {
     ({ user_id: userId } = await backend.verifyAccessToken(token));
   } catch {
-    // Invalid signature, wrong app, expired, or unverifiable — all 401.
+    // Invalid signature, wrong app, expired, or unverifiable - all 401.
     // The token itself is never logged.
     return { ok: false, status: 401, error: "Invalid or expired access token" };
   }
@@ -151,7 +151,7 @@ export function getPrivyAuthBackend(): PrivyAuthBackend | null {
     // users()._get(userId) is Privy's documented by-ID lookup. Privy also
     // offers identity-token parsing (users().get({ id_token })) to skip the
     // API call, but the SDK notes that user "may be incomplete due to the
-    // size constraints of the identity token" — for an ownership check we
+    // size constraints of the identity token" - for an ownership check we
     // want the authoritative, fresh linked-account list, so we keep _get.
     getUserLinkedAccounts: async (userId) => (await client.users()._get(userId)).linked_accounts,
   };
@@ -178,7 +178,7 @@ export function authErrorResponse(result: Extract<EvmOwnerAuthResult, { ok: fals
 /* ── Signed-in operator (house dashboard actions) ────────────────────────
  * House-level dashboard actions (shared sniper config, house on/off, lesson
  * apply/status, manual trade entry) keep Noah's existing product model: any
- * signed-in Noah operator may use them — there is NO separate admin wallet
+ * signed-in Noah operator may use them - there is NO separate admin wallet
  * or role. They are still never public internet endpoints: the request must
  * carry a valid, verified Privy access token (official @privy-io/node). */
 

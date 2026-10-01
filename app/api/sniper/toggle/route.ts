@@ -5,7 +5,7 @@ import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/priv
 
 export const dynamic = "force-dynamic";
 
-/** Flips sniper_state.tradingPaused — the daemon checks this every cycle, no restart needed. */
+/** Flips sniper_state.tradingPaused - the daemon checks this every cycle, no restart needed. */
 export async function POST(request: Request) {
   // House dashboard action: any verified signed-in Noah operator (Privy
   // access token). Never anonymous; no separate admin role.

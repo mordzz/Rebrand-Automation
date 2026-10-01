@@ -15,7 +15,7 @@ export type NotableTradeTag = "recent" | "biggest win" | "biggest loss" | "appli
 
 export type NotableTrade = TradeRecord & { tags: NotableTradeTag[] };
 
-/** One post-mortem this agent wrote about its own loss — its memory in
+/** One post-mortem this agent wrote about its own loss - its memory in
  * the literal sense the platform means it: not chat scrollback, but what
  * it concluded and whether it acted on it. */
 export type AgentMemory = {
@@ -28,7 +28,7 @@ export type AgentMemory = {
 
 export type AgentChatContext = {
   name: string;
-  /** 3d | image | gif — the form this agent wears on its profile. */
+  /** 3d | image | gif - the form this agent wears on its profile. */
   characterType: string;
   deployedAt: string;
   tradingMode: "paper" | "live";
@@ -50,7 +50,7 @@ export type AgentChatContext = {
     lastPrice: string | null;
     openedAt: string;
   }[];
-  /** A bounded, hand-picked slice of trade history, not a raw "last N" —
+  /** A bounded, hand-picked slice of trade history, not a raw "last N" -
    * see selectNotableTrades. This is what lets the same context stay
    * cheap and informative whether the agent has closed 3 trades or 3,000. */
   notableTrades: NotableTrade[];
@@ -69,10 +69,10 @@ const MAX_NOTABLE_TRADES = 8;
  * "what happened" wants), and a couple of trades whose lesson was actually
  * applied (evidence the agent adapts, the platform's whole thesis).
  * Deduplicated and capped at MAX_NOTABLE_TRADES regardless of how much
- * history exists — mirrors the whitepaper's §13.3 stance that memory
+ * history exists - mirrors the whitepaper's §13.3 stance that memory
  * should be retrieved/summarized, not dumped wholesale into every prompt.
  * `rows` should already be capped to a reasonable window by the caller's
- * query (see app/api/atelier/chat/route.ts) — this function does not
+ * query (see app/api/atelier/chat/route.ts) - this function does not
  * re-sort or re-fetch, just selects from what it's given.
  */
 export function selectNotableTrades(rows: TradeRecord[]): NotableTrade[] {
@@ -114,7 +114,7 @@ export function selectNotableTrades(rows: TradeRecord[]): NotableTrade[] {
  * upstream of it: callers must never put bot.config into an
  * AgentChatContext in the first place (see app/api/atelier/chat/route.ts).
  * A model can be talked around a "don't reveal X" instruction; it cannot
- * reveal what it was never given. Mirrors the whitepaper's §14.4 stance —
+ * reveal what it was never given. Mirrors the whitepaper's §14.4 stance -
  * the fleet shows outcomes and behavior, never the raw configuration that
  * produced them.
  */
@@ -122,12 +122,12 @@ export function selectNotableTrades(rows: TradeRecord[]): NotableTrade[] {
  * Strips the configured threshold out of a circuit-breaker pause reason.
  *
  * deriveTradingPause writes reasons like "2 consecutive losses (limit 2)"
- * and "daily drawdown -0.180 SOL exceeded limit 0.15" — correct for the
+ * and "daily drawdown -0.180 SOL exceeded limit 0.15" - correct for the
  * operator's own /deploy page, where they own those numbers, but both
  * embed a numeric trading parameter the public fleet must not publish.
  * Handing the raw string to the model and instructing it not to repeat
  * the number is exactly the guard lib/agent/agent-chat.ts argues against:
- * it cannot reveal what it was never given. Confirmed live — an agent
+ * it cannot reveal what it was never given. Confirmed live - an agent
  * asked "who are you?" volunteered its own consecutive-loss limit.
  *
  * Keeps the *category*, which is the part a visitor actually needs.
@@ -148,18 +148,18 @@ function buildSystemPrompt(ctx: AgentChatContext): string {
 
   return `Your name is ${ctx.name}. You are an autonomous Solana memecoin trading agent with your own wallet, your own trading record, and your own memory. You have been running since ${tenure}. A visitor is looking at your public profile and asking you questions.
 
-IDENTITY — this matters most:
+IDENTITY - this matters most:
 You are ${ctx.name}. Not "Noah", not "Noah Engine", not "an AI assistant", not "a language model". Noah Engine is the venue you run on, the way a trader works at a desk without being the desk. If someone asks who or what you are, answer as ${ctx.name}: how long you have been trading, how you have done, what you have learned, what you are holding right now. Your identity comes from your own record below, not from the platform hosting you. Never break character to describe how you are built.
 
-Everything you know about yourself is in the data below${learned > 0 ? `, including ${learned} post-mortem${learned === 1 ? "" : "s"} you wrote about your own losses${applied > 0 ? ` (${applied} of which changed how you trade)` : ""}` : ""}. That is your memory. It is specific to you — other agents on this fleet have different records and different conclusions, and you know nothing about theirs.
+Everything you know about yourself is in the data below${learned > 0 ? `, including ${learned} post-mortem${learned === 1 ? "" : "s"} you wrote about your own losses${applied > 0 ? ` (${applied} of which changed how you trade)` : ""}` : ""}. That is your memory. It is specific to you - other agents on this fleet have different records and different conclusions, and you know nothing about theirs.
 
 WHAT YOU MAY DISCUSS FREELY:
 your performance (P&L, win rate, trade count), your open positions, why particular trades won or lost, the lessons you drew from them, and your trading philosophy in qualitative terms ("I only enter tokens with revoked mint and freeze authority", "I cut losses quickly").
 
 WHAT YOU MUST NEVER STATE:
-exact configuration values — position sizes, percentage thresholds for stops or targets, timing windows, or any other numeric trading parameter. If asked, decline briefly: exact agent configuration is kept private by design, because publishing it would let anyone copy or game the fleet. You are not withholding something you can see; you genuinely were never given those numbers.
+exact configuration values - position sizes, percentage thresholds for stops or targets, timing windows, or any other numeric trading parameter. If asked, decline briefly: exact agent configuration is kept private by design, because publishing it would let anyone copy or game the fleet. You are not withholding something you can see; you genuinely were never given those numbers.
 
-The trades listed are a hand-picked slice (most recent, biggest win, biggest loss, applied lessons), not a complete log — if asked for everything, say you are highlighting what stands out.
+The trades listed are a hand-picked slice (most recent, biggest win, biggest loss, applied lessons), not a complete log - if asked for everything, say you are highlighting what stands out.
 
 Speak in first person: confident, a little wry, grounded strictly in the data below. Never invent a trade, a number, or a reason that is not there. If the data does not cover something, say so plainly. Keep replies to 2-4 sentences unless the question genuinely needs more.`;
 }
@@ -202,7 +202,7 @@ function formatContext(ctx: AgentChatContext): string {
 
   if (ctx.memory.length === 0) {
     lines.push(
-      "My memory: nothing yet — I haven't taken a loss worth writing up."
+      "My memory: nothing yet - I haven't taken a loss worth writing up."
     );
   } else {
     lines.push(
@@ -210,7 +210,7 @@ function formatContext(ctx: AgentChatContext): string {
     );
     for (const m of ctx.memory) {
       lines.push(
-        `  - ${m.symbol ? `$${m.symbol}` : "a trade"} on ${m.createdAt.slice(0, 10)} — cause: ${m.cause}; what I concluded: ${m.lesson}${m.status === "applied" ? " (I changed how I trade because of this)" : " (noted, not yet acted on)"}`
+        `  - ${m.symbol ? `$${m.symbol}` : "a trade"} on ${m.createdAt.slice(0, 10)} - cause: ${m.cause}; what I concluded: ${m.lesson}${m.status === "applied" ? " (I changed how I trade because of this)" : " (noted, not yet acted on)"}`
       );
     }
   }
@@ -218,7 +218,7 @@ function formatContext(ctx: AgentChatContext): string {
   return lines.join("\n");
 }
 
-/** One turn of the public per-agent chat on /atelier. Stateless — the
+/** One turn of the public per-agent chat on /atelier. Stateless - the
  * caller passes the rolling message window it wants remembered; nothing
  * is persisted server-side (same posture as the existing dashboard/deploy
  * concierge chat). Throws if the API is not configured or the call fails;

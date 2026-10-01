@@ -1,12 +1,12 @@
 /**
  * Focused tests for the "finalize Robinhood paper semantics" hardening
  * pass:
- *   1. lib/agent/analyze-loss.ts — chain-aware post-mortem payload/schema
- *   2. lib/sniper/effective-config.ts — per-bot overlay for the
+ *   1. lib/agent/analyze-loss.ts - chain-aware post-mortem payload/schema
+ *   2. lib/sniper/effective-config.ts - per-bot overlay for the
  *      Robinhood-native risk fields
  *
- * No network/LLM calls (analyzeLoss() itself is not invoked — it always
- * calls the configured LLM provider — only its pure/exported building
+ * No network/LLM calls (analyzeLoss() itself is not invoked - it always
+ * calls the configured LLM provider - only its pure/exported building
  * blocks are tested directly), no DB. Same plain-tsx convention as the
  * other scripts/test-*.ts files.
  *
@@ -84,15 +84,15 @@ function schemaSuggestedConfigKeys(schema: {
   assertEqual(
     ROBINHOOD_ANALYSIS_SCHEMA.properties.suggestedConfig.additionalProperties,
     false,
-    "Robinhood schema's suggestedConfig is additionalProperties:false — the model cannot invent a field outside the listed set"
+    "Robinhood schema's suggestedConfig is additionalProperties:false - the model cannot invent a field outside the listed set"
   );
 }
 
-// ═══ 1c. sanitizeSuggestedConfigForChain — defense in depth ══════════════
+// ═══ 1c. sanitizeSuggestedConfigForChain - defense in depth ══════════════
 {
   const solanaConfig: SuggestedConfigDiff = { maxCreatorBuyPct: 5, takeProfitPct: 40 };
   const result = sanitizeSuggestedConfigForChain(solanaConfig, "solana");
-  assertEqual(result, solanaConfig, "Solana loss retains maxCreatorBuyPct — sanitizeSuggestedConfigForChain is a no-op for chain=solana");
+  assertEqual(result, solanaConfig, "Solana loss retains maxCreatorBuyPct - sanitizeSuggestedConfigForChain is a no-op for chain=solana");
 }
 {
   const solanaConfig: SuggestedConfigDiff = { maxCreatorBuyPct: 5, takeProfitPct: 40 };
@@ -150,7 +150,7 @@ function schemaSuggestedConfigKeys(schema: {
   // House ETH-native limits flow through getEffectiveConfig's base spread
   // (envSeededDefaults represents the no-DB fallback shape of the house
   // config; the { ...base, ...overlay } merge in getEffectiveConfig
-  // means any field the overlay doesn't touch — including these — comes
+  // means any field the overlay doesn't touch - including these - comes
   // straight from base, unchanged by this PR).
   const base = envSeededDefaults();
   const overlay = sanitize({}); // bot with no config overrides at all

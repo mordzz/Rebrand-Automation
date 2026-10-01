@@ -1,11 +1,11 @@
 /**
  * Focused fixture tests for the GMGN Robinhood discovery adapter
- * (lib/gmgn/discovery-robinhood.ts). No network calls — pure-function
+ * (lib/gmgn/discovery-robinhood.ts). No network calls - pure-function
  * tests against normalizeRobinhoodToken() and parseNewCreationPayload(),
  * plus integration-shaped checks of discoverRobinhoodTokens()'s
  * failure-mode distinctions.
  *
- * This repo has no test runner installed (no vitest/jest) — this follows
+ * This repo has no test runner installed (no vitest/jest) - this follows
  * the existing scripts/test-perpspad.ts convention: a plain tsx script
  * that asserts and exits non-zero on failure.
  *
@@ -102,13 +102,13 @@ function validRaw(overrides: Record<string, unknown> = {}) {
 }
 {
   // usd_market_cap kept only as a fallback for a hypothetical response
-  // shape that uses it — market_cap must win when both are present.
+  // shape that uses it - market_cap must win when both are present.
   const token = normalizeRobinhoodToken(validRaw({ market_cap: 100, usd_market_cap: 999 }));
   assertEqual(token?.marketCapUsd, 100, "market_cap takes priority over usd_market_cap");
 }
 
 // ═══ buy_tax/sell_tax ratio→percent conversion (live-verified: GMGN
-//     reports these as 0–1 ratios, e.g. 0.0899 = 8.99% — buyTaxPct/
+//     reports these as 0–1 ratios, e.g. 0.0899 = 8.99% - buyTaxPct/
 //     sellTaxPct must be 0–100 to match every other *Pct field) ════════
 
 {
@@ -146,7 +146,7 @@ function validRaw(overrides: Record<string, unknown> = {}) {
 }
 
 // ═══ ratio01: out-of-range safety-critical ratios normalize to null ═══
-// (rugRatio, top10HolderRate, bundlerRate, insiderHoldRate — kept as
+// (rugRatio, top10HolderRate, bundlerRate, insiderHoldRate - kept as
 // 0-1 ratios, not converted to percent, but still range-validated so a
 // malformed value like -0.2 can't slip under a `> 0.1` threshold just
 // because it's numerically less than the limit)
@@ -198,7 +198,7 @@ function validRaw(overrides: Record<string, unknown> = {}) {
 }
 
 {
-  // @ts-expect-error — deliberately wrong shape
+  // @ts-expect-error - deliberately wrong shape
   assertEqual(normalizeRobinhoodToken(null), null, "null raw item normalizes to null, doesn't throw");
 }
 
@@ -218,7 +218,7 @@ assertEqual(
   "missing created_timestamp normalizes to null"
 );
 
-// ═══ parseNewCreationPayload — the schema-mismatch-vs-empty distinction ═
+// ═══ parseNewCreationPayload - the schema-mismatch-vs-empty distinction ═
 
 {
   const outcome = parseNewCreationPayload({ new_creation: [] }, ALLOWED);
@@ -251,7 +251,7 @@ assertEqual(
       outcome.totalCount,
       1,
       "totalCount still reflects the raw item even though it's neither a token nor malformed " +
-        "(this is exactly what malformedCount + tokens.length would have missed — it'd report 0/0)"
+        "(this is exactly what malformedCount + tokens.length would have missed - it'd report 0/0)"
     );
   }
 }
@@ -313,7 +313,7 @@ assertEqual(
   assertEqual(outcome.ok, false, "non-object response body is malformed_payload");
 }
 
-// ═══ discoverRobinhoodTokens — configuration/failure distinctions ══════
+// ═══ discoverRobinhoodTokens - configuration/failure distinctions ══════
 
 async function testFailureDistinctions() {
   const originalKey = process.env.GMGN_API_KEY;

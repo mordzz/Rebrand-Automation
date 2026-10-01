@@ -21,7 +21,7 @@ function shortAddress(addr: string): string {
 
 /**
  * The Fleet, public directory view (whitepaper §14): every deployed agent,
- * its performance, and its open positions — read-only, no wallet login
+ * its performance, and its open positions - read-only, no wallet login
  * required, same "publicly watchable" posture as /alpha. Operator wallets
  * are shown short-form only (never the full address) to stay closer to the
  * whitepaper's "operator identity is not public" line while this remains a
@@ -80,7 +80,7 @@ export async function GET() {
         active: bot.active,
         tradingMode: bot.tradingMode as "paper" | "live",
         tradingPaused: breaker.tradingPaused,
-        // Category only — the raw reason embeds a configured
+        // Category only - the raw reason embeds a configured
         // threshold, and this payload is public. See redactPauseReason.
         pauseReason: redactPauseReason(breaker.pauseReason),
         pnl24hNative: pnl24h.pnlNative,

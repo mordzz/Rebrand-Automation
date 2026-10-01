@@ -4,7 +4,7 @@
  * Offline: parsing of documented fields, network config separation,
  * error mapping, and rollup-contract network check (fake fetcher).
  * Live (read-only, skipped with --offline or when unreachable): the active
- * network's Lighter API — /info rollup check, markets, account lookup.
+ * network's Lighter API - /info rollup check, markets, account lookup.
  *
  * Run: npm run test:lighter-foundation
  */

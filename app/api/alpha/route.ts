@@ -7,7 +7,7 @@ import { getTrackedTokenIndex } from "@/lib/gmgn/track";
 import { getRobinhoodAlpha } from "@/lib/alpha/robinhood-alpha";
 import { getTokenMarkets } from "@/lib/sniper/token-market";
 
-// New candidates land continuously while the paper daemon runs — never
+// New candidates land continuously while the paper daemon runs - never
 // cache this route.
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ const MAX_PAGE_SIZE = 30;
 
 /** The token's own metadata JSON (fetched from its URI at detection time)
  * carries more keys than lib/sniper/safety-checks.ts#TokenMetadata declares
- * — `image` among them, confirmed against stored rows. Read it defensively
+ * - `image` among them, confirmed against stored rows. Read it defensively
  * rather than widening that trading-side type with a display-only field. */
 function iconFrom(safety: unknown): string | null {
   const metadata = (safety as { metadata?: Record<string, unknown> } | null)?.metadata;
@@ -34,7 +34,7 @@ function positiveInt(raw: string | null, fallback: number, max?: number): number
 }
 
 /** HISTORICAL (`?source=solana`): fresh pump.fun mints that passed the
- * house's Solana entry criteria — populated by the retired Solana engine. Chain-wide, no wallet scoping.
+ * house's Solana entry criteria - populated by the retired Solana engine. Chain-wide, no wallet scoping.
  *
  * One row per ticker: duplicate launches are rejected at insert time by a
  * unique index (see drizzle/schema/discovery.ts#alphaCandidates.symbolKey), so no
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
   const pageSize = positiveInt(params.get("pageSize"), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
   const requestedPage = positiveInt(params.get("page"), 1);
 
-  // Global, not page-scoped — a header "pulse" stat should read the same
+  // Global, not page-scoped - a header "pulse" stat should read the same
   // no matter which page of results is on screen.
   const [{ count: total, newest: newestDetectedAt }] = await db
     .select({
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     .from(alphaCandidates);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  // Clamp rather than 404 — the feed grows and shrinks under the client,
+  // Clamp rather than 404 - the feed grows and shrinks under the client,
   // so a page that was valid a moment ago shouldn't hard-fail.
   const page = Math.min(requestedPage, totalPages);
 
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
   const [markets, trackedIndex] = await Promise.all([
     getTokenMarkets(rows.map((r) => r.token)),
-    // Empty map when GMGN isn't configured — the column simply stays blank.
+    // Empty map when GMGN isn't configured - the column simply stays blank.
     getTrackedTokenIndex(),
   ]);
 

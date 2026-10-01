@@ -1,5 +1,5 @@
 /**
- * Applies drizzle/0003_robinhood_v1_policy.sql — backfills the approved
+ * Applies drizzle/0003_robinhood_v1_policy.sql - backfills the approved
  * Robinhood v1 maxCreatorHoldPct default (10) into existing unconfigured
  * (NULL) sniper_config rows and sets the column's future default.
  *
@@ -31,7 +31,7 @@ async function countRows(tx: postgres.TransactionSql): Promise<number> {
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DIRECT_URL/DATABASE_URL not set — nothing to migrate against.");
+    console.error("DIRECT_URL/DATABASE_URL not set - nothing to migrate against.");
     process.exitCode = 1;
     return;
   }
@@ -52,10 +52,10 @@ async function main() {
 
       if (before !== after) {
         throw new Error(
-          `Row count changed (${before} → ${after}) — this migration should only UPDATE/ALTER, never insert or delete rows. Rolling back.`
+          `Row count changed (${before} → ${after}) - this migration should only UPDATE/ALTER, never insert or delete rows. Rolling back.`
         );
       }
-      console.log("Row count unchanged — safe to commit.");
+      console.log("Row count unchanged - safe to commit.");
     });
 
     console.log("Transaction committed.");

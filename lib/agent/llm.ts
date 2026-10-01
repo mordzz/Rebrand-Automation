@@ -15,7 +15,7 @@ const ANTHROPIC_DEFAULT_MODEL = "claude-opus-4-8";
  * vendors behind the one key this project already has, so nothing else
  * needs configuring. Anthropic and OpenAI stay as fallbacks purely so a
  * deployment that has one of those keys and no OpenRouter key still
- * works — neither is required, and neither wins when OpenRouter is set.
+ * works - neither is required, and neither wins when OpenRouter is set.
  *
  * Returns null when nothing is configured, so callers degrade with a
  * useful message instead of throwing an auth error at a visitor.
@@ -54,7 +54,7 @@ export function isLlmConfigured(): boolean {
 }
 
 /** The model id actually used, for recording alongside what it produced.
- * Callers should persist this rather than trusting a column default —
+ * Callers should persist this rather than trusting a column default -
  * a lesson attributed to the wrong model is a lesson you cannot audit. */
 export function llmModelId(): string {
   return resolveLlm()?.model ?? "unconfigured";
@@ -71,7 +71,7 @@ export function llmLabel(): string {
 
 /**
  * One completion. `system` is passed as a real system prompt on Anthropic
- * and as a leading system message on OpenAI-compatible APIs — the same
+ * and as a leading system message on OpenAI-compatible APIs - the same
  * instruction either way.
  *
  * Throws when no provider is configured; call isLlmConfigured() first if
@@ -141,7 +141,7 @@ export async function llmChat(params: {
  * Necessary because structured-output support is not universal: OpenRouter
  * routes to whatever model backs the configured slug, and free models in
  * particular ignore `response_format` and wrap their answer in prose or
- * markdown fences — one was observed prefixing replies with a safety
+ * markdown fences - one was observed prefixing replies with a safety
  * classifier header. Scanning for the first balanced object is the only
  * thing that survives all of those; string-awareness stops a brace inside
  * a quoted value from ending the scan early.
@@ -183,7 +183,7 @@ export function extractJsonObject(raw: string): string | null {
  * Asks the provider for structured output where it is supported, but never
  * relies on it: the schema is also stated in the prompt, and the reply is
  * salvaged with extractJsonObject before parsing. Throws if no JSON object
- * can be recovered — callers must treat that as a failed analysis rather
+ * can be recovered - callers must treat that as a failed analysis rather
  * than inventing a result.
  */
 export async function llmJson<T>(params: {
@@ -199,7 +199,7 @@ export async function llmJson<T>(params: {
   const maxTokens = params.maxTokens ?? 4000;
   const system = `${params.system}
 
-Reply with a single JSON object and nothing else — no prose before or after it, no markdown fences. It must match this JSON Schema:
+Reply with a single JSON object and nothing else - no prose before or after it, no markdown fences. It must match this JSON Schema:
 ${JSON.stringify(params.schema)}`;
 
   let raw: string;

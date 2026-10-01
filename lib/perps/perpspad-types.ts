@@ -1,6 +1,6 @@
 /** Perpspad domain model types.
  *
- * The backing perp venue is Drift Protocol, not Phoenix — an earlier pass
+ * The backing perp venue is Drift Protocol, not Phoenix - an earlier pass
  * of this feature wired mock data toward a "Phoenix" perps API
  * (lib/phoenix/, since removed) that has nothing to do with Drift's
  * actual on-chain program/account model. See the Perpspad plan for the
@@ -10,7 +10,7 @@
 export type PerpsDirection = "LONG" | "SHORT";
 
 export type PerpsTokenStatus =
-  /** Row exists off-chain only — the creator's form submission was
+  /** Row exists off-chain only - the creator's form submission was
    * recorded, but no on-chain program exists yet to act on it (Phase 0). */
   | "pending"
   | "active"
@@ -18,10 +18,10 @@ export type PerpsTokenStatus =
   | "liquidated"
   | "accumulating";
 
-/** A Perpspad token — every token created on the launchpad maps to exactly
+/** A Perpspad token - every token created on the launchpad maps to exactly
  *  one perpetual futures position on Drift Protocol. */
 export interface PerpspadToken {
-  /** Stable row identity, always present — unlike `mint`, which is null
+  /** Stable row identity, always present - unlike `mint`, which is null
    * until the token is actually registered on-chain (Phase 1+). Use this
    * for React keys / lookups on a "pending" row. */
   id: string;
@@ -31,10 +31,10 @@ export interface PerpspadToken {
   name: string;
   /** Ticker symbol, e.g. "LONGBTC". */
   symbol: string;
-  /** Underlying Drift perp market symbol, e.g. "BTC", "SOL" — display
+  /** Underlying Drift perp market symbol, e.g. "BTC", "SOL" - display
    * convenience; `underlyingMarketIndex` is the real on-chain identity. */
   underlying: string;
-  /** Drift's own numeric market index for `underlying` — what the program
+  /** Drift's own numeric market index for `underlying` - what the program
    * actually sends Drift, never derived from the symbol string at
    * call time. */
   underlyingMarketIndex: number;
@@ -42,7 +42,7 @@ export interface PerpspadToken {
   direction: PerpsDirection;
   /** Target leverage requested at creation (effective leverage may drift). */
   targetLeverage: number;
-  /** This token's own program-derived Drift-authority PDA — one distinct
+  /** This token's own program-derived Drift-authority PDA - one distinct
    * authority per token (never shared across tokens), so a bug reachable
    * through one token's CPI logic can't reach another token's Drift
    * account. Null until the on-chain program registers this token. */
@@ -83,7 +83,7 @@ export interface CreatePerpspadTokenParams {
   initialCollateralUsdc: number;
 }
 
-/** Fee split configuration — percentages must sum to 100. */
+/** Fee split configuration - percentages must sum to 100. */
 export interface FeeSplitConfig {
   /** Percentage sent to top-up the perp position collateral. */
   collateralTopUp: number;

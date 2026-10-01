@@ -24,7 +24,7 @@ async function countRows(tx: postgres.TransactionSql, table: string): Promise<nu
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DIRECT_URL/DATABASE_URL not set — nothing to migrate against.");
+    console.error("DIRECT_URL/DATABASE_URL not set - nothing to migrate against.");
     process.exitCode = 1;
     return;
   }
@@ -51,7 +51,7 @@ async function main() {
         );
       }
 
-      console.log("\nRow count unchanged — safe to commit.");
+      console.log("\nRow count unchanged - safe to commit.");
     });
 
     console.log("Transaction committed.");

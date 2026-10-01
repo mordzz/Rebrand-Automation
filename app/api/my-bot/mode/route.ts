@@ -26,7 +26,7 @@ const LIVE_GAS_HEADROOM_WEI = BigInt(500_000_000_000_000);
  * two would make "going live" a side effect of a button an operator
  * presses casually many times a day.
  *
- * Going live requires a funded agent wallet — a live bot with an empty
+ * Going live requires a funded agent wallet - a live bot with an empty
  * wallet would just log failures on every candidate it liked.
  */
 export async function POST(request: Request) {
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     }
     /* Gate on what a trade actually costs, not merely on a non-zero
        balance. A wallet holding dust would clear a `> 0` check, go live,
-       and then fail to fill on every candidate it liked — the silent
+       and then fail to fill on every candidate it liked - the silent
        failure this check exists to prevent. `needsFunding` lets the UI
        answer with the funding modal instead of a bare error string. */
     const limits = resolveRobinhoodNativeLimits(await getEffectiveConfig(bot));
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       balanceWei = await getNativeBalance(bot.agentPublicKey);
     } catch {
       return NextResponse.json(
-        { error: "Could not read the agent wallet balance — try again shortly." },
+        { error: "Could not read the agent wallet balance - try again shortly." },
         { status: 503 }
       );
     }

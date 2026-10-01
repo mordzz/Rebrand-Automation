@@ -1,18 +1,18 @@
 /**
- * Read-only Lighter REST client — PR11 foundation.
+ * Read-only Lighter REST client - PR11 foundation.
  *
  * Only unauthenticated, documented, live-verified read endpoints:
- *   GET /api/v1/orderBookDetails            — market metadata + mark price
- *   GET /api/v1/accountsByL1Address         — account indexes for an EVM address
- *   GET /api/v1/account?by=index&value=N    — balances, collateral, positions
- *   GET /info                               — rollup contract (network check)
+ *   GET /api/v1/orderBookDetails            - market metadata + mark price
+ *   GET /api/v1/accountsByL1Address         - account indexes for an EVM address
+ *   GET /api/v1/account?by=index&value=N    - balances, collateral, positions
+ *   GET /info                               - rollup contract (network check)
  *
  * No order placement, no API-key signing (that is PR12). Every numeric
- * field Lighter returns as a decimal string stays a string here — it is
+ * field Lighter returns as a decimal string stays a string here - it is
  * never coerced through floating point on the money path.
  *
  * Collateral: the margin asset is whatever Lighter marks
- * `margin_mode: "enabled"` on the account — read, never assumed. (Docs and
+ * `margin_mode: "enabled"` on the account - read, never assumed. (Docs and
  * ecosystem sources say USDG on mainnet; the live testnet reports USDC.)
  */
 import { getAddress, isAddress } from "viem";
@@ -82,7 +82,7 @@ export type LighterPosition = {
   size: string;
   /** Lighter's raw `sign` field. Its semantics are not defined in the
    * first-party docs, so it is passed through, never interpreted as
-   * long/short here — PR12 must confirm before deriving a side. */
+   * long/short here - PR12 must confirm before deriving a side. */
   sign: number;
   avgEntryPrice: string;
   unrealizedPnl: string;
@@ -237,7 +237,7 @@ export class LighterClient {
     return parseAccount(accounts[0]);
   }
 
-  /** Registered API key(s) for an account slot — public data. */
+  /** Registered API key(s) for an account slot - public data. */
   async getApiKeys(accountIndex: number, apiKeyIndex: number): Promise<LighterApiKeyRecord[]> {
     let body: Record<string, unknown>;
     try {
@@ -259,7 +259,7 @@ export class LighterClient {
     }));
   }
 
-  /** Active orders — requires an auth token from the account's API key. */
+  /** Active orders - requires an auth token from the account's API key. */
   async getActiveOrders(accountIndex: number, authToken: string, marketId?: number): Promise<LighterOrder[]> {
     const market = marketId === undefined ? "" : `&market_id=${marketId}`;
     const body = await getJson(
@@ -284,7 +284,7 @@ export class LighterClient {
     }));
   }
 
-  /** Market funding-rate history — public. */
+  /** Market funding-rate history - public. */
   async getFundingRates(marketId: number, hours = 24): Promise<LighterFundingRate[]> {
     const end = Math.floor(Date.now() / 1000);
     const body = await getJson(
@@ -295,7 +295,7 @@ export class LighterClient {
     return rows.map((f) => ({ timestamp: Number(f.timestamp), value: str(f.value), rate: str(f.rate), direction: str(f.direction) }));
   }
 
-  /** The account's own funding payments — requires an auth token. */
+  /** The account's own funding payments - requires an auth token. */
   async getPositionFunding(accountIndex: number, authToken: string, limit = 50): Promise<LighterPositionFunding[]> {
     const body = await getJson(
       `${this.config.apiBaseUrl}/positionFunding?account_index=${accountIndex}&limit=${limit}`,

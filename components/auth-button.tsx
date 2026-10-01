@@ -15,7 +15,7 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 /** Account-scoped destinations, deliberately distinct from the navbar's
  * "Noah Agent" menu: that one is the product's own surfaces, this one is
- * "your agent" — where you tune it and where the public sees it. */
+ * "your agent" - where you tune it and where the public sees it. */
 const MY_AGENT_LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/deploy", label: "Agent desk", icon: Rocket },
   { href: "/atelier", label: "View in fleet", icon: Users },
@@ -28,7 +28,7 @@ function shortAddress(addr: string) {
 const ITEM_CLASS =
   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-white/70 transition-colors hover:bg-white/5 hover:text-[#E1E0CC]";
 
-/** Rendered only when a Privy app id is configured — usePrivy() throws
+/** Rendered only when a Privy app id is configured - usePrivy() throws
  * outside its provider, hence the split from AuthButton below. */
 function AuthButtonInner({ inline }: { inline: boolean }) {
   const { ready, authenticated, user, login, logout } = usePrivy();
@@ -69,7 +69,7 @@ function AuthButtonInner({ inline }: { inline: boolean }) {
   }
 
   /* Inside the collapsed mobile menu the sheet is already open, so a
-     second nested dropdown would just add a tap for no reason — the same
+     second nested dropdown would just add a tap for no reason - the same
      items render inline instead. */
   if (inline) {
     return (
@@ -159,7 +159,7 @@ function AuthButtonInner({ inline }: { inline: boolean }) {
 
 export function AuthButton({ inline = false }: { inline?: boolean } = {}) {
   if (!PRIVY_APP_ID) {
-    // No Privy app configured yet — route to /deploy, which explains setup.
+    // No Privy app configured yet - route to /deploy, which explains setup.
     return (
       <Button
         size="sm"

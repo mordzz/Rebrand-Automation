@@ -3,7 +3,7 @@ import { STREAK_RESET_MS } from "@/lib/sniper/risk-limits";
 import type { SniperConfig } from "@/lib/sniper/config";
 
 /**
- * Robinhood-scoped risk/sizing — PR07. Deliberately NOT a reuse of
+ * Robinhood-scoped risk/sizing - PR07. Deliberately NOT a reuse of
  * lib/sniper/risk-limits.ts's SOL-denominated functions: those read
  * maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol directly, and
  * silently pointing them at ETH amounts would be exactly the invented
@@ -14,7 +14,7 @@ import type { SniperConfig } from "@/lib/sniper/config";
  * explicitly configured for ETH.
  *
  * maxConcurrentPositions and cooldownAfterLossSec ARE reused directly
- * from the shared config — they're chain-neutral counts/durations, not
+ * from the shared config - they're chain-neutral counts/durations, not
  * currency amounts, and maxConcurrentPositions is deliberately kept
  * wallet-global (see canOpenNewRobinhoodPosition below) rather than
  * split per chain, preserving its existing single meaning.
@@ -33,7 +33,7 @@ export type RobinhoodLimitsResult =
 
 /**
  * Resolves the ETH-native risk limits for Robinhood paper trading, or an
- * explicit configuration-blocker reason. Fails closed — never silently
+ * explicit configuration-blocker reason. Fails closed - never silently
  * reinterprets a Solana `nativeSymbol="SOL"` historical backfill (or an
  * unset one) as ETH, and never derives a number from
  * maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol.
@@ -49,26 +49,26 @@ export function resolveRobinhoodNativeLimits(
       ok: false,
       reason:
         config.nativeSymbol == null
-          ? "Robinhood native risk limits not configured (nativeSymbol unset) — configuration blocker"
-          : `Robinhood requires nativeSymbol="ETH"; sniper_config currently has nativeSymbol="${config.nativeSymbol}" — refusing to reinterpret it as ETH`,
+          ? "Robinhood native risk limits not configured (nativeSymbol unset) - configuration blocker"
+          : `Robinhood requires nativeSymbol="ETH"; sniper_config currently has nativeSymbol="${config.nativeSymbol}" - refusing to reinterpret it as ETH`,
     };
   }
   if (config.maxNativePerSnipe == null || !(config.maxNativePerSnipe > 0)) {
     return {
       ok: false,
-      reason: "maxNativePerSnipe not configured (must be a positive ETH value) — configuration blocker",
+      reason: "maxNativePerSnipe not configured (must be a positive ETH value) - configuration blocker",
     };
   }
   if (config.maxNativeDeployed == null || !(config.maxNativeDeployed > 0)) {
     return {
       ok: false,
-      reason: "maxNativeDeployed not configured (must be a positive ETH value) — configuration blocker",
+      reason: "maxNativeDeployed not configured (must be a positive ETH value) - configuration blocker",
     };
   }
   if (config.maxDailyDrawdownNative == null || !(config.maxDailyDrawdownNative > 0)) {
     return {
       ok: false,
-      reason: "maxDailyDrawdownNative not configured (must be a positive ETH value) — configuration blocker",
+      reason: "maxDailyDrawdownNative not configured (must be a positive ETH value) - configuration blocker",
     };
   }
   return {
@@ -88,10 +88,10 @@ export function sizeForRobinhoodSnipe(limits: RobinhoodNativeLimits): number {
 
 /**
  * Robinhood-specific entry gate. `allOpenPositions` must be the wallet's
- * FULL open-position list (every chain) — maxConcurrentPositions stays a
+ * FULL open-position list (every chain) - maxConcurrentPositions stays a
  * single wallet-global cap, unchanged in meaning from the Solana path.
  * `robinhoodOpenPositions` must be pre-filtered to chain="robinhood"
- * only — the deployed-native sum below reads ONLY `sizeNative` from
+ * only - the deployed-native sum below reads ONLY `sizeNative` from
  * these, and must never be added to any Solana `sizeSol` figure.
  */
 export function canOpenNewRobinhoodPosition(
@@ -124,7 +124,7 @@ export function canOpenNewRobinhoodPosition(
     const elapsedSec = (Date.now() - breakerState.lastLossAt.getTime()) / 1000;
     if (elapsedSec < config.cooldownAfterLossSec) {
       const remaining = Math.ceil(config.cooldownAfterLossSec - elapsedSec);
-      return { allowed: false, reason: `cooldown after loss — ${remaining}s remaining` };
+      return { allowed: false, reason: `cooldown after loss - ${remaining}s remaining` };
     }
   }
   return { allowed: true };
@@ -137,7 +137,7 @@ export type DerivedRobinhoodTradeStats = {
 };
 
 /**
- * Robinhood counterpart to lib/sniper/risk-limits.ts#deriveTradingPause —
+ * Robinhood counterpart to lib/sniper/risk-limits.ts#deriveTradingPause -
  * identical consecutive-loss/cooldown/streak-reset semantics, reading
  * pnlNative and maxDailyDrawdownNative instead of pnlSol/
  * maxDailyDrawdownSol. maxConsecutiveLosses (a count, not a currency

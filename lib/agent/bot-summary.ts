@@ -1,8 +1,8 @@
 /**
- * Chain-correct bot summaries for display (stats, atelier, agent chat) —
+ * Chain-correct bot summaries for display (stats, atelier, agent chat) -
  * PR14.
  *
- * Display only — no trading decision is made here. It reuses the exact
+ * Display only - no trading decision is made here. It reuses the exact
  * functions scripts/paper-daemon.ts uses for Robinhood bots, so what the UI
  * shows matches what the daemon enforces:
  *   - PnL is summed per chain: Robinhood rows in ETH (pnlNative), historical
@@ -44,7 +44,7 @@ export function summarizePnl(rows: TradeLike[]): PnlSummary {
   return { pnlNative, nativeSymbol: ROBINHOOD_NATIVE_SYMBOL, pnlSolHistorical };
 }
 
-/** A trade's own-unit PnL sign — for win counting (unitless). */
+/** A trade's own-unit PnL sign - for win counting (unitless). */
 export function tradeWon(t: TradeLike): boolean {
   return Number(t.chain === "robinhood" ? (t.pnlNative ?? t.pnlSol) : t.pnlSol) > 0;
 }

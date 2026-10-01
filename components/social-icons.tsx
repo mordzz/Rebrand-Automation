@@ -1,4 +1,4 @@
-/* lucide-react v1 dropped brand icons — these match its stroke style */
+/* lucide-react v1 dropped brand icons - these match its stroke style */
 
 export function InstagramIcon({ size = 20 }: { size?: number }) {
   return (

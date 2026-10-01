@@ -51,7 +51,7 @@ async function rejects(fn: () => Promise<unknown>, pattern: RegExp, label: strin
     assert(false, `${label} (did not throw)`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    assert(pattern.test(msg), `${label} — ${msg.slice(0, 90)}`);
+    assert(pattern.test(msg), `${label} - ${msg.slice(0, 90)}`);
   }
 }
 

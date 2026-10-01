@@ -8,7 +8,7 @@ import { trades } from "@/drizzle/schema";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** `?wallet=` scopes to one deployed bot's own trade history; omitted
- * means the house desk — see app/api/positions/route.ts for the same
+ * means the house desk - see app/api/positions/route.ts for the same
  * null-means-house convention. */
 export async function GET(request: NextRequest) {
   const db = getDb();

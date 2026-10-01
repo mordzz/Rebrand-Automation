@@ -3,7 +3,7 @@
 import { Loader2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 
-/** Mirrors lib/sniper/config.ts#SniperConfig — kept as a plain type here
+/** Mirrors lib/sniper/config.ts#SniperConfig - kept as a plain type here
  * (not imported) since this file is a client component and the source
  * type lives in server-only code that also touches the DB driver. */
 type TakeProfitTier = { atPct: number; sellPortionPct: number };
@@ -149,7 +149,7 @@ function buildSections(c: SniperConfigValue): { title: string; rows: SpecRow[] }
 
 /** Read-only view of a bot's live effective config. Defaults to the house
  * desk (`/api/sniper/config`); /dashboard passes `endpoint` to point this
- * at Noah's own `/api/my-bot/config` instead — same component, same
+ * at Noah's own `/api/my-bot/config` instead - same component, same
  * read-only posture, different bot. The interactive editor
  * (sniper-config-panel.tsx) is reserved for the deploy-your-own-bot flow,
  * never exposed here. */

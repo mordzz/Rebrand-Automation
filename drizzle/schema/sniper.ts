@@ -15,7 +15,7 @@ export const sniperState = pgTable("sniper_state", {
   pauseReason: text("pause_reason"),
   consecutiveLosses: numeric("consecutive_losses").notNull().default("0"),
   dailyPnlSol: numeric("daily_pnl_sol").notNull().default("0"),
-  /* PR04 chain-neutral successor — see trades.sizeNative above for the
+  /* PR04 chain-neutral successor - see trades.sizeNative above for the
    * additive rationale. dailyPnlSol stays authoritative until a later PR
    * moves the daemon's reads/writes over. */
   dailyPnlNative: numeric("daily_pnl_native"),
@@ -24,17 +24,17 @@ export const sniperState = pgTable("sniper_state", {
     .notNull()
     .defaultNow(),
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
-  /* Set on every closed loss — canOpenNewPosition rejects new entries
+  /* Set on every closed loss - canOpenNewPosition rejects new entries
      until sniperConfig.cooldownAfterLossSec has elapsed since this. */
   lastLossAt: timestamp("last_loss_at", { withTimezone: true }),
 });
 
 /**
- * Single-row, hot-reloadable trading configuration for the Sniper daemon —
+ * Single-row, hot-reloadable trading configuration for the Sniper daemon -
  * replaces the old env-only SNIPER_* knobs (lib/sniper/config.ts). The
  * daemon re-reads this every cycle (getSniperConfig), so a change here
  * takes effect without a restart. SNIPER_ENABLED/SNIPER_DRY_RUN stay
- * env-only and restart-gated on purpose — those are master safety
+ * env-only and restart-gated on purpose - those are master safety
  * switches, not trading behavior.
  */
 export const sniperConfig = pgTable("sniper_config", {
@@ -52,7 +52,7 @@ export const sniperConfig = pgTable("sniper_config", {
     .default(true),
   requireSocialLink: boolean("require_social_link").notNull().default(true),
   /* Requires an on-chain-confirmed buy from one of `alphaWallets` before
-     entering — see lib/sniper/alpha-wallets.ts. A no-op while alphaWallets
+     entering - see lib/sniper/alpha-wallets.ts. A no-op while alphaWallets
      is empty (never rejects everything just because the list is unset). */
   requireAlphaWalletBuy: boolean("require_alpha_wallet_buy")
     .notNull()
@@ -74,7 +74,7 @@ export const sniperConfig = pgTable("sniper_config", {
   maxTotalDeployedSol: numeric("max_total_deployed_sol")
     .notNull()
     .default("0.15"),
-  /* PR04 chain-neutral successors — same additive rationale as trades
+  /* PR04 chain-neutral successors - same additive rationale as trades
    * above. The *Sol columns stay authoritative/NOT NULL; risk thresholds
    * and semantics are unchanged by this PR. */
   maxNativePerSnipe: numeric("max_native_per_snipe"),
@@ -119,11 +119,11 @@ export const sniperConfig = pgTable("sniper_config", {
     .notNull()
     .default("3000"),
 
-  /* PR06.5 — Robinhood/EVM-specific safety policy. Additive: the legacy
+  /* PR06.5 - Robinhood/EVM-specific safety policy. Additive: the legacy
    * Solana fields above (requireMintAuthorityRenounced,
    * requireFreezeAuthorityRenounced, maxCreatorBuyPct, minLiquiditySol)
    * are untouched and remain Solana-only. These are deliberate new EVM
-   * policy choices, not semantic translations of the Solana fields — see
+   * policy choices, not semantic translations of the Solana fields - see
    * lib/gmgn/safety-robinhood.ts for why mint/freeze-authority concepts
    * don't carry over. */
   requireOwnerRenounced: boolean("require_owner_renounced")
@@ -132,12 +132,12 @@ export const sniperConfig = pgTable("sniper_config", {
   requireNoBlacklistCapability: boolean("require_no_blacklist_capability")
     .notNull()
     .default(true),
-  /* Robinhood equivalent of maxCreatorBuyPct — but measures CURRENT
+  /* Robinhood equivalent of maxCreatorBuyPct - but measures CURRENT
    * creator holding concentration (creatorHoldRate), not initial
    * buy/allocation, which cannot be reliably reconstructed on Robinhood
    * (see safety-robinhood.ts). Still nullable (null continues to mean
    * "not yet configured" → configuration blocker) but now defaults to
-   * the approved v1 value (10) for new rows — see
+   * the approved v1 value (10) for new rows - see
    * drizzle/0003_robinhood_v1_policy.sql for the matching backfill of
    * existing NULL rows. Never silently inherits maxCreatorBuyPct's
    * threshold just because both are percentages. */

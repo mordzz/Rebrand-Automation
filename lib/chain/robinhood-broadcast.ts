@@ -1,5 +1,5 @@
 /**
- * Robinhood Chain TESTNET broadcaster — PR10.
+ * Robinhood Chain TESTNET broadcaster - PR10.
  *
  * The narrow last step of the execution pipeline:
  *
@@ -7,12 +7,12 @@
  *   PR09 signer  (robinhood-agent-signing.ts) → signed raw tx (offline)
  *   PR10 broadcaster (this module)            → eth_sendRawTransaction
  *
- * It sends exactly one already-signed raw transaction and nothing else —
+ * It sends exactly one already-signed raw transaction and nothing else -
  * it cannot build, alter, or sign anything. Before sending it independently
  * re-derives what the raw bytes actually do and refuses unless ALL match
  * what the caller intended:
  *
- *   - chain id is Robinhood TESTNET (46630) — hard-coded, no env flag; the
+ *   - chain id is Robinhood TESTNET (46630) - hard-coded, no env flag; the
  *     process must also be on testnet and the RPC must report 46630
  *   - recovered sender == the bot's agent wallet
  *   - `to`, `value`, and calldata == the PR08 unsigned transaction exactly
@@ -20,11 +20,11 @@
  *
  * Idempotency / rebroadcast safety:
  *   - the tx hash is keccak256(raw), computed BEFORE sending, and handed to
- *     `persistBeforeSend` — the caller records it durably first, so a crash
+ *     `persistBeforeSend` - the caller records it durably first, so a crash
  *     mid-send can always be reconciled by hash, never blindly re-signed
  *   - if the hash is already known to the node, it is NOT resent
  *   - if the sender's confirmed nonce has already moved past this tx's nonce
- *     and the hash is unknown, the nonce was consumed by a different tx —
+ *     and the hash is unknown, the nonce was consumed by a different tx -
  *     refused, never "retried" (that would be a replacement, not a resend)
  *
  * MAINNET: not implemented. Fails closed before any RPC call.
@@ -59,7 +59,7 @@ export type BroadcastRecord = {
 };
 
 export type BroadcastInput = {
-  /** The bot's agent wallet address — must be the recovered signer. */
+  /** The bot's agent wallet address - must be the recovered signer. */
   expectedSender: Address;
   /** The PR08 transaction the signer was asked to sign. */
   unsignedTransaction: UnsignedTransaction;
@@ -72,7 +72,7 @@ export type BroadcastInput = {
 
 export type BroadcastResult = {
   hash: Hex;
-  /** True when the node already knew this exact tx — it was not resent. */
+  /** True when the node already knew this exact tx - it was not resent. */
   alreadyKnown: boolean;
 };
 
@@ -106,11 +106,11 @@ export async function verifySignedTransaction(
   }
 
   // viem's parseTransaction omits zero-valued RLP fields (e.g. a 0 priority
-  // fee on Robinhood's L2, nonce 0, value 0) — treat absent as zero.
+  // fee on Robinhood's L2, nonce 0, value 0) - treat absent as zero.
   const n = (v: bigint | undefined) => v ?? BigInt(0);
 
   const fail = (what: string) => {
-    throw new Error(`broadcast: refusing — ${what}`);
+    throw new Error(`broadcast: refusing - ${what}`);
   };
 
   if (parsed.type !== "eip1559") fail(`tx type is ${parsed.type}, expected eip1559`);
@@ -174,7 +174,7 @@ export async function broadcastRobinhoodTransaction(
   const confirmedNonce = await client.getTransactionCount({ address: record.sender, blockTag: "latest" });
   if (confirmedNonce > record.nonce) {
     throw new Error(
-      `broadcast: refusing — nonce ${record.nonce} was already consumed by a different transaction ` +
+      `broadcast: refusing - nonce ${record.nonce} was already consumed by a different transaction ` +
         `(confirmed nonce ${confirmedNonce}); re-sign from fresh state instead of rebroadcasting`,
     );
   }

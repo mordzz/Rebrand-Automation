@@ -22,7 +22,7 @@ type StatusResponse = {
 };
 
 /** Mirrors the circuit-breaker thresholds in lib/sniper/config.ts#SniperConfig
- * — only the two fields this panel needs to give the live numbers context. */
+ * - only the two fields this panel needs to give the live numbers context. */
 type ConfigValue = {
   maxConsecutiveLosses: number;
   maxDailyDrawdownSol: number;
@@ -54,7 +54,7 @@ function usePolledJson<T>(url: string, intervalMs: number): T | null {
 
 const DAEMON_LABEL: Record<DaemonStatus, string> = {
   online: "Daemon online",
-  stale: "Daemon stale — may have crashed",
+  stale: "Daemon stale - may have crashed",
   never_started: "Daemon never started",
   unknown: "Daemon status unknown",
 };
@@ -66,7 +66,7 @@ const DAEMON_DOT: Record<DaemonStatus, string> = {
   unknown: "bg-muted-foreground/40",
 };
 
-/** Read-only view of the Raven's safety state — daemon heartbeat and
+/** Read-only view of the Raven's safety state - daemon heartbeat and
  * circuit-breaker status. No pause/resume control here: /api/sniper/toggle
  * requires a signed-in operator, and adding a kill switch to this public
  * dashboard is a separate UI decision. */
@@ -136,7 +136,7 @@ export function SniperStatusPanel() {
       {state?.tradingPaused && state.pauseReason && (
         <div className="flex items-start gap-2 border-t border-white/5 px-4 py-2.5 text-xs text-destructive">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          Circuit breaker tripped — {state.pauseReason}
+          Circuit breaker tripped - {state.pauseReason}
         </div>
       )}
 
@@ -152,11 +152,11 @@ export function SniperStatusPanel() {
               dailyPnl != null && dailyPnl > 0 && "text-sol-green-ink"
             )}
           >
-            {dailyPnl != null ? `${dailyPnl >= 0 ? "+" : ""}${dailyPnl.toFixed(3)} SOL` : "—"}
+            {dailyPnl != null ? `${dailyPnl >= 0 ? "+" : ""}${dailyPnl.toFixed(3)} SOL` : "-"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {historical
-              ? "Not a live Robinhood figure — see per-bot desks"
+              ? "Not a live Robinhood figure - see per-bot desks"
               : config
                 ? `Halts at −${config.maxDailyDrawdownSol} SOL`
                 : "Daily drawdown halt"}
@@ -167,7 +167,7 @@ export function SniperStatusPanel() {
             Consecutive losses
           </p>
           <p className="mt-2.5 text-2xl font-medium tabular-nums">
-            {consecutiveLosses ?? "—"}
+            {consecutiveLosses ?? "-"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {config ? `Halts at ${config.maxConsecutiveLosses} in a row` : "Loss-streak halt"}

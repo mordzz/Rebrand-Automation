@@ -1,12 +1,12 @@
 /**
- * Lighter API-key registration (ChangePubKey) — PR12.
+ * Lighter API-key registration (ChangePubKey) - PR12.
  *
  * Ownership model: the Lighter account is owned by the bot's AUTONOMOUS
  * AGENT wallet (`bot.agentPublicKey`), never the owner's Privy wallet.
  *
  * Flow (all semantics from lighter-go v1.0.10 / lighter-python, pinned):
  *   1. resolve the agent's Lighter account authoritatively via
- *      accountsByL1Address(agent) — never a caller-supplied index
+ *      accountsByL1Address(agent) - never a caller-supplied index
  *   2. idempotency: reuse an already-registered / pending key; never rotate
  *      implicitly; refuse to overwrite a slot holding someone else's key
  *   3. new key: official GenerateAPIKey INSIDE the signer worker; persist
@@ -17,7 +17,7 @@
  *   6. agent wallet signs exactly that message (EIP-191) inside the
  *      existing agent-key boundary (lib/chain/lighter-registration-signing)
  *   7. attach `L1Sig` (official field), POST sendTx
- *   8. confirm via GET /api/v1/apikeys — submission alone is not success
+ *   8. confirm via GET /api/v1/apikeys - submission alone is not success
  *
  * TESTNET ONLY: registration is a state change on Lighter.
  */
@@ -84,7 +84,7 @@ export function buildChangePubKeyMessage(i: Pick<ApiKeyRegistrationIntent, "publ
 
 /**
  * Independent verification of the official signer's ChangePubKey output
- * against the intent. Throws on ANY deviation — run before the agent key
+ * against the intent. Throws on ANY deviation - run before the agent key
  * is loaded.
  */
 export function verifyPreparedChangePubKey(prepared: PreparedChangePubKey, intent: ApiKeyRegistrationIntent): void {
@@ -170,7 +170,7 @@ export type RegistrationDeps = {
   sendTx?: SendTx;
   openSigner?: typeof LighterSigner.open;
   provisionSigner?: typeof LighterSigner.provision;
-  /** Agent-wallet L1 signer — lib/chain/lighter-registration-signing.ts. */
+  /** Agent-wallet L1 signer - lib/chain/lighter-registration-signing.ts. */
   signRegistration: (bot: AgentWalletBotRow, intent: ApiKeyRegistrationIntent, prepared: PreparedChangePubKey) => Promise<`0x${string}`>;
   confirmAttempts?: number;
   confirmDelayMs?: number;

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Reproducible build of Lighter's OFFICIAL signer (lighter-go) as WASM — PR12.
+# Reproducible build of Lighter's OFFICIAL signer (lighter-go) as WASM - PR12.
 #
 # Source:    https://github.com/elliottech/lighter-go
 # Pinned:    tag v1.0.10, commit 9d38261d1a4cc5c7211b383ba07a4d6e41604708

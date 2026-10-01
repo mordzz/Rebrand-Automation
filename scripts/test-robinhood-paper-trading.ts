@@ -1,7 +1,7 @@
 /**
- * Focused tests for PR07 — Robinhood Chain paper trading.
+ * Focused tests for PR07 - Robinhood Chain paper trading.
  *
- * No network calls, no DB connection, no test framework — same plain-tsx
+ * No network calls, no DB connection, no test framework - same plain-tsx
  * convention as the other scripts/test-*.ts files. Covers:
  *   - the discovery → security → safety composition that produces a
  *     paper-entry-eligible result (reusing the already-tested adapters)
@@ -9,7 +9,7 @@
  *     (lib/sniper/risk-limits-robinhood.ts)
  *   - a static structural check that the Robinhood paper-entry/discovery
  *     code in scripts/paper-daemon.ts never references any
- *     Jupiter/Solana-signing/live-execution identifier — see the
+ *     Jupiter/Solana-signing/live-execution identifier - see the
  *     ROBINHOOD-PAPER-ONLY markers in that file
  *
  * Run: npm run test:robinhood-paper-trading
@@ -97,7 +97,7 @@ function makeToken(overrides: Record<string, unknown> = {}): RobinhoodDiscovered
     creator_balance_rate: 0,
     ...overrides,
   });
-  if (!token) throw new Error("test fixture failed to normalize — fix the fixture");
+  if (!token) throw new Error("test fixture failed to normalize - fix the fixture");
   return token;
 }
 
@@ -120,7 +120,7 @@ async function main() {
     );
   }
   {
-    // Safety refusal (blocked keyword) must prevent an entry — the daemon
+    // Safety refusal (blocked keyword) must prevent an entry - the daemon
     // only calls openRobinhoodPaperPosition when safety.passed is true.
     const token = makeToken({ name: "Definitely A Scam Coin" });
     const safety = await evaluateRobinhoodSafety(
@@ -231,7 +231,7 @@ async function main() {
   {
     const limits = { maxNativePerSnipe: 0.01, maxNativeDeployed: 1, maxDailyDrawdownNative: 0.05, nativeSymbol: "ETH" };
     // dailyPnlNative already reflects a chain-filtered query (see
-    // lib/sniper/wallet-trade-stats-robinhood.ts) — this proves the pure
+    // lib/sniper/wallet-trade-stats-robinhood.ts) - this proves the pure
     // derivation function itself only ever looks at the ETH figure it's
     // given, never a mixed one.
     const state = deriveRobinhoodTradingPause(
@@ -256,7 +256,7 @@ async function main() {
   }
 
   // ═══ existing Solana risk tests remain unaffected ═════════════════════
-  // (lib/sniper/risk-limits.ts is untouched by this PR — verified by
+  // (lib/sniper/risk-limits.ts is untouched by this PR - verified by
   // scripts/test-robinhood-safety.ts and the absence of any diff there;
   // this suite only adds the Robinhood-scoped counterpart module.)
 
@@ -288,7 +288,7 @@ async function main() {
     }
 
     // A Robinhood paper entry/exit never writes the "paper" sentinel into
-    // a chain-neutral hash column (entryTxHash/txHash) — only into the
+    // a chain-neutral hash column (entryTxHash/txHash) - only into the
     // legacy entryTxSignature/txSignature compatibility shadows.
     assert(
       /entryTxHash:\s*null/.test(source),
@@ -372,7 +372,7 @@ async function main() {
   {
     // legacy chain=NULL Solana rows and explicit chain="solana" rows
     // both still count toward the deployed-SOL sum (this is exactly
-    // what getOpenSolanaPositions is meant to select — this test proves
+    // what getOpenSolanaPositions is meant to select - this test proves
     // the pure canOpenNewPosition function treats them identically, the
     // DB-side filter itself is covered by the source-level check below).
     const config = envSeededDefaults();
@@ -398,7 +398,7 @@ async function main() {
       assert(!!fnMatch, `${fn} found in wallet-trade-stats.ts`);
       assert(
         !!fnMatch && fnMatch[0].includes("SOLANA_CHAIN_FILTER"),
-        `${fn} applies SOLANA_CHAIN_FILTER — a Robinhood trade's pnlSol shadow cannot enter the Solana circuit breaker`
+        `${fn} applies SOLANA_CHAIN_FILTER - a Robinhood trade's pnlSol shadow cannot enter the Solana circuit breaker`
       );
     }
   }
@@ -440,7 +440,7 @@ async function main() {
     const failureBlockMatch = source.match(/if \(item\.securityFetchFailed\) \{[\s\S]*?continue;\s*\}/);
     assert(
       !!failureBlockMatch && !failureBlockMatch[0].includes("config."),
-      "the security-fetch-failure refusal does not consult any config field — no combination of disabled gates can override it"
+      "the security-fetch-failure refusal does not consult any config field - no combination of disabled gates can override it"
     );
   }
 
@@ -458,7 +458,7 @@ async function main() {
     const source = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
     // PR09A retired Solana live execution, so the Solana chain-read
     // reconciliation path (reconcileOnStart/heldTokenAmount) no longer
-    // exists at all — a Robinhood row cannot reach a Solana chain read
+    // exists at all - a Robinhood row cannot reach a Solana chain read
     // because there is none. Stronger than the old ordering guard.
     assert(
       !source.includes("async function reconcileOnStart") && !source.includes("heldTokenAmount("),
@@ -504,7 +504,7 @@ async function main() {
     );
     assert(
       exitLogicSource.includes("export const DUST_THRESHOLD_SOL = DUST_THRESHOLD_NATIVE;"),
-      "DUST_THRESHOLD_SOL remains a backwards-compatible alias with the same numeric value — no Solana behavior change"
+      "DUST_THRESHOLD_SOL remains a backwards-compatible alias with the same numeric value - no Solana behavior change"
     );
     const daemonSource = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
     assert(

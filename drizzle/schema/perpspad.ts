@@ -4,7 +4,7 @@ import { check, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-o
 
 /**
  * One row per launched Perpspad token (app/perps). `programTokenPda` and
- * `driftSubaccountAuthority` are null while `status = "pending"` — a
+ * `driftSubaccountAuthority` are null while `status = "pending"` - a
  * Phase 0 row exists here before any on-chain program does; those columns
  * become real once the token is registered on-chain (see the Perpspad
  * plan). The `entryPrice`…`lastCheckedAt` block is keeper-refreshed and
@@ -15,7 +15,7 @@ export const perpspadTokens = pgTable(
   "perpspad_tokens",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /* Null while status = "pending" — Phase 0 rows record a creator's
+    /* Null while status = "pending" - Phase 0 rows record a creator's
        intent before any on-chain program exists to actually mint
        anything. Nullable + unique, same reasoning as
        alphaCandidates.symbolKey: Postgres allows many NULLs under a
@@ -23,18 +23,18 @@ export const perpspadTokens = pgTable(
     mint: text("mint").unique(),
     name: text("name").notNull(),
     symbol: text("symbol").notNull(),
-    /* Drift's own numeric market index for the underlying — the program
+    /* Drift's own numeric market index for the underlying - the program
        sends this to Drift directly, never a symbol string derived at
        call time. Display symbol lives in lib/perps/markets.ts. */
     underlyingMarketIndex: numeric("underlying_market_index").notNull(),
     direction: text("direction").notNull(), // LONG | SHORT
     targetLeverage: numeric("target_leverage").notNull(),
     creatorWallet: text("creator_wallet").notNull(),
-    /* The on-chain PerpToken PDA address — the real source of truth once
+    /* The on-chain PerpToken PDA address - the real source of truth once
        the Phase 1 program exists; unique so a chain account is never
        claimed by two rows. */
     programTokenPda: text("program_token_pda").unique(),
-    /* This token's own Drift-authority PDA (Phase 2) — one distinct
+    /* This token's own Drift-authority PDA (Phase 2) - one distinct
        authority per token, never shared across tokens, so a bug reachable
        through one token's CPI logic can't reach another token's Drift
        account. */
@@ -67,7 +67,7 @@ export const perpspadTokens = pgTable(
 
 /**
  * Append-only audit ledger, one row per keeper fee-collection cycle for
- * one token — same role as `logs`/`sniperConfigHistory`. A cycle can
+ * one token - same role as `logs`/`sniperConfigHistory`. A cycle can
  * half-succeed (e.g. the collateral top-up lands but the buyback swap
  * fails); `status` records that honestly rather than treating the whole
  * cycle as atomic.
@@ -104,10 +104,10 @@ export const perpspadFeeEvents = pgTable(
 );
 
 /**
- * Single-row, hot-reloadable Perpspad config — same shape/role as
+ * Single-row, hot-reloadable Perpspad config - same shape/role as
  * sniperConfig. Basis points, not raw percent, because this mirrors what
  * the on-chain Config account (Phase 1) stores: **this row is the source
- * of truth only until that account exists** — from Phase 1 onward it
+ * of truth only until that account exists** - from Phase 1 onward it
  * becomes a read-cache synced FROM chain, not an independently-editable
  * value, or the fee-split-duplicated-in-three-places bug the UI mockup
  * already had just moves on-chain instead of getting fixed. The CHECK

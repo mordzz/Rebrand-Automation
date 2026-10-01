@@ -1,5 +1,5 @@
 # Deploy: fly deploy
-# One image (see Dockerfile), shared by multiple process groups — only
+# One image (see Dockerfile), shared by multiple process groups - only
 # `app` serves HTTP traffic. `paper` runs the per-user trading worker.
 #
 # The `paper` worker trades every deployed bot on Robinhood Chain in paper
@@ -12,7 +12,7 @@ app = "noah-engine"
 primary_region = "iad"
 
 [build]
-  # Public by design (inlined into the client bundle) — not a secret, safe
+  # Public by design (inlined into the client bundle) - not a secret, safe
   # to commit. Matches components/providers.tsx's PRIVY_APP_ID.
   [build.args]
     NEXT_PUBLIC_PRIVY_APP_ID = "cmroz267200ju0cjqohmdfj5j"

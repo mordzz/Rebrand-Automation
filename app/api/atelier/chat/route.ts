@@ -22,18 +22,18 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /* How many turns of the caller's conversation are re-sent to the model.
    The conversation itself is never stored: /atelier has no visitor login,
    so a persisted thread would be one shared transcript that every visitor
-   reads and writes — one person's questions shown to the next. Keeping it
+   reads and writes - one person's questions shown to the next. Keeping it
    in the browser tab makes each visit its own conversation, and closing
    the modal ends it. The agent's *own* memory (its post-mortems and trade
-   record) still lives in the database and is what gives it an identity —
+   record) still lives in the database and is what gives it an identity -
    see the memory field on AgentChatContext. */
 const MODEL_HISTORY_TURNS = 12;
-/** Bounds on the client-supplied window — this route is public and
+/** Bounds on the client-supplied window - this route is public and
  *  unauthenticated, so neither length is allowed to be a caller's choice. */
 const MAX_TEXT_LEN = 2000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // How far back selectNotableTrades is allowed to look for a "biggest
-// win"/"biggest loss" — bounded so the query stays cheap no matter how long
+// win"/"biggest loss" - bounded so the query stays cheap no matter how long
 // an agent has been trading; going deeper than this for a live chat answer
 // has sharply diminishing value anyway.
 const NOTABLE_TRADE_WINDOW = 100;
@@ -45,9 +45,9 @@ const MEMORY_LIMIT = 6;
 // A chat burst is a few turns over seconds to minutes; nothing about a
 // bot's own performance data changes that fast (it moves at paper-trade
 // speed, not chat speed), so re-deriving the full context on every single
-// turn is pure waste. Short, self-expiring, in-memory — same shape as the
+// turn is pure waste. Short, self-expiring, in-memory - same shape as the
 // daemon's own breaker cache in scripts/paper-daemon.ts. This caches only
-// performance data, never the conversation itself — the conversation is
+// performance data, never the conversation itself - the conversation is
 // always read from and written to agent_chat_messages below.
 const CONTEXT_CACHE_TTL_MS = 10_000;
 const contextCache = new Map<string, { context: AgentChatContext; expiresAt: number }>();
@@ -90,7 +90,7 @@ async function buildContext(
         .where(eq(trades.walletAddress, wallet))
         .orderBy(desc(trades.closedAt))
         .limit(NOTABLE_TRADE_WINDOW),
-      /* This agent's own post-mortems — joined through its own trades, so
+      /* This agent's own post-mortems - joined through its own trades, so
          one agent can never be handed another's conclusions. */
       db
         .select({
@@ -162,14 +162,14 @@ async function buildContext(
 }
 
 /**
- * POST { botId, messages } — answers one turn as this agent, grounded in
+ * POST { botId, messages } - answers one turn as this agent, grounded in
  * its own performance and its own post-mortems (never bot.config; see the
  * opacity note on lib/agent/agent-chat.ts).
  *
  * Stateless: the caller sends the conversation it wants remembered and
  * nothing is written back. Looked up by bot id rather than wallet address,
  * because /api/atelier only ever sends the client a truncated wallet
- * string — the full address never has to round-trip from the browser.
+ * string - the full address never has to round-trip from the browser.
  */
 export async function POST(request: Request) {
   const db = getDb();

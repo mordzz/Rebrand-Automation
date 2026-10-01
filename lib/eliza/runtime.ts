@@ -44,7 +44,7 @@ export function getElizaRuntime(): Promise<AgentRuntime> | null {
   if (!g.__elizaRuntime) {
     g.__elizaRuntime = (async () => {
       // Real, env-driven connection: only enabled providers' plugins are
-      // ever constructed — "connected" in the dashboard's Model connections
+      // ever constructed - "connected" in the dashboard's Model connections
       // panel means exactly this, not a UI toggle with no backing behavior.
       const modelPlugins = providerStatuses
         .filter((p) => p.enabled)
@@ -54,14 +54,14 @@ export function getElizaRuntime(): Promise<AgentRuntime> | null {
         character: noahCharacter,
         plugins: [pluginSql, ...modelPlugins],
         settings: buildElizaSettings(),
-        // "useful for direct chat interfaces" per core's own doc comment —
+        // "useful for direct chat interfaces" per core's own doc comment -
         // the dashboard always expects a reply, never silent non-response.
         checkShouldRespond: false,
       });
       await runtime.initialize();
       runtime.registerProvider(lessonsProvider);
 
-      // Real usage tracking for the dashboard's Model connections chart —
+      // Real usage tracking for the dashboard's Model connections chart -
       // the event doesn't say which provider served the call (see
       // lib/eliza/model-providers.ts's primaryEnabledProvider), but tokens
       // and model type are real.

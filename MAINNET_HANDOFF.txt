@@ -1,0 +1,45 @@
+NOAH ENGINE - MAINNET HANDOFF
+
+MAINNET DEFERRED TO BANG REY
+NO MAINNET ACCEPTANCE
+NO MAINNET TRANSACTION SENT
+STATE-CHANGING MAINNET PATHS DISABLED
+LIVE MAINNET VALIDATION STILL REQUIRED BY BANG REY
+
+Accepted scope: Robinhood Chain TESTNET (chain 46630) and Lighter TESTNET only.
+Mainnet signing, broadcasting, v4 swap execution, Lighter API-key registration
+and Lighter order execution all refuse in code. Proof (offline, no network):
+npm run test:mainnet-guards
+
+Handoff notes (collected read-only earlier, NOT accepted, NOT live-tested):
+
+Robinhood mainnet (chain 4663), Uniswap v4, per Uniswap's official deployments page:
+  PoolManager       0x8366a39CC670B4001A1121B8F6A443A643e40951
+  Quoter            0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94
+  StateView         0xF3334192D15450CdD385c8B70e03f9A6bD9E673b
+  PositionManager   0x58daec3116aae6d93017baaea7749052e8a04fa7
+  UniversalRouter   0x8876789976dEcBfCbBbe364623C63652db8C0904
+  UniversalRouter 2.1.2  0x204FAca1764B154221e35c0d20aBb3c525710498
+  Permit2           0x000000000022D473030F116dDEE9F6B43aC78BA3
+  WETH              0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
+  USDG              0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
+  Stored as unused data in lib/chain/robinhood-execution-config.ts
+  (ROBINHOOD_MAINNET_V4_VERIFIED). Not executable.
+  Do not use router 0x06afBA43fd06227fA663b0dAeCF536F6eaA6BF99 (not wired to the PoolManager).
+
+Token warning: many mainnet pools use look-alike "USDG" / "HOOD" tokens.
+Always pin token addresses, never symbols. The swap builder refuses hooked pools.
+
+Lighter mainnet: API https://api.rh.lighter.xyz, rollup 0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d,
+collateral USDG (6 decimals, minimum deposit 1 USDG),
+deposit(address _to, uint16 _assetIndex, uint8 _routeType, uint256 _amount), route 0 = perps.
+Signing chain id is UNRESOLVED: Robinhood-Lighter docs say 466324,
+the official lighter-go WASM default is 304. Only an accepted mainnet tx can settle it.
+
+Open items for Bang Rey (each needs explicit approval):
+  - production encryption keys and database separation
+    (AGENT_WALLET_ENCRYPTION_KEY and LIGHTER_API_KEY_ENCRYPTION_KEY decrypt
+    existing rows; never rotate them in place, re-encrypt with a controlled migration)
+  - mainnet execution config, then a tiny mainnet canary on a hookless ETH/USDG pool
+  - Lighter mainnet onboarding: USDG approve, deposit, account, API key, minimum order
+  - live (non-paper) trading in the daemon

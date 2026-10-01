@@ -4,12 +4,12 @@ import { getDb } from "@/lib/db";
 import { trades, type Trade } from "@/drizzle/schema";
 
 /**
- * Robinhood-scoped counterparts to lib/sniper/wallet-trade-stats.ts —
+ * Robinhood-scoped counterparts to lib/sniper/wallet-trade-stats.ts -
  * PR07. Same query shapes, but every query additionally filters
  * `trades.chain = "robinhood"` and reads `pnlNative` instead of
  * `pnlSol`, so a Robinhood ETH circuit breaker can never be derived from
  * (or contaminated by) a wallet's historical Solana SOL P&L. The Solana
- * file is untouched and still reads pnlSol with no chain filter — that
+ * file is untouched and still reads pnlSol with no chain filter - that
  * is unchanged, intentional, pre-existing behavior.
  */
 

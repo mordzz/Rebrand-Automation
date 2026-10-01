@@ -104,7 +104,7 @@ type DryRunResponse = {
   error?: string;
 };
 
-/** Live on-chain balance for the connected wallet — a public address
+/** Live on-chain balance for the connected wallet - a public address
  * lookup, no signing involved, safe to poll from the client. */
 function useAddressBalance(address: string): AddressBalance | null {
   const [balance, setBalance] = useState<AddressBalance | null>(null);
@@ -160,7 +160,7 @@ function shortAddress(addr: string) {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
 
-/* ── Setup notice — shown until NEXT_PUBLIC_PRIVY_APP_ID exists ────────── */
+/* ── Setup notice - shown until NEXT_PUBLIC_PRIVY_APP_ID exists ────────── */
 
 function SetupNotice() {
   return (
@@ -283,12 +283,12 @@ function CharacterForm({
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Deploy failed — try again.");
+        setError(json.error ?? "Deploy failed - try again.");
         return;
       }
       onDone();
     } catch {
-      setError("Connection trouble — try again.");
+      setError("Connection trouble - try again.");
     } finally {
       setSaving(false);
     }
@@ -302,7 +302,7 @@ function CharacterForm({
             {initial ? "Edit Your Bot" : "Set Up Your Bot"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Choose a face and a name — images, GIFs, or the Noah 3D bot.
+            Choose a face and a name - images, GIFs, or the Noah 3D bot.
           </p>
         </div>
         {onCancel && (
@@ -395,7 +395,7 @@ function CharacterForm({
                 </span>
               </p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Bring any face — a PFP, a GIF, a family portrait.
+                Bring any face - a PFP, a GIF, a family portrait.
               </p>
             </div>
           </button>
@@ -429,7 +429,7 @@ function CharacterForm({
               because that agent may already be live. */}
           {!initial && (
             <p className="text-xs text-muted-foreground">
-              Paper mode — it trades on paper before it ever spends a wei.
+              Paper mode - it trades on paper before it ever spends a wei.
             </p>
           )}
         </div>
@@ -455,13 +455,13 @@ function BotDesk({
     {
       id: 0,
       role: "assistant",
-      text: `${bot.name} reporting for duty. I'm in paper mode — studying the market, spending nothing. How can I help?`,
+      text: `${bot.name} reporting for duty. I'm in paper mode - studying the market, spending nothing. How can I help?`,
     },
   ]);
   const idRef = useRef(1);
   const balance = useAddressBalance(address);
 
-  /* This account's own desk data — every endpoint below is scoped to
+  /* This account's own desk data - every endpoint below is scoped to
      `address` server-side (walletAddress on trades/positions), so it's a
      separate ledger from the shared house desk the dashboard reads, not
      a filtered view of the same rows. A freshly deployed bot legitimately
@@ -475,7 +475,7 @@ function BotDesk({
   const historyRows = tradesData?.data ?? [];
 
   // The paper daemon derives this bot's pause state fresh from its own
-  // trade history (lib/sniper/risk-limits.ts#deriveTradingPause) — a bot
+  // trade history (lib/sniper/risk-limits.ts#deriveTradingPause) - a bot
   // whose opening trades trip the loss-streak limit can never earn the win
   // that would clear it on its own, since a paused bot can't trade. Reset
   // clears it manually; the daemon picks the change up on its next roster
@@ -488,7 +488,7 @@ function BotDesk({
     try {
       const res = await authedFetch(`/api/my-bot/reset-breaker?${walletQuery}`, { method: "POST" });
       setResetMessage(
-        res.ok ? "Reset — trading resumes within moments." : "Reset failed, try again.",
+        res.ok ? "Reset - trading resumes within moments." : "Reset failed, try again.",
       );
     } catch {
       setResetMessage("Reset failed, try again.");
@@ -497,10 +497,10 @@ function BotDesk({
     }
   }
 
-  // The operator's own on/off switch (app/api/my-bot/toggle) — a bot is
+  // The operator's own on/off switch (app/api/my-bot/toggle) - a bot is
   // configured but inactive right after deploying, so nothing trades until
   // this is switched on. Once active, the standalone paper-daemon process
-  // is what keeps it running, not this browser tab or this web server —
+  // is what keeps it running, not this browser tab or this web server -
   // closing /deploy (or the whole browser) has no effect on it.
   //
   // statsData only refreshes every 30s (usePolledJson), so without an
@@ -568,7 +568,7 @@ function BotDesk({
   const [modeBusy, setModeBusy] = useState(false);
   const [modeError, setModeError] = useState<string | null>(null);
   /* Going live asks first, in a modal that shows the actual balance and
-     position size. Going back to paper doesn't — it only ever reduces
+     position size. Going back to paper doesn't - it only ever reduces
      what the agent can do. */
   const [goLiveOpen, setGoLiveOpen] = useState(false);
 
@@ -622,7 +622,7 @@ function BotDesk({
 
   // One-shot config test: grades the freshest Robinhood Chain launches
   // (GMGN) against this bot's own config, using the exact same check the
-  // daemon runs — no position is ever
+  // daemon runs - no position is ever
   // opened, nothing is written to positions/trades. Distinct from
   // Start/Stop: this doesn't touch `active` and doesn't need it on.
   const [dryRunning, setDryRunning] = useState(false);
@@ -645,7 +645,7 @@ function BotDesk({
   }
 
   /* The balance that matters on the deploy page is always the agent
-     wallet's — it's the bot's own trading wallet, whether paper or live.
+     wallet's - it's the bot's own trading wallet, whether paper or live.
      The operator's owner (EVM) wallet is only used for identity; its
      balance is irrelevant here. Fall back to the operator wallet only when
      no agent wallet has been generated yet (pre-deploy state). */
@@ -672,11 +672,11 @@ function BotDesk({
         }
       : effectiveError
         ? {
-            value: "—",
-            hint: "RPC unavailable — try again shortly",
+            value: "-",
+            hint: "RPC unavailable - try again shortly",
             tone: "muted",
           }
-        : { value: "—", hint: "Loading…", tone: "muted" };
+        : { value: "-", hint: "Loading…", tone: "muted" };
 
   const openPositionsCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured
@@ -686,7 +686,7 @@ function BotDesk({
           tone:
             (statsData.openPositionsInProfit ?? 0) > 0 ? "positive" : "muted",
         }
-      : { value: "—", hint: "Connect DATABASE_URL", tone: "muted" };
+      : { value: "-", hint: "Connect DATABASE_URL", tone: "muted" };
 
   const pnl24hCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured
@@ -700,7 +700,7 @@ function BotDesk({
                 ? "negative"
                 : "muted",
         }
-      : { value: "—", hint: "Connect DATABASE_URL", tone: "muted" };
+      : { value: "-", hint: "Connect DATABASE_URL", tone: "muted" };
 
   const winRateCard: { value: string; hint: string; tone: Tone } =
     statsData?.configured && statsData.winRate30d != null
@@ -710,7 +710,7 @@ function BotDesk({
           tone: statsData.winRate30d >= 50 ? "positive" : "negative",
         }
       : {
-          value: "—",
+          value: "-",
           hint: statsData?.configured
             ? "No trades yet"
             : "Connect DATABASE_URL",
@@ -736,7 +736,7 @@ function BotDesk({
     setThinking(true);
     setMood("thinking");
 
-    /* Build the message window for the per-agent chat route (stateless —
+    /* Build the message window for the per-agent chat route (stateless -
        it needs the conversation each time, same as the atelier modal). */
     const outgoing = [
       ...messages
@@ -767,7 +767,7 @@ function BotDesk({
         {
           id: idRef.current++,
           role: "assistant",
-          text: "Connection trouble — try again.",
+          text: "Connection trouble - try again.",
         },
       ]);
       setMood("idle");
@@ -781,11 +781,11 @@ function BotDesk({
     <div className="flex flex-col gap-5">
       {/* Top: the agent on the left, how it's trading on the right.
           items-start stops the grid stretching the left column to match
-          the right one — that stretch is what made the chat run the full
+          the right one - that stretch is what made the chat run the full
           height of the page. Bounded and sticky, it stays in view while
           the performance column scrolls past it instead. */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5 lg:items-start">
-        {/* Left — the character panel, avatar top, chat below */}
+        {/* Left - the character panel, avatar top, chat below */}
         <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-card lg:sticky lg:top-24 lg:col-span-2">
           <div className="flex items-center justify-between px-4 py-3">
             <p className={PANEL_LABEL}>{bot.name} · Your Bot</p>
@@ -811,10 +811,10 @@ function BotDesk({
           </div>
         </div>
 
-        {/* Right — how it's trading: status, sizing, chart, ledger, console */}
+        {/* Right - how it's trading: status, sizing, chart, ledger, console */}
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-3">
           {/* Wallet status bar + stat cells + performance chart in one flat
-              panel — the dashboard's desk-panel rhythm, for this account. */}
+              panel - the dashboard's desk-panel rhythm, for this account. */}
           <div className="overflow-hidden rounded-2xl bg-card">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2.5">
@@ -827,7 +827,7 @@ function BotDesk({
               <div className="flex items-center gap-4">
                 {/* Reads the actual mode rather than asserting one. This
                     badge said "Paper Mode" unconditionally, including for a
-                    bot spending real ETH — the one place an operator glances
+                    bot spending real ETH - the one place an operator glances
                     to check what their agent is armed to do. Live gets the
                     destructive tone and a pulse because it is the state that
                     costs money if it is not the one you expected; sol-green
@@ -857,7 +857,7 @@ function BotDesk({
               </div>
             </div>
 
-            {/* Start/Stop — the master switch. A freshly deployed bot is
+            {/* Start/Stop - the master switch. A freshly deployed bot is
                 inactive until this is switched on; once on, the standalone
                 paper-daemon process keeps it running independent of this
                 tab, this browser, or this web server. */}
@@ -910,7 +910,7 @@ function BotDesk({
               </div>
             </div>
 
-            {/* Mode. Live is a separate, deliberate switch — not a side
+            {/* Mode. Live is a separate, deliberate switch - not a side
               effect of Start. */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 px-4 py-3">
             <div className="min-w-0">
@@ -974,7 +974,7 @@ function BotDesk({
 
                 {dryRunResult && dryRunResult.tokensEvaluated === 0 && (
                   <p className="mt-2.5 text-xs text-muted-foreground">
-                    No new tokens came through during the test window — try again in a moment.
+                    No new tokens came through during the test window - try again in a moment.
                   </p>
                 )}
 
@@ -1081,7 +1081,7 @@ function BotDesk({
             />
           </div>
 
-          {/* Trade history — same closed-trade ledger as the dashboard */}
+          {/* Trade history - same closed-trade ledger as the dashboard */}
           <div className="overflow-hidden rounded-2xl bg-card">
             <div className="px-4 py-3">
               <p className={PANEL_LABEL}>Trade History</p>
@@ -1096,7 +1096,7 @@ function BotDesk({
 
           {/* Console lives with performance rather than below: it is the
               live half of the same story the chart and ledger tell after
-              the fact. Wallet-scoped — the dashboard's terminal reads the
+              the fact. Wallet-scoped - the dashboard's terminal reads the
               same table unfiltered, so `?wallet=` is what keeps them apart. */}
           <div className="overflow-hidden rounded-2xl bg-card">
             <div className="px-4 py-3">
@@ -1115,12 +1115,12 @@ function BotDesk({
       </div>
 
       {/* Full-width below: what the agent has learned, and the rules it
-          runs on. Both want the whole width — the config panel lays its
+          runs on. Both want the whole width - the config panel lays its
           fields out in two columns of its own, and halving it would just
           make it twice as tall. */}
       <AgentMemory
         endpoint={`/api/lessons?${walletQuery}`}
-        emptyHint="No lessons yet — the first losing trade gets a written post-mortem here."
+        emptyHint="No lessons yet - the first losing trade gets a written post-mortem here."
       />
 
       <AgentWalletPanel walletQuery={walletQuery} />
@@ -1154,7 +1154,7 @@ function BotDesk({
       <SniperConfigPanel
         endpoint={`/api/my-bot/config?wallet=${encodeURIComponent(address)}`}
         title={`${bot.name} · Private Tune`}
-        description="Your bot's own rules — seeded from the default configuration, yours to adjust."
+        description="Your bot's own rules - seeded from the default configuration, yours to adjust."
         saveFetch={authedFetch}
       />
     </div>
@@ -1167,7 +1167,7 @@ function DeployInner() {
   const { ready, authenticated, user, login } = usePrivy();
   const address = user?.wallet?.address ?? null;
 
-  /* Keyed by the address the fetch was for — switching wallets naturally
+  /* Keyed by the address the fetch was for - switching wallets naturally
      reads as "not loaded yet" without a synchronous state reset. Bumping
      refreshTick refetches (after deploy/refit). */
   const [botState, setBotState] = useState<{

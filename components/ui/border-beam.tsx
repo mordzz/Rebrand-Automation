@@ -25,7 +25,7 @@ interface BorderBeamProps {
   initialOffset?: number;
 }
 
-/** Magic UI BorderBeam — a beam of light traveling around the parent's
+/** Magic UI BorderBeam - a beam of light traveling around the parent's
  * border. Parent needs `relative` + a border radius; the beam clips to it. */
 export const BorderBeam = ({
   className,

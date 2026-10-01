@@ -3,7 +3,7 @@ import { modelRequests } from "@/drizzle/schema";
 import { primaryEnabledProvider } from "@/lib/eliza/model-providers";
 
 /**
- * Records one real model call (from ElizaOS's MODEL_USED event — see
+ * Records one real model call (from ElizaOS's MODEL_USED event - see
  * lib/eliza/runtime.ts) or one real chat turn (modelType: "chat_turn",
  * written directly by app/api/chat/route.ts with an accurate measured
  * latency). Best-effort: a logging failure must never break the actual
@@ -25,6 +25,6 @@ export async function recordModelUsage(entry: {
       latencyMs: entry.latencyMs != null ? String(entry.latencyMs) : null,
     });
   } catch {
-    // best-effort — never let usage logging break the real request
+    // best-effort - never let usage logging break the real request
   }
 }

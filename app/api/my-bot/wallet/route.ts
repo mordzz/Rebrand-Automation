@@ -11,15 +11,15 @@ export const dynamic = "force-dynamic";
 
 
 
-/** Solana-only shape check — for values that must genuinely be a Solana
+/** Solana-only shape check - for values that must genuinely be a Solana
  * address (e.g. a SOL withdrawal destination below), not the identity
- * wallet. Do not use this for the owner/identity wallet — see
+ * wallet. Do not use this for the owner/identity wallet - see
  * isPlausibleWalletAddress. */
 function isPlausibleSolanaAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
 }
 
-/** Loose shape check for the IDENTITY/owner wallet — enough to reject
+/** Loose shape check for the IDENTITY/owner wallet - enough to reject
  * garbage, not full validation. Accepts either a legacy Solana wallet
  * (base58) or a Robinhood/EVM wallet (0x + 40 hex chars): PR02 kept
  * Privy's walletChainType as "ethereum-and-solana", so userBots.walletAddress
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
      historical and never read live. */
   if (bot.agentChain === "robinhood") {
     // loadRobinhoodAgentAccountView validates agentNetwork BEFORE ever
-    // calling getBalance — a network-mismatched bot never triggers a
+    // calling getBalance - a network-mismatched bot never triggers a
     // Robinhood RPC read at all.
     const view = await loadRobinhoodAgentAccountView(
       { agentPublicKey: bot.agentPublicKey, agentNetwork: bot.agentNetwork },
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
   });
 }
 
-/** Agent-wallet withdrawal — RETIRED/UNAVAILABLE (PR09A).
+/** Agent-wallet withdrawal - RETIRED/UNAVAILABLE (PR09A).
  *
  * The Solana withdrawal path (signing with a Solana agent key) is retired
  * with the Solana runtime. Robinhood agent-wallet withdrawal needs the

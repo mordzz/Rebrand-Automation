@@ -1,5 +1,5 @@
 /**
- * Agent-wallet L1 signature for Lighter API-key registration — PR12.
+ * Agent-wallet L1 signature for Lighter API-key registration - PR12.
  *
  * The ONLY place Noah's autonomous EVM agent key signs an EIP-191 message.
  * It is deliberately not a generic personal_sign: the message must be the
@@ -23,7 +23,7 @@ export async function signLighterApiKeyRegistration(
   if (!bot.agentPublicKey || getAddress(bot.agentPublicKey) !== getAddress(intent.l1Owner)) {
     throw new Error("Lighter registration refused: intent L1 owner is not this bot's agent wallet");
   }
-  // Independent semantic check first — no key material touched yet.
+  // Independent semantic check first - no key material touched yet.
   verifyPreparedChangePubKey(prepared, intent);
 
   const { account } = await (deps.loadAccount ?? loadRobinhoodAgentAccount)(bot);

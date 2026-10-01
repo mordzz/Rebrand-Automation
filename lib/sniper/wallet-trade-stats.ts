@@ -5,7 +5,7 @@ import { trades, type Trade } from "@/drizzle/schema";
 
 /**
  * Per-wallet trade aggregates backing the derived (not persisted) per-user
- * circuit breaker — see deriveTradingPause in lib/sniper/risk-limits.ts.
+ * circuit breaker - see deriveTradingPause in lib/sniper/risk-limits.ts.
  * Three independently-scoped queries rather than one row-limited query
  * sliced three ways: a win after the wallet's last loss would otherwise
  * hide that loss from a "recent N rows" list, and an active trader closing
@@ -13,7 +13,7 @@ import { trades, type Trade } from "@/drizzle/schema";
  * Backed by the trades(wallet_address, closed_at) index.
  *
  * Every query below is additionally scoped to Solana rows (chain IS NULL
- * — legacy, pre-PR04 history — OR chain = "solana") — PR07 hardening. A
+ * - legacy, pre-PR04 history - OR chain = "solana") - PR07 hardening. A
  * Robinhood trade's `pnlSol` is a compatibility shadow of its real ETH
  * PnL (see lib/sniper/positions.ts), and without this filter it would
  * silently enter the Solana circuit breaker's recent-loss/daily-PnL
@@ -23,12 +23,12 @@ const SOLANA_CHAIN_FILTER = or(isNull(trades.chain), eq(trades.chain, "solana"))
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Recent closed trades for one wallet, most recent first — walked to
+/** Recent closed trades for one wallet, most recent first - walked to
  * derive the consecutive-loss streak (strict pnlSol < 0, matching the
  * house's own sniper_state.consecutiveLosses semantics: a pnlSol === 0
  * trade resets the streak, same as a win).
  *
- * `since`, when set, excludes trades closed at or before it — this is
+ * `since`, when set, excludes trades closed at or before it - this is
  * userBots.breakerResetAt (see schema comment): a manual breaker reset
  * makes pause derivation ignore everything before the reset moment rather
  * than rewriting or deleting trade history. */
@@ -51,7 +51,7 @@ export async function getRecentOutcomes(
     .limit(limit);
 }
 
-/** Rolling 24h realized P&L for one wallet — deliberately a rolling window
+/** Rolling 24h realized P&L for one wallet - deliberately a rolling window
  * from now, not a calendar day. Simpler than, and avoids the timezone /
  * anchor-drift ambiguity of, the house's own sniper_state.dailyPnlResetAt
  * approach. `since` (see getRecentOutcomes) further narrows the window when
@@ -69,7 +69,7 @@ export async function getDailyPnlSol(wallet: string, since: Date | null = null):
 }
 
 /** Most recent loss for one wallet, if any. Its own targeted query, not
- * derived from getRecentOutcomes — a win after the last loss would
+ * derived from getRecentOutcomes - a win after the last loss would
  * otherwise hide it, breaking cooldown-after-loss. `since` (see
  * getRecentOutcomes) excludes losses at or before a breaker reset. */
 export async function getLastLossAt(wallet: string, since: Date | null = null): Promise<Date | null> {

@@ -6,7 +6,7 @@ import { sniperConfig, sniperConfigHistory, type SniperConfigRow } from "@/drizz
 export type TakeProfitTier = { atPct: number; sellPortionPct: number };
 
 /**
- * Live trading configuration for the Sniper daemon — hot-reloadable, backed
+ * Live trading configuration for the Sniper daemon - hot-reloadable, backed
  * by the sniper_config singleton row (see drizzle/schema). The daemon
  * calls getSniperConfig() fresh every cycle, so a change here takes effect
  * without a restart, the same way sniper_state.tradingPaused already does.
@@ -16,7 +16,7 @@ export type TakeProfitTier = { atPct: number; sellPortionPct: number };
  * They are not interchangeable. "pump" is PumpPortal's push stream: it
  * arrives in milliseconds but carries nothing except the create event, so
  * the only checks that can run against it are authorities, extensions,
- * keywords and socials — and pump.fun revokes both authorities on every
+ * keywords and socials - and pump.fun revokes both authorities on every
  * launch, so those two pass for essentially the whole venue. "gmgn" is
  * polled and a few seconds slower, but arrives with deployer rug history,
  * bundling, insider and top-10 concentration, honeypot and tax signals
@@ -49,7 +49,7 @@ export type SniperConfig = {
 
   // Robinhood/EVM-specific entry filters (PR06.5, lib/gmgn/safety-robinhood.ts).
   // Deliberate new EVM policy choices, not semantic translations of the
-  // Solana fields above — those remain Solana-only and unchanged.
+  // Solana fields above - those remain Solana-only and unchanged.
   /** Requires GMGN's `ownerRenounced` fact to be true. NOT the same
    * concept as requireMintAuthorityRenounced (Solana). */
   requireOwnerRenounced: boolean;
@@ -57,7 +57,7 @@ export type SniperConfig = {
    * concept as requireFreezeAuthorityRenounced (Solana). */
   requireNoBlacklistCapability: boolean;
   /** Ceiling on the creator's CURRENT holding concentration
-   * (creatorHoldRate), for Robinhood only — NOT the same fact as
+   * (creatorHoldRate), for Robinhood only - NOT the same fact as
    * maxCreatorBuyPct (Solana initial-buy %), which cannot be reliably
    * reconstructed on Robinhood. `null` means "not yet configured": the
    * Robinhood evaluator refuses with an explicit configuration blocker
@@ -91,7 +91,7 @@ export type SniperConfig = {
   metadataFetchTimeoutMs: number;
 
   // PR04 chain-neutral risk fields (schema foundation), now exposed here
-  // for PR07's Robinhood paper trading to actually consume — see
+  // for PR07's Robinhood paper trading to actually consume - see
   // lib/sniper/risk-limits-robinhood.ts. Deliberately nullable and
   // NOT seeded with any default value: choosing an ETH risk number is a
   // product decision this PR does not make. `null` (or nativeSymbol not
@@ -107,7 +107,7 @@ export type SniperConfig = {
   nativeSymbol: string | null;
 };
 
-/** Master switches — deliberately NOT in sniper_config. Restart-gated by
+/** Master switches - deliberately NOT in sniper_config. Restart-gated by
  * design: high friction for "does this process even get to exist" and
  * "is it allowed to send real transactions". */
 export type SniperRuntimeFlags = {
@@ -199,7 +199,7 @@ function rowToConfig(row: SniperConfigRow): SniperConfig {
   };
 }
 
-/** Fallback used only when DATABASE_URL isn't configured at all — the
+/** Fallback used only when DATABASE_URL isn't configured at all - the
  * daemon still runs in detect-only mode in that case (see main()).
  * Exported for testability (asserting the approved v1 defaults without
  * needing a live DB), not for use as a general-purpose config source. */
@@ -255,7 +255,7 @@ export function envSeededDefaults(): SniperConfig {
 
     metadataFetchTimeoutMs: envNumber("SNIPER_METADATA_TIMEOUT_MS", 3000),
 
-    /* No ETH risk numbers are chosen in PR07 — Robinhood paper entries
+    /* No ETH risk numbers are chosen in PR07 - Robinhood paper entries
      * fail closed via resolveRobinhoodNativeLimits() until an operator
      * explicitly sets all three plus nativeSymbol="ETH". */
     maxNativePerSnipe: null,
@@ -266,7 +266,7 @@ export function envSeededDefaults(): SniperConfig {
 }
 
 /**
- * The control row is a singleton — auto-created on first read, seeded from
+ * The control row is a singleton - auto-created on first read, seeded from
  * the legacy SNIPER_* env vars so an existing deployment's behavior doesn't
  * change the moment this table appears. Falls back to a pure in-memory
  * env-seeded config (not persisted) when DATABASE_URL isn't configured at
@@ -329,13 +329,13 @@ const NUMERIC_KEYS = new Set<keyof SniperConfig>([
 /** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
  * partial expected by drizzle's numeric columns. */
 /**
- * Authoritative validation for maxCreatorHoldPct — a safety-critical
+ * Authoritative validation for maxCreatorHoldPct - a safety-critical
  * Robinhood threshold, not a cosmetic display number. Exported so
  * lib/sniper/effective-config.ts's per-bot sanitizer enforces the exact
  * same rule rather than re-deriving it, and so this is the one place
  * that rule lives. `null` means "unconfigured" (the Robinhood evaluator
  * treats that as a fail-closed configuration blocker) and is always
- * valid; a non-null value must be a finite number in [0, 100] — anything
+ * valid; a non-null value must be a finite number in [0, 100] - anything
  * else throws rather than silently clamping, because a clamped value
  * would misrepresent what the operator actually asked for on a check
  * that gates real money.
@@ -353,7 +353,7 @@ export function validateMaxCreatorHoldPct(value: unknown): number | null {
 
 /** Converts a partial SniperConfig (plain numbers/nulls) into the string-typed
  * partial expected by drizzle's numeric columns. This is the authoritative
- * write path — app/api/sniper/config/route.ts's PATCH handler passes an
+ * write path - app/api/sniper/config/route.ts's PATCH handler passes an
  * untrusted request body straight to updateSniperConfig() with no prior
  * sanitize() call, so validation here is what actually protects the house
  * config, not just the per-bot overlay path. */
@@ -380,7 +380,7 @@ function valueToNumericColumn(value: number | null): string | null {
 
 /**
  * Merges a patch into the live config, persists it, and records a
- * before/after snapshot in sniper_config_history — applied either by hand
+ * before/after snapshot in sniper_config_history - applied either by hand
  * from the dashboard ("user") or from an approved lesson ("lesson").
  */
 export async function updateSniperConfig(

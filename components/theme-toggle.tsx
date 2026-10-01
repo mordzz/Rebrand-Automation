@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Watches the `dark` class on <html> — stamped pre-hydration by the inline
+/** Watches the `dark` class on <html> - stamped pre-hydration by the inline
  * script in app/layout.tsx, flipped by the toggle below. */
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -29,7 +29,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     try {
       localStorage.setItem("theme", next ? "dark" : "light");
     } catch {
-      // storage unavailable — theme still applies for this page view
+      // storage unavailable - theme still applies for this page view
     }
   }
 

@@ -33,7 +33,7 @@ export function useMarkets(intervalMs = 20_000): Market[] {
         const json = (await res.json()) as MarketsResponse;
         if (!disposed && Array.isArray(json.data)) setMarkets(json.data);
       } catch {
-        // Keep the last good list — a blip shouldn't blank the UI.
+        // Keep the last good list - a blip shouldn't blank the UI.
       }
     }
     load();
@@ -48,10 +48,10 @@ export function useMarkets(intervalMs = 20_000): Market[] {
 }
 
 /** Prices here span ~$63,000 (BTC) to ~$0.14 (WIF), so a fixed number of
- * decimals is wrong at one end or the other — sub-$1 markets need real
+ * decimals is wrong at one end or the other - sub-$1 markets need real
  * precision, five-figure ones would look absurd with it. */
 export function formatPrice(price: number | null): string {
-  if (price == null) return "—";
+  if (price == null) return "-";
   if (price >= 1000) {
     return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   }
@@ -62,6 +62,6 @@ export function formatPrice(price: number | null): string {
 }
 
 export function formatChange(change: number | null): string {
-  if (change == null) return "—";
+  if (change == null) return "-";
   return `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
 }

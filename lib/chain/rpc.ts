@@ -3,13 +3,13 @@
  *
  * Server-only by convention, same as this repo's DB driver modules: never
  * import this from a "use client" component. It reads `ROBINHOOD_RPC_URL`
- * (a server-only env var per lib/chain/config.ts) — that value must never
+ * (a server-only env var per lib/chain/config.ts) - that value must never
  * reach the browser bundle, so this file must never be imported from
  * client code. Browser-side chain reads (if ever needed) belong in a
  * separate module built on `ROBINHOOD_PUBLIC_RPC_URL` /
  * `lib/chain/viem-chain.ts` instead.
  *
- * READ ONLY. No signing, no transaction submission, no swaps — those are
+ * READ ONLY. No signing, no transaction submission, no swaps - those are
  * later migration PRs (see the migration plan). This is the minimum set
  * of primitives later PRs (sniper execution, autonomous wallet, discovery)
  * will build on, so its surface is deliberately small.
@@ -73,7 +73,7 @@ function assertValidHash(value: string, label: string): Hash {
 /** Wraps an RPC call so a network-level failure (DNS, timeout, connection
  * refused, non-JSON-RPC response) surfaces as `rpc_unavailable` with the
  * underlying error attached, rather than an opaque viem/transport error
- * or — worse — a caller-visible zero/empty result. */
+ * or - worse - a caller-visible zero/empty result. */
 async function callRpc<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
@@ -106,7 +106,7 @@ export function getRobinhoodPublicClient(): PublicClient {
 /**
  * Confirms the configured RPC actually answers for `ROBINHOOD_CHAIN_ID`.
  *
- * Deliberately not run as an import-time side effect — a module-load-time
+ * Deliberately not run as an import-time side effect - a module-load-time
  * network call would make every import of this file do an RPC round trip
  * (including at build time) and would fail the whole process on a
  * transient network blip rather than the one operation that needed it.
@@ -144,7 +144,7 @@ export async function getNativeBalance(
 /**
  * Transaction receipt/status lookup.
  *
- * A missing receipt does not by itself mean "pending" — an unknown or
+ * A missing receipt does not by itself mean "pending" - an unknown or
  * malformed-but-valid-looking hash also has no receipt. So a missing
  * receipt falls through to `getTransaction`: if the transaction itself
  * exists, it's genuinely pending; if it doesn't, that's a `not_found`
@@ -172,7 +172,7 @@ export async function getTransactionStatus(
     }
   }
 
-  // No receipt yet — confirm the transaction actually exists before
+  // No receipt yet - confirm the transaction actually exists before
   // calling it "pending".
   try {
     await client.getTransaction({ hash: txHash });
@@ -199,9 +199,9 @@ function isNotFoundError(error: unknown, viemErrorName: string): boolean {
   return error instanceof Error && error.name === viemErrorName;
 }
 
-/** Minimal ERC-20 read ABI — `balanceOf` only. Intentionally no name/
+/** Minimal ERC-20 read ABI - `balanceOf` only. Intentionally no name/
  * symbol/decimals metadata here: token metadata belongs to the discovery/
- * provider PRs (see GMGN_ROBINHOOD_FIELD_MAP.md), not this read layer. */
+ * provider PRs (see the PR05 GMGN field-mapping notes (git history)), not this read layer. */
 const ERC20_BALANCE_OF_ABI = [
   {
     type: "function",

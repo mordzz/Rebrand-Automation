@@ -1,9 +1,9 @@
 /**
- * Active Robinhood Chain Alpha feed — post-migration readiness.
+ * Active Robinhood Chain Alpha feed - post-migration readiness.
  *
  * Same meaning as the historical Solana Alpha table: "fresh launches that
  * passed the HOUSE's own entry criteria". It is built only from what Noah
- * already has — GMGN Robinhood discovery (lib/gmgn/discovery-robinhood),
+ * already has - GMGN Robinhood discovery (lib/gmgn/discovery-robinhood),
  * GMGN security facts (lib/gmgn/security-robinhood) and the exact
  * evaluateRobinhoodSafety the paper-daemon uses, applied to the house
  * config. Display only: no trade decision, no daemon change, no DB writes

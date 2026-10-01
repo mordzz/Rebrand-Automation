@@ -6,7 +6,7 @@ import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/priv
 
 export const dynamic = "force-dynamic";
 
-/** Current live Sniper trading config — the daemon re-reads the same row every cycle. */
+/** Current live Sniper trading config - the daemon re-reads the same row every cycle. */
 export async function GET() {
   if (!getDb()) {
     return NextResponse.json({ configured: false, config: null });
@@ -15,7 +15,7 @@ export async function GET() {
   return NextResponse.json({ configured: true, config });
 }
 
-/** Applies a partial config change from the dashboard — takes effect on the
+/** Applies a partial config change from the dashboard - takes effect on the
  * daemon's next cycle, no restart needed. */
 export async function PATCH(request: Request) {
   // House dashboard action: any verified signed-in Noah operator (Privy

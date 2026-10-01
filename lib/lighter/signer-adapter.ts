@@ -1,5 +1,5 @@
 /**
- * Strict TypeScript adapter to Lighter's OFFICIAL signer — PR12.
+ * Strict TypeScript adapter to Lighter's OFFICIAL signer - PR12.
  *
  * Lighter L2 transactions are not EVM transactions and are never signed
  * with viem. They are signed by the official lighter-go implementation,
@@ -12,8 +12,8 @@
  *     loading them (a tampered/unknown binary is never executed)
  *   - binds the Lighter L2 signing chain id to PR11's network config and
  *     refuses anything else (never a Robinhood EVM chain id)
- *   - exposes semantic operations only — createOrder / cancelOrder /
- *     modifyOrder / updateLeverage / createAuthToken — never "sign bytes"
+ *   - exposes semantic operations only - createOrder / cancelOrder /
+ *     modifyOrder / updateLeverage / createAuthToken - never "sign bytes"
  *   - validates the signer's output (tx type + echoed fields) before it can
  *     be submitted, and enforces a per-call timeout
  *   - never handles the RAW Lighter API private key at all: it is generated,
@@ -69,7 +69,7 @@ export type ScaledCreateOrder = {
   nonce: number;
 };
 
-/** Transport to the signer worker — injectable for deterministic tests. */
+/** Transport to the signer worker - injectable for deterministic tests. */
 export type SignerTransport = {
   call(op: string, payload: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown>>;
   close(): Promise<void>;
@@ -88,7 +88,7 @@ export function verifySignerArtifacts(dir: string = DEFAULT_ARTIFACT_DIR): void 
     wasm = sha256(join(dir, "lighter-signer.wasm"));
     exec = sha256(join(dir, "wasm_exec.js"));
   } catch {
-    throw new LighterSignerError("unavailable", `Lighter signer artifacts missing in ${dir} — run scripts/build-lighter-signer.sh`);
+    throw new LighterSignerError("unavailable", `Lighter signer artifacts missing in ${dir} - run scripts/build-lighter-signer.sh`);
   }
   if (wasm !== LIGHTER_SIGNER_PROVENANCE.wasmSha256 || exec !== LIGHTER_SIGNER_PROVENANCE.wasmExecSha256) {
     throw new LighterSignerError("artifact_mismatch", "Lighter signer artifact checksum does not match the pinned official build");

@@ -21,7 +21,7 @@ import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 type ProviderId = "openrouter" | "anthropic" | "openai";
 
 /* Same 3 validated categorical slots this project already uses elsewhere
-   (light on #faf9f5, dark on #30302e) — anthropic/openai keep their prior
+   (light on #faf9f5, dark on #30302e) - anthropic/openai keep their prior
    slots, openrouter takes the 3rd slot the old "gemini" mock occupied.
    Fixed order, not re-picked, per the dataviz skill's "never cycle
    categorical hues" rule. */
@@ -93,8 +93,8 @@ function toMemoryRow(row: LessonApiRow): MemoryRow {
       month: "short",
       day: "numeric",
     }),
-    token: row.token ?? "—",
-    strategy: row.strategy ?? "—",
+    token: row.token ?? "-",
+    strategy: row.strategy ?? "-",
     pnl: `${pnl > 0 ? "+" : ""}${pnl} ${nativeSymbolFor(row)}`,
     cause: row.cause,
     lesson: row.lesson,
@@ -136,7 +136,7 @@ function usePolledJson<T>(url: string, intervalMs: number): T | null {
 }
 
 /** `officialWallet` scopes the execution terminal and agent-memory table
- * to Noah's own ledger (same `?wallet=` convention BotDesk uses) — the
+ * to Noah's own ledger (same `?wallet=` convention BotDesk uses) - the
  * defaults below (`/api/logs`, `/api/lessons`) are house-scoped and read
  * from rows nothing currently deployed writes to. */
 export function LlmConnections({ officialWallet }: { officialWallet?: string } = {}) {
@@ -152,11 +152,11 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
   const memoryRows: MemoryRow[] = (lessonsResponse?.data ?? []).map(toMemoryRow);
   const memoryLive = lessonsResponse?.configured === true;
 
-  // Optimistic — the real status also flips server-side; this just avoids
+  // Optimistic - the real status also flips server-side; this just avoids
   // waiting out the 15s poll before the button's own row updates.
   const [locallyApplied, setLocallyApplied] = useState<Set<string>>(new Set());
   const [applyingId, setApplyingId] = useState<string | null>(null);
-  // Applying a lesson changes the house config — signed-in operator only.
+  // Applying a lesson changes the house config - signed-in operator only.
   const authedFetch = useAuthedFetch();
 
   async function applySuggestion(id: string) {
@@ -190,7 +190,7 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
             Model Connections
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Real LLM providers wired into the house agent — set via env vars,
+            Real LLM providers wired into the house agent - set via env vars,
             not a UI toggle (see .env.example).
           </p>
         </div>
@@ -323,7 +323,7 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
                   <span className="text-sm font-normal text-muted-foreground">ms</span>
                 </>
               ) : (
-                "—"
+                "-"
               )}
             </p>
           </div>
@@ -335,7 +335,7 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
           </p>
           {usage?.configured && (usage.hourly.length === 0 || usage.totalRequests24h === 0) ? (
             <div className="mt-3 flex h-64 items-center justify-center text-sm text-muted-foreground">
-              No model requests yet — chat with Noah to see real traffic here.
+              No model requests yet - chat with Noah to see real traffic here.
             </div>
           ) : !usage?.configured ? (
             <div className="mt-3 flex h-64 items-center justify-center text-sm text-muted-foreground">
@@ -389,14 +389,14 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
         </div>
       </div>
 
-      {/* Live execution log — sits directly below the chart */}
+      {/* Live execution log - sits directly below the chart */}
       <div className="min-w-0 lg:col-span-5">
         <ExecutionTerminal
           endpoint={walletQuery ? `/api/my-bot/activity?${walletQuery}` : undefined}
         />
       </div>
 
-      {/* Agent memory — losses distilled into rules */}
+      {/* Agent memory - losses distilled into rules */}
       <div className="min-w-0 overflow-hidden rounded-2xl bg-card lg:col-span-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -451,7 +451,7 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
               ) : memoryRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No lessons yet — the first losing trade will be analysed and stored here.
+                    No lessons yet - the first losing trade will be analysed and stored here.
                   </td>
                 </tr>
               ) : (

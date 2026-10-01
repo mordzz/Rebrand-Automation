@@ -1,6 +1,6 @@
 /**
  * Manual verification for the PR03 Robinhood Chain read layer against
- * whatever network is configured (testnet by default). Not a CI test —
+ * whatever network is configured (testnet by default). Not a CI test -
  * it hits a real RPC endpoint, same spirit as scripts/test-perpspad.ts
  * did for the Solana/Perpspad side.
  *
@@ -21,7 +21,7 @@ import {
 } from "@/lib/chain/rpc";
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_NETWORK, ROBINHOOD_RPC_URL } from "@/lib/chain/config";
 
-// A well-known, definitely-unfunded address (Solidity's zero address) —
+// A well-known, definitely-unfunded address (Solidity's zero address) -
 // PR03 explicitly does not require a funded wallet, so this only checks
 // that a balance lookup for a valid address returns a number, not that
 // the number is meaningful.

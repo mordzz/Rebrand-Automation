@@ -4,7 +4,7 @@
  *
  * Kept separate from the collector script so the dedup/stats/dataset-
  * integrity logic is unit-testable without a live GMGN call or real
- * filesystem — see scripts/test-liquidity-collector.ts.
+ * filesystem - see scripts/test-liquidity-collector.ts.
  *
  * This module does NOT decide any safety/threshold policy. It only
  * normalizes raw GMGN trench items into a stable observation shape,
@@ -15,22 +15,22 @@
 export type LiquidityObservation = {
   observedAt: string; // ISO timestamp of the most recent sighting
   tokenAddress: string; // normalized lowercase
-  createdTimestamp: number; // unix seconds, from GMGN — part of the launch identity
+  createdTimestamp: number; // unix seconds, from GMGN - part of the launch identity
   launchpad: string | null;
   stage: "new_creation";
-  liquidityUsd: number | null; // EARLIEST-SIGHTING measurement, immutable once set — see IMMUTABLE_MEASUREMENT_FIELDS
-  poolAddress: string | null; // descriptive metadata — may be backfilled
-  poolExchange: string | null; // descriptive metadata — may be backfilled
-  quoteAddress: string | null; // descriptive metadata — may be backfilled
-  quoteSymbol: string | null; // descriptive metadata — may be backfilled
+  liquidityUsd: number | null; // EARLIEST-SIGHTING measurement, immutable once set - see IMMUTABLE_MEASUREMENT_FIELDS
+  poolAddress: string | null; // descriptive metadata - may be backfilled
+  poolExchange: string | null; // descriptive metadata - may be backfilled
+  quoteAddress: string | null; // descriptive metadata - may be backfilled
+  quoteSymbol: string | null; // descriptive metadata - may be backfilled
   quoteReserve: number | null; // EARLIEST-SIGHTING measurement, immutable
   quoteUsdPrice: number | null; // EARLIEST-SIGHTING measurement, immutable
   observedQuoteSideEstimate: number | null; // EARLIEST-SIGHTING measurement, immutable (derived from the two above)
   holderCount: number | null; // EARLIEST-SIGHTING measurement, immutable
   marketCap: number | null; // EARLIEST-SIGHTING measurement, immutable
   creatorHoldRate: number | null; // EARLIEST-SIGHTING measurement, immutable
-  symbol: string | null; // descriptive metadata — may be backfilled
-  name: string | null; // descriptive metadata — may be backfilled
+  symbol: string | null; // descriptive metadata - may be backfilled
+  name: string | null; // descriptive metadata - may be backfilled
   progress: number | null; // EARLIEST-SIGHTING measurement, immutable
   launchpadStatus: string | null; // EARLIEST-SIGHTING measurement, immutable
   migratedTimestamp: number | null; // EARLIEST-SIGHTING measurement, immutable
@@ -44,7 +44,7 @@ export type LiquidityObservation = {
  * These are the actual statistical data points this dataset exists to
  * collect. They are captured once, at the earliest sighting of a given
  * launch identity, and are NEVER overwritten or backfilled by a later
- * poll — a token seen again 5 minutes later with a newly non-null
+ * poll - a token seen again 5 minutes later with a newly non-null
  * `liquidityUsd` does not mean the launch-time liquidity was $100; it
  * means liquidity became measurable 5 minutes after launch, which is a
  * different fact than what this dataset records.
@@ -65,7 +65,7 @@ export const IMMUTABLE_MEASUREMENT_FIELDS = [
 /**
  * Fields that are just descriptive identity/metadata, not a measurement
  * whose VALUE matters for the statistics. These may be backfilled from
- * a later sighting when previously unknown — doing so cannot change any
+ * a later sighting when previously unknown - doing so cannot change any
  * liquidity/reserve/holder statistic.
  */
 const BACKFILLABLE_METADATA_FIELDS = [
@@ -78,7 +78,7 @@ const BACKFILLABLE_METADATA_FIELDS = [
   "name",
 ] as const satisfies readonly (keyof LiquidityObservation)[];
 
-// Dev-time invariant: these two field lists must never overlap — a field
+// Dev-time invariant: these two field lists must never overlap - a field
 // is either an immutable measurement or backfillable metadata, never both.
 const _overlap = BACKFILLABLE_METADATA_FIELDS.filter((f) =>
   (IMMUTABLE_MEASUREMENT_FIELDS as readonly string[]).includes(f)
@@ -108,7 +108,7 @@ function strOrNull(v: unknown): string | null {
  * Composite launch identity: `lowercaseTokenAddress:createdTimestamp`,
  * per the original collector requirement. A token address is normally
  * sufficient in practice, but this dataset is meant as durable
- * historical evidence, and GMGN already reports a creation timestamp —
+ * historical evidence, and GMGN already reports a creation timestamp -
  * using both avoids silently merging two records if an address were
  * ever seen with conflicting launch metadata.
  */
@@ -119,8 +119,8 @@ export function observationKey(tokenAddress: string, createdTimestamp: number): 
 /**
  * Builds one observation from a raw GMGN `new_creation` trench item plus
  * a resolved quote-token USD price (or null if that lookup failed/was
- * unavailable — never fabricated). Returns null when the item lacks the
- * minimum identity fields (address, created timestamp) — a malformed
+ * unavailable - never fabricated). Returns null when the item lacks the
+ * minimum identity fields (address, created timestamp) - a malformed
  * item must never silently become a fake zero-liquidity record.
  */
 export function buildObservationFromRaw(
@@ -175,20 +175,20 @@ export type MergeResult = {
 /**
  * Merges freshly-fetched observations into a previously-persisted
  * dataset. Deduplication key is the composite `observationKey`
- * (normalized-lowercase tokenAddress + createdTimestamp) — see
+ * (normalized-lowercase tokenAddress + createdTimestamp) - see
  * observationKey() above.
  *
  * A token seen again on a later run under the SAME key:
  *   - does NOT create a second statistical sample
  *   - has `timesObserved` incremented and `observedAt` bumped
  *   - has BACKFILLABLE_METADATA_FIELDS filled in if previously null
- *   - NEVER has IMMUTABLE_MEASUREMENT_FIELDS overwritten or backfilled —
+ *   - NEVER has IMMUTABLE_MEASUREMENT_FIELDS overwritten or backfilled -
  *     the earliest-sighting measurement is the canonical statistical
  *     data point, whether it was null or a real number
  *
  * If the same tokenAddress appears with a DIFFERENT createdTimestamp,
  * its observationKey differs, so it is treated as a distinct launch
- * identity and stored as a separate entry — never silently merged into
+ * identity and stored as a separate entry - never silently merged into
  * the prior record for that address.
  */
 export function mergeObservations(
@@ -331,7 +331,7 @@ export function computeStats(observations: readonly LiquidityObservation[]): Liq
 
 // ─────────────────────────────────────────────────────────────────────
 // Dataset integrity: parsing/validating persisted JSONL lines.
-// Fails closed — a corrupted or schema-invalid line must abort loading
+// Fails closed - a corrupted or schema-invalid line must abort loading
 // the whole dataset rather than silently drop that line and let a later
 // save rewrite history without it.
 // ─────────────────────────────────────────────────────────────────────
@@ -388,7 +388,7 @@ function isValidObservationShape(value: unknown): value is LiquidityObservation 
 
 /**
  * Parses and validates the full contents of a JSONL dataset file. Any
- * unparseable or schema-invalid line aborts the whole load — this
+ * unparseable or schema-invalid line aborts the whole load - this
  * function is pure (string in, result out) so it's fixture-testable
  * without touching the real filesystem.
  */

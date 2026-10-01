@@ -10,7 +10,7 @@ export type TocEntry = {
 };
 
 /** "7.1 Custody model" -> "section-7-1"; "1. Abstract" -> "section-1";
- * "Appendix A — Default Configuration" -> "appendix-a". Falls back to a
+ * "Appendix A - Default Configuration" -> "appendix-a". Falls back to a
  * generic slug for the two non-numbered title lines at the very top. */
 export function slugForHeading(text: string): string {
   const appendix = text.match(/^Appendix\s+([A-E])\b/i);
@@ -39,13 +39,13 @@ function transformPlainText(text: string): string {
 
 /** Wraps ⟦FILL: …⟧ / ⟦FILL⟧ markers in a fake link the `a` component
  * override renders as a styled badge instead of an anchor, and turns every
- * §N / §N.M cross-reference into a real link to that section's heading —
+ * §N / §N.M cross-reference into a real link to that section's heading -
  * this document references its own sections dozens of times and is meant
  * to be read as a navigable spec, not a flat scroll. Heading lines are
  * left untouched so a heading never links to itself.
  *
  * Splits on backtick-delimited inline code first and leaves those segments
- * untouched — the "Notation" paragraph shows the literal ⟦FILL: …⟧ syntax
+ * untouched - the "Notation" paragraph shows the literal ⟦FILL: …⟧ syntax
  * inside backticks as an example, and markdown doesn't parse link syntax
  * inside a code span anyway, so transforming it there just corrupts it. */
 function processBodyLine(line: string): string {
@@ -68,9 +68,9 @@ function readRaw(): string {
 }
 
 /** The full document, with FILL markers and §-references rewritten for
- * rendering — see processBodyLine. Heading lines and the contents of
+ * rendering - see processBodyLine. Heading lines and the contents of
  * fenced code blocks (the ASCII pipeline diagram, the refusal-feed log,
- * the break-even formula) are left completely untouched — those must
+ * the break-even formula) are left completely untouched - those must
  * render as literal text, not have link syntax injected into them. */
 export function getWhitepaperMarkdown(): string {
   let inFence = false;
@@ -88,7 +88,7 @@ export function getWhitepaperMarkdown(): string {
 }
 
 /** Table of contents: every H2/H3 that starts with a section number or is
- * an Appendix heading — skips the two top-of-document title lines. */
+ * an Appendix heading - skips the two top-of-document title lines. */
 export function getWhitepaperToc(): TocEntry[] {
   const entries: TocEntry[] = [];
   for (const line of readRaw().split("\n")) {

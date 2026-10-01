@@ -13,7 +13,7 @@ import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Bounds the GMGN security fan-out — GMGN is rate-limited, and a config
+// Bounds the GMGN security fan-out - GMGN is rate-limited, and a config
 // test only needs a representative slice of what's launching right now.
 const MAX_TOKENS_EVALUATED = 10;
 
@@ -22,7 +22,7 @@ const MAX_TOKENS_EVALUATED = 10;
  * launches from the same GMGN discovery the agent reads, fetches each
  * token's security facts, and grades them against this bot's own
  * effective config with the exact evaluateRobinhoodSafety the
- * paper-daemon uses — same fail-closed rule: no security data means
+ * paper-daemon uses - same fail-closed rule: no security data means
  * refused, never assumed safe. Read-only: nothing is opened, nothing is
  * written to positions/trades, the daemon and roster are untouched.
  */
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         results.push({
           ...base,
           passed: false,
-          reasons: [`security data unavailable (${security.reason}) — refused, not treated as safe`],
+          reasons: [`security data unavailable (${security.reason}) - refused, not treated as safe`],
         });
         continue;
       }

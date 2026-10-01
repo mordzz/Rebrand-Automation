@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isGmgnConfigured } from "@/lib/gmgn/client";
 import { getTrackedTrades } from "@/lib/gmgn/track";
 
-// Real-time wallet activity — never cache at the framework level; the
+// Real-time wallet activity - never cache at the framework level; the
 // upstream call is already throttled by a short in-process cache.
 export const dynamic = "force-dynamic";
 

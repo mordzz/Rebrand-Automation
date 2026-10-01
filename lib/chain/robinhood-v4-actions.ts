@@ -1,9 +1,9 @@
 /**
- * Uniswap v4 command/action encoding — PR08B.
+ * Uniswap v4 command/action encoding - PR08B.
  *
  * Low-level calldata construction for `UniversalRouter.execute()`,
  * scoped to exactly the sequence
- * `ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §21d proved works against
+ * the PR08 testnet swap audit (git history) proved works against
  * Robinhood testnet: `V4_SWAP` → `SWAP_EXACT_IN_SINGLE` →
  * `SETTLE_ALL` → `TAKE_ALL`. No other commands are implemented here.
  *
@@ -11,9 +11,9 @@
  * WRAP_ETH / UNWRAP_WETH are structurally absent from this module
  * ══════════════════════════════════════════════════════════════════════
  * The testnet router's WETH9 wiring is broken
- * (`TESTNET_ROUTER_WETH9_MISCONFIGURED_FOR_WRAP_PATH` — see
+ * (`TESTNET_ROUTER_WETH9_MISCONFIGURED_FOR_WRAP_PATH` - see
  * robinhood-execution-config.ts). This module never encodes a
- * `WRAP_ETH`/`UNWRAP_WETH` command byte, for any network — not because
+ * `WRAP_ETH`/`UNWRAP_WETH` command byte, for any network - not because
  * of a runtime check, but because those command constants are simply
  * never referenced anywhere in this file. `assertNoWrapCommands` below
  * is a belt-and-suspenders runtime check on top of that, so a future
@@ -26,7 +26,7 @@ import { decodeAbiParameters, encodeAbiParameters, type Address, type Hex } from
 import type { PoolKey } from "@/lib/chain/robinhood-v4-pool";
 
 /** `Commands.sol` command bytes this module knows about. Only `V4_SWAP`
- * is ever emitted by the builders below — the others are listed only so
+ * is ever emitted by the builders below - the others are listed only so
  * `assertNoWrapCommands`/`decodeV4SwapCommandsAndInputs` can name what
  * they're checking for. Exported so PR09's signing-time decoder checks
  * against these exact values, never a second hand-copied set. */
@@ -62,7 +62,7 @@ export type ExactInputSingleParams = {
 };
 
 /** Exported so PR09's decoder decodes with the exact same tuple shape
- * `encodeV4SwapExactInSingle` below encodes with — one definition, never
+ * `encodeV4SwapExactInSingle` below encodes with - one definition, never
  * a second hand-copied one that could silently drift out of sync. */
 export const EXACT_INPUT_SINGLE_ABI_TYPE = {
   type: "tuple",
@@ -79,12 +79,12 @@ export const EXACT_INPUT_SINGLE_ABI_TYPE = {
  * Encodes the `[commands, inputs]` pair for
  * `UniversalRouter.execute(bytes commands, bytes[] inputs, uint256 deadline)`
  * for exactly one `SWAP_EXACT_IN_SINGLE` → `SETTLE_ALL` → `TAKE_ALL`
- * sequence — the only sequence this codebase has verified works
- * (`ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §21d).
+ * sequence - the only sequence this codebase has verified works
+ * (the PR08 testnet swap audit (git history)).
  *
  * `settleCurrency`/`takeCurrency` are passed explicitly (not derived
  * from `zeroForOne`) so a caller building a sell path can't get the
- * settle/take direction backwards by accident — see
+ * settle/take direction backwards by accident - see
  * `robinhood-v4-swap-tx.ts` for how buy vs. sell picks them.
  */
 export function encodeV4SwapExactInSingle(params: {
@@ -135,7 +135,7 @@ function byteArrayToHex(bytes: number[]): Hex {
  * nonexistent WETH contract.
  *
  * Note: `ACTION_SETTLE_ALL` is `0x0c`, the SAME byte value as
- * `COMMAND_UNWRAP_WETH` — this is not a collision this function can be
+ * `COMMAND_UNWRAP_WETH` - this is not a collision this function can be
  * confused by, because it only inspects the top-level `commands` byte
  * string (each byte there selects a whole command, e.g. `V4_SWAP`), never
  * the `actions` bytes nested inside a `V4_SWAP` input (which is a
@@ -146,13 +146,13 @@ export function assertNoWrapCommands(commands: Hex): void {
   const bytes = hexToByteArray(commands);
   if (bytes.includes(COMMAND_WRAP_ETH)) {
     throw new Error(
-      "assertNoWrapCommands: WRAP_ETH (0x0b) command byte found — testnet's router WETH9 " +
+      "assertNoWrapCommands: WRAP_ETH (0x0b) command byte found - testnet's router WETH9 " +
         "is misconfigured (points at mainnet WETH, no code on testnet); this command must never be emitted."
     );
   }
   if (bytes.includes(COMMAND_UNWRAP_WETH)) {
     throw new Error(
-      "assertNoWrapCommands: UNWRAP_WETH (0x0c) command byte found — testnet's router WETH9 " +
+      "assertNoWrapCommands: UNWRAP_WETH (0x0c) command byte found - testnet's router WETH9 " +
         "is misconfigured (points at mainnet WETH, no code on testnet); this command must never be emitted."
     );
   }
@@ -180,17 +180,17 @@ export type DecodeV4SwapResult =
   | { ok: false; reason: string };
 
 /**
- * The exact inverse of `encodeV4SwapExactInSingle` — decodes a
+ * The exact inverse of `encodeV4SwapExactInSingle` - decodes a
  * UniversalRouter `execute()` call's `[commands, inputs]` pair and
  * validates it is EXACTLY the one shape this codebase has ever built or
- * verified working (`ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §21d): a single
+ * verified working (the PR08 testnet swap audit (git history)): a single
  * `V4_SWAP` command carrying a single input whose actions are exactly
  * `SWAP_EXACT_IN_SINGLE` → `SETTLE_ALL` → `TAKE_ALL`, nothing more,
  * nothing reordered, nothing substituted.
  *
  * This exists so PR09's signer can validate full calldata SEMANTICS
  * (not just which contract calldata is addressed to) before ever
- * touching a private key — see robinhood-agent-signing.ts. Any shape
+ * touching a private key - see robinhood-agent-signing.ts. Any shape
  * this function doesn't recognize returns `{ ok: false }`, never a
  * partial/best-guess decode.
  */
@@ -200,7 +200,7 @@ export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly He
     if (commandBytes.length !== 1 || commandBytes[0] !== COMMAND_V4_SWAP) {
       return {
         ok: false,
-        reason: `commands must be exactly one byte, V4_SWAP (0x${COMMAND_V4_SWAP.toString(16)}) — got ${commands}`,
+        reason: `commands must be exactly one byte, V4_SWAP (0x${COMMAND_V4_SWAP.toString(16)}) - got ${commands}`,
       };
     }
     if (inputs.length !== 1) {
@@ -221,7 +221,7 @@ export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly He
     ) {
       return {
         ok: false,
-        reason: `actions must be exactly [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL] — got ${actionsHex}`,
+        reason: `actions must be exactly [SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL] - got ${actionsHex}`,
       };
     }
     if (paramsList.length !== 3) {
@@ -242,7 +242,7 @@ export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly He
     ) as [Address, bigint];
 
     // Canonical re-encode check: `decodeAbiParameters` only proves the
-    // supplied bytes START WITH a value of the expected shape — it does
+    // supplied bytes START WITH a value of the expected shape - it does
     // NOT prove there's no trailing/non-canonical payload appended after
     // it (ABI decoding is not required to consume every byte to
     // succeed). Re-encoding the decoded values with the exact same
@@ -261,14 +261,14 @@ export function decodeV4SwapCommandsAndInputs(commands: Hex, inputs: readonly He
     if (canonical.commands.toLowerCase() !== commands.toLowerCase()) {
       return {
         ok: false,
-        reason: "commands is not the canonical encoding for the decoded V4_SWAP command — refusing non-canonical calldata",
+        reason: "commands is not the canonical encoding for the decoded V4_SWAP command - refusing non-canonical calldata",
       };
     }
     if (canonical.inputs.length !== 1 || canonical.inputs[0].toLowerCase() !== inputs[0].toLowerCase()) {
       return {
         ok: false,
         reason:
-          "the V4_SWAP input is not the exact canonical re-encoding of its own decoded values — possible " +
+          "the V4_SWAP input is not the exact canonical re-encoding of its own decoded values - possible " +
           "trailing or non-canonical bytes in the nested payload (actions/exactInputSingle/settle/take)",
       };
     }

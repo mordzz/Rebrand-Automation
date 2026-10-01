@@ -1,23 +1,23 @@
 import { gmgnGet, isGmgnConfigured } from "./client";
 
 /**
- * A wallet's own trading record, via GMGN's `/v1/user/wallet_stats` —
+ * A wallet's own trading record, via GMGN's `/v1/user/wallet_stats` -
  * win rate and realized PnL computed by GMGN across that wallet's full
  * history, not re-derived here from whatever slice of recent trades
  * lib/gmgn/track.ts happened to fetch. Verified live: passing more than
  * one `wallet_address` only ever returns one wallet's data back, so this
- * is a per-wallet call — see getManyWalletStats for the batching.
+ * is a per-wallet call - see getManyWalletStats for the batching.
  */
 
 export type WalletStats = {
   wallet: string;
   /** 0–1, over `period`. Null when GMGN has nothing to compute it from. */
   winRate: number | null;
-  /** Realized profit in USD over `period` — closed trades only, same
+  /** Realized profit in USD over `period` - closed trades only, same
    * "realized, not a mark-to-market guess" posture as everywhere else
    * PnL shows up on this page. */
   realizedProfitUsd: number | null;
-  /** Distinct tokens traded over `period`, GMGN's own count — not the
+  /** Distinct tokens traded over `period`, GMGN's own count - not the
    * count of positions this page happens to have enriched. */
   tokenCount: number | null;
   followersCount: number | null;
@@ -46,7 +46,7 @@ function normalize(wallet: string, raw: RawWalletStats | null): WalletStats {
 
 /* Same reasoning as lib/gmgn/token-info.ts's cache: a wallet's 7d record
    barely moves between one poll and the next, so there is no reason to
-   re-spend a GMGN call per wallet every cycle — and this is the one
+   re-spend a GMGN call per wallet every cycle - and this is the one
    endpoint here that fans out to one call per KOL on the page (up to
    pageSize of them) rather than one call total, so it's worth caching
    the longest of anything on this page. */

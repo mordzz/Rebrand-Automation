@@ -1,5 +1,5 @@
 /**
- * Chain-aware display helpers — PR14 UI identity migration.
+ * Chain-aware display helpers - PR14 UI identity migration.
  *
  * Every trade/position/activity row carries its own `chain` (PR04). Active
  * Robinhood rows render in ETH with Robinhood-explorer tx-hash / token
@@ -42,7 +42,7 @@ export function rowPnl(row: ChainRow): number | null {
 }
 
 export function formatNative(value: number | null, symbol: string, decimals = 3, signed = false): string {
-  if (value == null) return "—";
+  if (value == null) return "-";
   const sign = signed && value >= 0 ? "+" : "";
   return `${sign}${value.toFixed(decimals)} ${symbol}`;
 }

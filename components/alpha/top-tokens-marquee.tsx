@@ -64,7 +64,7 @@ function Pill({ token }: { token: TopToken }) {
           change != null && change < 0 && "text-destructive"
         )}
       >
-        {change != null ? `${change > 0 ? "+" : ""}${change.toFixed(1)}%` : "—"}
+        {change != null ? `${change > 0 ? "+" : ""}${change.toFixed(1)}%` : "-"}
       </span>
     </a>
   );
@@ -73,7 +73,7 @@ function Pill({ token }: { token: TopToken }) {
 /** Market-wide "what's moving" strip above the Alpha table. Deliberately
  * separate from the table's own vetted candidates: nothing here has
  * necessarily passed the Raven's entry checks, it's just what the whole
- * chain is trading right now — so it renders nothing rather than a
+ * chain is trading right now - so it renders nothing rather than a
  * disabled state when the feed isn't available, same call as dropping
  * the permanently-empty Robinhood Chain panel. */
 export function TopTokensMarquee() {

@@ -3,16 +3,16 @@ import { NextResponse } from "next/server";
 import { isGmgnConfigured } from "@/lib/gmgn/client";
 import { discoverRobinhoodTokens } from "@/lib/gmgn/discovery-robinhood";
 
-// Launches appear by the second — never cache.
+// Launches appear by the second - never cache.
 export const dynamic = "force-dynamic";
 
 const ROW_LIMIT = 30;
 
 /** Fresh Robinhood Chain launches for the dashboard's "New launches"
- * panel (PR16) — the same GMGN `/v1/trenches` adapter the agent's own
+ * panel (PR16) - the same GMGN `/v1/trenches` adapter the agent's own
  * discovery uses (lib/gmgn/discovery-robinhood.ts), including its
  * launchpad allow-list. Logos come from GMGN itself. `configured: false`
- * when GMGN_API_KEY is unset. Display only — the agent decides on its own
+ * when GMGN_API_KEY is unset. Display only - the agent decides on its own
  * safety/strategy/risk pipeline, not on this feed. */
 export async function GET() {
   if (!isGmgnConfigured()) {

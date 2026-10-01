@@ -25,7 +25,7 @@ type WalletResponse = {
  * The agent's own trading wallet: where the operator deposits, and where
  * they withdraw from.
  *
- * Separate from the connected owner (EVM) wallet on purpose — that one is only
+ * Separate from the connected owner (EVM) wallet on purpose - that one is only
  * an identity here and its keys are never held. Only what is deposited
  * into this address is ever at risk, which is the whole reason the agent
  * gets a wallet of its own rather than borrowing the operator's.
@@ -182,11 +182,11 @@ export function AgentWalletPanel({ walletQuery }: { walletQuery: string }) {
                 Balance
               </p>
               <p className="mt-2 text-2xl font-medium tabular-nums">
-                {balance != null ? `${balance.toFixed(5)} ${symbol}` : "—"}
+                {balance != null ? `${balance.toFixed(5)} ${symbol}` : "-"}
               </p>
               <p className="mt-1 text-[0.7rem] text-muted-foreground">
                 {wallet.error
-                  ? "RPC unavailable — try again shortly"
+                  ? "RPC unavailable - try again shortly"
                   : "Live balance"}
               </p>
             </div>

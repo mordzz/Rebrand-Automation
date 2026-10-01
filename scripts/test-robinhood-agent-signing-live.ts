@@ -5,7 +5,7 @@
  * Allowed against live testnet: chain id, nonce, gas estimation, fee
  * estimation, balance read. Generates a fresh agent wallet and signs a
  * real ERC-20 approval transaction OFFLINE using live-fetched
- * nonce/gas/fee data — the signed raw transaction is decoded and
+ * nonce/gas/fee data - the signed raw transaction is decoded and
  * compared against what was requested, but it is NEVER broadcast: this
  * script never calls eth_sendRawTransaction or any wallet "send"
  * primitive.
@@ -55,7 +55,7 @@ const ERC20_APPROVE_ABI = [
 
 async function main() {
   if (ROBINHOOD_NETWORK !== "testnet") {
-    console.log(`[SKIP] NEXT_PUBLIC_ROBINHOOD_NETWORK="${ROBINHOOD_NETWORK}" — this live check only runs against testnet.`);
+    console.log(`[SKIP] NEXT_PUBLIC_ROBINHOOD_NETWORK="${ROBINHOOD_NETWORK}" - this live check only runs against testnet.`);
     process.exitCode = 0;
     return;
   }
@@ -74,7 +74,7 @@ async function main() {
     chainId = await client.getChainId();
   } catch (error) {
     if (error instanceof RobinhoodRpcError || (error instanceof Error && /fetch|network|ECONNREFUSED|ENOTFOUND/i.test(error.message))) {
-      console.log(`[SKIP] Robinhood testnet RPC unreachable — skipping live check: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(`[SKIP] Robinhood testnet RPC unreachable - skipping live check: ${error instanceof Error ? error.message : String(error)}`);
       process.exitCode = 0;
       return;
     }
@@ -118,7 +118,7 @@ async function main() {
     agentSecretEnc: wallet.secretEnc,
   };
 
-  // Live gas estimation for this specific call — allowed (read-only).
+  // Live gas estimation for this specific call - allowed (read-only).
   const gas = await client.estimateGas({
     account: wallet.address,
     to: approvalToken,

@@ -27,7 +27,7 @@ export type TradeRow = {
   token: string;
   strategy: string;
   pnlSol: string;
-  /** PR04 chain-neutral fields — pick the unit per row (PR14). */
+  /** PR04 chain-neutral fields - pick the unit per row (PR14). */
   chain?: string | null;
   pnlNative?: string | null;
   closedAt: string;
@@ -42,7 +42,7 @@ const PERF_CONFIG = {
   cum: { label: "Cumulative", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
-/** Per-trade realized P&L bars + a cumulative curve — shared by the house
+/** Per-trade realized P&L bars + a cumulative curve - shared by the house
  * desk (dashboard) and a connected account's own desk (deploy). */
 export function TradePerformanceChart({
   trades,
@@ -51,7 +51,7 @@ export function TradePerformanceChart({
   trades: TradeRow[];
   configured: boolean;
 }) {
-  // Chronological series — the API returns newest-first, so re-sort
+  // Chronological series - the API returns newest-first, so re-sort
   // ascending before accumulating (via reduce, not a mutated loop
   // variable, so the render body stays pure).
   // One unit per chart: Robinhood (ETH) rows if any exist, otherwise the
@@ -97,7 +97,7 @@ export function TradePerformanceChart({
         </div>
       ) : perfSeries.length === 0 ? (
         <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">
-          No closed trades yet — the curve draws itself as the agent trades.
+          No closed trades yet - the curve draws itself as the agent trades.
         </div>
       ) : (
         <ChartContainer config={PERF_CONFIG} className="mt-3 h-44 w-full">

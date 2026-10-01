@@ -1,11 +1,11 @@
 /**
  * Applies drizzle/0001_chain_neutral_foundation.sql against the
- * configured database (DIRECT_URL, falling back to DATABASE_URL — same
+ * configured database (DIRECT_URL, falling back to DATABASE_URL - same
  * precedence drizzle.config.ts uses for migrations).
  *
  * The SQL itself is hand-authored and additive-only: ADD COLUMN IF NOT
  * EXISTS, plus a one-time historical backfill gated on a "_migrations"
- * marker row (not on column nullness — see the SQL file's comments for
+ * marker row (not on column nullness - see the SQL file's comments for
  * why that distinction matters once real Robinhood rows exist).
  *
  * The row-count invariant check runs INSIDE the same transaction as the
@@ -52,7 +52,7 @@ async function countRows(
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DIRECT_URL/DATABASE_URL not set — nothing to migrate against.");
+    console.error("DIRECT_URL/DATABASE_URL not set - nothing to migrate against.");
     process.exitCode = 1;
     return;
   }
@@ -83,7 +83,7 @@ async function main() {
       }
 
       if (mismatches.length > 0) {
-        // Throwing inside sql.begin() rolls the whole transaction back —
+        // Throwing inside sql.begin() rolls the whole transaction back -
         // the ADD COLUMN / backfill statements above are undone too, not
         // just left uncommitted for someone to notice later.
         throw new Error(
@@ -92,7 +92,7 @@ async function main() {
         );
       }
 
-      console.log("\nRow counts unchanged — safe to commit.");
+      console.log("\nRow counts unchanged - safe to commit.");
     });
 
     console.log("Transaction committed.");

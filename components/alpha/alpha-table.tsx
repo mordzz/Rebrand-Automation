@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { explorerUrl } from "@/lib/chain/config";
 
-/** Mirrors lib/sniper/safety-checks.ts#SafetyCheckResult — kept as a plain
+/** Mirrors lib/sniper/safety-checks.ts#SafetyCheckResult - kept as a plain
  * type here (not imported) since this file is a client component and the
  * source type lives in server-only code (same convention as
  * components/dashboard/sniper-config-readout.tsx). */
@@ -45,13 +45,13 @@ type SafetyResult = {
   metadata: SafetyMetadata | null;
 };
 
-/** Live figures from DexScreener, added per row by app/api/alpha — see
+/** Live figures from DexScreener, added per row by app/api/alpha - see
  * lib/sniper/token-market.ts. Null for a mint with no pair yet. */
 type TokenMarket = {
   marketCapUsd: number | null;
   priceUsd: number | null;
   changePct: number | null;
-  /** Which window changePct covers — a minutes-old mint usually only has
+  /** Which window changePct covers - a minutes-old mint usually only has
    * a 24h figure, so the row labels the window instead of implying "5m". */
   changeWindow: "5m" | "1h" | "6h" | "24h" | null;
   volumeH24Usd: number | null;
@@ -150,7 +150,7 @@ const CHECK_GLYPH_SKIPPED = (
 /** Why a row earned its shield: the same criteria the page's own tagline
  * promises ("mint/freeze authority, creator buy %, socials"), made
  * concrete per-token instead of just a green checkmark. `reasons` on a
- * stored row is always empty (only passing candidates are inserted — see
+ * stored row is always empty (only passing candidates are inserted - see
  * app/api/alpha/route.ts), so this reads the underlying booleans instead. */
 function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
   if (row.chain === "robinhood") return <RobinhoodChecklist row={row} />;
@@ -210,7 +210,7 @@ function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
 
 /** Robinhood/EVM version of the checklist: the facts the house's
  * Robinhood safety policy actually checked (owner, blacklist, creator
- * holding, socials) — never the Solana mint/freeze concepts. */
+ * holding, socials) - never the Solana mint/freeze concepts. */
 function RobinhoodChecklist({ row }: { row: AlphaCandidateRow }) {
   const s = row.safety;
   return (
@@ -452,12 +452,12 @@ export function AlphaTable() {
                           )}
                         </>
                       ) : (
-                        "—"
+                        "-"
                       )}
                     </td>
 
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {creatorPct != null ? `${creatorPct.toFixed(1)}%` : "—"}
+                      {creatorPct != null ? `${creatorPct.toFixed(1)}%` : "-"}
                     </td>
 
                     <td className="px-3 py-2.5">
@@ -478,7 +478,7 @@ export function AlphaTable() {
                           )}
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </td>
 

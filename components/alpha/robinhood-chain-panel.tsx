@@ -1,10 +1,10 @@
 import { Lock } from "lucide-react";
 
 /** Robinhood Chain (Arbitrum Orbit L2, chain 4663, launched July 2026) has
- * no permissionless new-token stream like pump.fun — Stock Tokens are a
+ * no permissionless new-token stream like pump.fun - Stock Tokens are a
  * fixed set pegged 1:1 to real equities, so "runner" there means "biggest
  * mover," not "new listing." That needs historical price data, which the
- * free public RPC doesn't serve — a paid provider (QuickNode/Chainstack/
+ * free public RPC doesn't serve - a paid provider (QuickNode/Chainstack/
  * Dwellir/NodeFlare) is required. Deliberately not wired up with fake
  * data until that's connected. */
 export function RobinhoodChainPanel() {

@@ -12,10 +12,10 @@ import { toPerpAccountView } from "@/lib/lighter/positions";
 export const dynamic = "force-dynamic";
 
 /**
- * The bot's Lighter perps state — PR12. Owner-authenticated (a verified
+ * The bot's Lighter perps state - PR12. Owner-authenticated (a verified
  * Privy user that owns the EVM owner wallet), because reading open orders
  * and personal funding uses the bot's Lighter API key to mint an auth
- * token. Returns public metadata only — never the encrypted API key.
+ * token. Returns public metadata only - never the encrypted API key.
  */
 export async function GET(request: Request) {
   const db = getDb();

@@ -4,14 +4,14 @@
 -- existing column) and is safe to re-run on its own (IF NOT EXISTS).
 --
 -- The historical Solana backfill is a ONE-TIME operation, gated on the
--- "_migrations" marker table below — not on "WHERE chain IS NULL". A
+-- "_migrations" marker table below - not on "WHERE chain IS NULL". A
 -- future Robinhood row that ends up with a NULL chain/network discriminator
 -- (a partial or buggy write) must stay NULL on re-run, not get silently
 -- relabeled "solana" just because it's null. The marker is what actually
 -- proves "this row predates the migration", not the column's nullness.
 --
 -- This repo has historically used `drizzle-kit push` (schema-diff, no
--- tracked migration files) rather than generated migrations — this file
+-- tracked migration files) rather than generated migrations - this file
 -- is hand-authored, not drizzle-kit-generated, specifically so its SQL
 -- can be reviewed before it touches the database (see PR04 report).
 
@@ -57,7 +57,7 @@ ALTER TABLE "alpha_candidates" ADD COLUMN IF NOT EXISTS "chain" text;
 ALTER TABLE "alpha_candidates" ADD COLUMN IF NOT EXISTS "network" text;
 
 -- ── user_bots, perpspad_* ───────────────────────────────────────────────
--- Deliberately untouched in PR04 — see the PR04 report's audit notes:
+-- Deliberately untouched in PR04 - see the PR04 report's audit notes:
 -- user_bots.walletAddress (operator identity) is deferred to the wallet-
 -- ownership-signature migration; agentPublicKey/agentSecretEnc/rpcUrl are
 -- deferred to the EVM agent-wallet phase; perpspad_* is deferred to
@@ -70,7 +70,7 @@ ALTER TABLE "alpha_candidates" ADD COLUMN IF NOT EXISTS "network" text;
 -- unambiguously Solana; anything inserted after this point is not
 -- touched by this block on a later run, regardless of what its
 -- discriminator columns contain. "network" is left NULL for this legacy
--- backfill — which network a historical Solana trade ran on was never
+-- backfill - which network a historical Solana trade ran on was never
 -- recorded, and preservation means leaving that unknown rather than
 -- guessing.
 DO $$
@@ -93,7 +93,7 @@ BEGIN
     -- tx_hash represents an actual on-chain transaction identifier, not
     -- an execution-mode sentinel: paper trades' literal 'paper' signature
     -- stays in tx_signature untouched, but does NOT get copied into
-    -- tx_hash — that column stays NULL for those rows.
+    -- tx_hash - that column stays NULL for those rows.
     UPDATE "logs"
     SET "tx_hash" = CASE WHEN "tx_signature" = 'paper' THEN NULL ELSE "tx_signature" END,
         "token_address" = "token_mint",

@@ -1,14 +1,14 @@
 /**
  * Deterministic tests for the PR09-hardening chain-aware agent-wallet
- * view helper: lib/chain/robinhood-agent-wallet-view.ts — used by
+ * view helper: lib/chain/robinhood-agent-wallet-view.ts - used by
  * GET /api/my-bot/wallet to stop routing Robinhood/EVM bots through the
  * Solana balance reader.
  *
- * No network calls — `buildRobinhoodAgentWalletView` is a pure function
+ * No network calls - `buildRobinhoodAgentWalletView` is a pure function
  * given an already-fetched balance/error, so this exercises it directly
  * with synthetic inputs. Also statically confirms (by reading the
  * module's own source) that it never imports the Solana balance reader
- * at all — not just that the route happens not to call it.
+ * at all - not just that the route happens not to call it.
  *
  * Run: npm run test:robinhood-agent-wallet-view
  */
@@ -56,14 +56,14 @@ async function main() {
       assertEqual(view.nativeSymbol, ROBINHOOD_NATIVE_SYMBOL, "view.nativeSymbol === ETH");
       assertEqual(view.address, AGENT_ADDRESS, "view.address matches the agent's public key");
       assertEqual(view.balanceNative, "1.5", "1.5 ETH in wei formats to the decimal string '1.5'");
-      assertEqual(view.sizeNative, null, "sizeNative is null — no invented required-funding number");
-      assertEqual(view.requiredNative, null, "requiredNative is null — no invented required-funding number");
-      assertEqual(view.sufficient, null, "sufficient is null — no invented sufficiency threshold");
+      assertEqual(view.sizeNative, null, "sizeNative is null - no invented required-funding number");
+      assertEqual(view.requiredNative, null, "requiredNative is null - no invented required-funding number");
+      assertEqual(view.sufficient, null, "sufficient is null - no invented sufficiency threshold");
       assertEqual(view.error, null, "error is null when balance read succeeded");
     }
   }
   {
-    // Balance read failed — error surfaces, balanceNative stays null
+    // Balance read failed - error surfaces, balanceNative stays null
     // (never reported as 0, which would look like a drained wallet).
     const view = buildRobinhoodAgentWalletView(
       { agentPublicKey: AGENT_ADDRESS, agentNetwork: ROBINHOOD_NETWORK },
@@ -151,7 +151,7 @@ async function main() {
     }
   }
   {
-    // The dependency throwing must not throw out of the loader — it
+    // The dependency throwing must not throw out of the loader - it
     // surfaces as a wallet-view error, same as buildRobinhoodAgentWalletView's
     // own failed-read handling.
     let calls = 0;
@@ -173,7 +173,7 @@ async function main() {
   }
 
   // ═══ structural: the Robinhood view module never references the Solana
-  // balance reader at all — not just "the route doesn't call it today" ═
+  // balance reader at all - not just "the route doesn't call it today" ═
   {
     const source = readFileSync(
       join(process.cwd(), "lib", "chain", "robinhood-agent-wallet-view.ts"),

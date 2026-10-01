@@ -1,11 +1,11 @@
 /**
- * Lighter integer scaling — PR12.
+ * Lighter integer scaling - PR12.
  *
  * Lighter order fields are integers in market-specific units (per the
  * official lighter-python examples: ETH with size_decimals=4 →
  * `base_amount=1000` is 0.1 ETH; price_decimals=2 → `price=4050_00` is
  * $4050). This module converts decimal STRINGS to those integers with
- * bigint arithmetic only — never JavaScript floating point — and refuses
+ * bigint arithmetic only - never JavaScript floating point - and refuses
  * any value that carries more precision than the market supports rather
  * than silently rounding a monetary quantity.
  */

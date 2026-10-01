@@ -1,5 +1,5 @@
 /**
- * Mainnet guard tests — POST-MIGRATION readiness.
+ * Mainnet guard tests - POST-MIGRATION readiness.
  *
  * Proves that, even with the process pointed at Robinhood MAINNET, every
  * state-changing path still refuses:
@@ -27,7 +27,7 @@ async function refuses(fn: () => unknown, re: RegExp, label: string) {
     await fn();
     assert(false, `${label} (did not refuse)`);
   } catch (e) {
-    assert(re.test(e instanceof Error ? e.message : String(e)), `${label} — ${(e as Error).message.slice(0, 80)}`);
+    assert(re.test(e instanceof Error ? e.message : String(e)), `${label} - ${(e as Error).message.slice(0, 80)}`);
   }
 }
 

@@ -6,14 +6,14 @@ import { lessons } from "@/drizzle/schema";
 
 /**
  * Surfaces applied trading lessons (rules learned from past losses) into
- * the concierge's context — the piece the learning-loop memory note
+ * the concierge's context - the piece the learning-loop memory note
  * flagged as never wired up.
  */
 export const lessonsProvider: Provider = {
   name: "APPLIED_LESSONS",
   description: "Rules learned from past losing trades that are now enforced.",
   position: 50,
-  // See wallet-provider.ts for why this is needed — without it the
+  // See wallet-provider.ts for why this is needed - without it the
   // context-routing classifier can silently exclude this provider on
   // turns not classified into whatever context "APPLIED_LESSONS" defaults to.
   alwaysInResponseState: true,

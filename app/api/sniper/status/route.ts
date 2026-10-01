@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * (post-migration readiness). */
 const HOUSE_ENGINE = "solana_retired" as const;
 
-// The daemon heartbeated every 5s (scripts/sniper-daemon.ts) — anything
+// The daemon heartbeated every 5s (scripts/sniper-daemon.ts) - anything
 // older than this is considered stopped/crashed, not just briefly busy.
 const STALE_THRESHOLD_MS = 15_000;
 

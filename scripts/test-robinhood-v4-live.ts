@@ -4,9 +4,9 @@
  *
  * Verifies: correct chain id, bytecode presence for Quoter / PoolManager /
  * UniversalRouter / StateView, and reproduces
- * ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b/§21c's native-ETH pool
+ * the PR08 testnet swap audit (git history)'s native-ETH pool
  * validation + bidirectional quote by hand through this adapter's own
- * `validatePoolKey`/`quoteSwap` — as verification that the new code
+ * `validatePoolKey`/`quoteSwap` - as verification that the new code
  * reproduces the audit's result, NOT as a hardcoded production pool.
  *
  * No transaction is sent. No signing. No GMGN dependency. Requires network
@@ -32,7 +32,7 @@ function assert(condition: boolean, label: string): void {
   }
 }
 
-// The exact pool ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b verified —
+// The exact pool the PR08 testnet swap audit (git history) verified -
 // reproduced here to confirm this adapter's code path gets the same
 // result the audit got by hand. This is a testnet dev-test token, not a
 // production one; nothing in the adapter hardcodes it.
@@ -47,7 +47,7 @@ const AUDIT_FIXTURE_POOL_KEY: PoolKey = {
 async function main() {
   if (ROBINHOOD_NETWORK !== "testnet") {
     console.log(
-      `[SKIP] NEXT_PUBLIC_ROBINHOOD_NETWORK="${ROBINHOOD_NETWORK}" — this live check only runs against testnet.`
+      `[SKIP] NEXT_PUBLIC_ROBINHOOD_NETWORK="${ROBINHOOD_NETWORK}" - this live check only runs against testnet.`
     );
     process.exitCode = 0;
     return;
@@ -68,7 +68,7 @@ async function main() {
     assert(true, `RPC reports the expected chain id (${ROBINHOOD_CHAIN_ID})`);
   } catch (error) {
     if (error instanceof RobinhoodRpcError && error.code === "rpc_unavailable") {
-      console.log(`[SKIP] Robinhood testnet RPC unreachable — skipping live check: ${error.message}`);
+      console.log(`[SKIP] Robinhood testnet RPC unreachable - skipping live check: ${error.message}`);
       process.exitCode = 0;
       return;
     }

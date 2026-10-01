@@ -1,18 +1,18 @@
 /**
- * Robinhood Chain autonomous transaction signing — PR09.
+ * Robinhood Chain autonomous transaction signing - PR09.
  *
  * A narrow server-side signing boundary that takes PR08's unsigned
  * `{chainId, to, data, value}` objects and produces a signed raw
- * transaction, OFFLINE — this module never calls
+ * transaction, OFFLINE - this module never calls
  * `eth_sendRawTransaction` or any broadcast primitive. Sending is PR10's
- * job. This module does not rebuild swap calldata either — that stays
+ * job. This module does not rebuild swap calldata either - that stays
  * PR08's job (lib/chain/robinhood-v4-swap-tx.ts / robinhood-v4-actions.ts).
  *
  * This is deliberately NOT a generic arbitrary-contract signer, and a
  * matching `to` address alone is NOT sufficient to sign. Every intent
- * decodes the FULL calldata and validates its exact semantics — the
+ * decodes the FULL calldata and validates its exact semantics - the
  * specific function, every argument, and (for swaps) the full nested
- * commands/actions/PoolKey shape — before the private key is ever
+ * commands/actions/PoolKey shape - before the private key is ever
  * loaded. A transaction whose target is on the allowlist but whose
  * calldata doesn't decode to exactly the expected call is refused just
  * as hard as a transaction to the wrong address. All ABI/byte constants
@@ -20,7 +20,7 @@
  * (robinhood-v4-actions.ts, robinhood-v4-swap-tx.ts), never
  * hand-copied, so the two layers cannot silently drift apart.
  *
- * TESTNET ONLY — see assertTestnetSigningEnabled below. Mainnet
+ * TESTNET ONLY - see assertTestnetSigningEnabled below. Mainnet
  * autonomous signing is not implemented and fails closed with an
  * explicit message, not silently disabled behind an env flag someone
  * could accidentally flip on.
@@ -45,7 +45,7 @@ import {
   type UnsignedTransaction,
 } from "@/lib/chain/robinhood-v4-swap-tx";
 
-/** What kind of unsigned transaction is being signed — determines both
+/** What kind of unsigned transaction is being signed - determines both
  * the allowed `to` target AND the expected calldata shape. Never a
  * free-form/unscoped signer. */
 export type SigningIntent = "swap" | "erc20_approval" | "permit2_authorization";
@@ -57,7 +57,7 @@ export type SignRobinhoodTransactionInput = {
   /** Required for intent === "erc20_approval" (the token this approval
    * targets) AND intent === "permit2_authorization" (the token the
    * decoded Permit2 `approve()` call must name). Never inferred from the
-   * calldata itself — the caller states up front what it expects, and
+   * calldata itself - the caller states up front what it expects, and
    * the decoded calldata must match that, not the other way around. */
   approvalToken?: Address;
 };
@@ -70,7 +70,7 @@ export type SignedRobinhoodTransaction = {
   gas: bigint;
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
-  /** Signed, RLP-encoded raw transaction — ready for
+  /** Signed, RLP-encoded raw transaction - ready for
    * `eth_sendRawTransaction`, which THIS module never calls. */
   signedRawTransaction: Hex;
 };
@@ -78,7 +78,7 @@ export type SignedRobinhoodTransaction = {
 /**
  * PR09 is Robinhood TESTNET only. Mainnet autonomous signing is
  * unimplemented and must fail closed with this exact message rather than
- * silently proceeding — there is deliberately no env flag that enables
+ * silently proceeding - there is deliberately no env flag that enables
  * it, so a misconfigured environment variable can't accidentally turn
  * this on.
  */
@@ -94,7 +94,7 @@ function nowSeconds(): bigint {
 
 /** Fails closed if `deadlineOrExpiration` isn't strictly in the future
  * and within PR08's own bounded-deadline policy
- * (`MAX_DEADLINE_SECONDS`) — the exact same bound PR08 enforces when
+ * (`MAX_DEADLINE_SECONDS`) - the exact same bound PR08 enforces when
  * building it, never a second, possibly-drifted copy. */
 function assertDeadlineWithinPolicy(deadlineOrExpiration: bigint, label: string): void {
   const now = nowSeconds();
@@ -114,14 +114,14 @@ function assertDeadlineWithinPolicy(deadlineOrExpiration: bigint, label: string)
  * Full semantic validation of a swap-intent transaction: decodes
  * `UniversalRouter.execute()` and, within it, the exact
  * `V4_SWAP`/`SWAP_EXACT_IN_SINGLE`/`SETTLE_ALL`/`TAKE_ALL` payload PR08
- * builds — never just checking the function selector. Throws with a
+ * builds - never just checking the function selector. Throws with a
  * specific reason on any deviation.
  */
 /**
  * Requires that re-encoding the decoded arguments with the exact same
  * ABI/function used to decode them reproduces the original calldata
  * byte-for-byte. `decodeFunctionData`/`decodeAbiParameters` only prove
- * the supplied bytes START WITH a value of the expected shape — ABI
+ * the supplied bytes START WITH a value of the expected shape - ABI
  * decoding is not required to consume every trailing byte to succeed, so
  * this is the step that actually rules out trailing or non-canonical
  * payload data riding along with an otherwise-valid-looking call.
@@ -132,7 +132,7 @@ function assertCanonicalCalldata(original: Hex, canonical: Hex, label: string): 
   if (canonical.toLowerCase() !== original.toLowerCase()) {
     throw new Error(
       `signRobinhoodTransaction: ${label} calldata is not the canonical re-encoding of its own decoded ` +
-        `values — refusing (possible trailing or non-canonical payload bytes)`
+        `values - refusing (possible trailing or non-canonical payload bytes)`
     );
   }
 }
@@ -177,7 +177,7 @@ function validateSwapCalldata(data: Hex, unsignedTransaction: UnsignedTransactio
   const currency1IsNative = getAddress(poolKey.currency1) === getAddress(NATIVE_CURRENCY);
   if (currency0IsNative === currency1IsNative) {
     // Either both native (impossible/malformed) or neither native
-    // (token/token — out of this adapter's verified scope).
+    // (token/token - out of this adapter's verified scope).
     throw new Error("signRobinhoodTransaction: swap poolKey must have exactly one native (address(0)) currency");
   }
 
@@ -302,7 +302,7 @@ function validatePermit2AuthorizationCalldata(
 }
 
 /**
- * Resolves the intent-scoped allowed `to` target — a necessary but NOT
+ * Resolves the intent-scoped allowed `to` target - a necessary but NOT
  * sufficient check on its own; every intent below also validates full
  * calldata semantics via validate*Calldata.
  */
@@ -330,7 +330,7 @@ function expectedTargetForIntent(
 
 /**
  * Pure validation of a signing request against the resolved execution
- * config — no RPC, no key material touched. Split out so it can be
+ * config - no RPC, no key material touched. Split out so it can be
  * exercised directly in deterministic tests. Throws (never returns a
  * "maybe") on:
  *   - mainnet (assertTestnetSigningEnabled)
@@ -381,7 +381,7 @@ export function validateSignRobinhoodTransactionInput(
     throw new Error("signRobinhoodTransaction: unsignedTransaction.data must be present (non-empty calldata)");
   }
 
-  // Target matched — now validate the FULL calldata semantics for this
+  // Target matched - now validate the FULL calldata semantics for this
   // intent. A matching target with the wrong/malformed calldata is
   // refused just as hard as a mismatched target.
   switch (input.intent) {
@@ -409,7 +409,7 @@ export function validateSignRobinhoodTransactionInput(
 }
 
 /** RPC-dependent transaction-preparation primitives, injectable for
- * deterministic tests. Production callers should never pass `deps` — the
+ * deterministic tests. Production callers should never pass `deps` - the
  * real implementations (live testnet RPC reads) are the defaults. */
 export type SignRobinhoodTransactionDeps = {
   assertNetwork?: typeof assertExecutionConfigOnActiveNetwork;
@@ -424,14 +424,14 @@ export type SignRobinhoodTransactionDeps = {
 /**
  * Signs a PR08-built unsigned transaction for a bot's Robinhood agent
  * wallet. Runs `validateSignRobinhoodTransactionInput` first (no RPC, no
- * key material — target AND full calldata semantics), then the
+ * key material - target AND full calldata semantics), then the
  * execution-config/active-network guard
- * (`assertExecutionConfigOnActiveNetwork` — also verifies the RPC itself
+ * (`assertExecutionConfigOnActiveNetwork` - also verifies the RPC itself
  * reports the expected chain id), then loads and verifies the agent
  * account (`loadRobinhoodAgentAccount`'s own fail-closed checks).
  *
  * Prepares nonce/gas/EIP-1559 fee fields from live chain RPC reads (never
- * invented — no floating point, no guessed gas price), signs OFFLINE via
+ * invented - no floating point, no guessed gas price), signs OFFLINE via
  * the account's own `signTransaction`, and returns the signed raw
  * transaction. Never broadcasts.
  */

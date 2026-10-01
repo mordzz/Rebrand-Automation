@@ -1,7 +1,7 @@
 /**
  * Applies drizzle/0002_robinhood_safety_policy.sql against the configured
  * database (DIRECT_URL, falling back to DATABASE_URL). Purely additive
- * (ADD COLUMN IF NOT EXISTS) — no marker/backfill machinery needed here,
+ * (ADD COLUMN IF NOT EXISTS) - no marker/backfill machinery needed here,
  * unlike scripts/apply-chain-neutral-migration.ts's PR04 migration, since
  * there's no historical-vs-new row distinction to get wrong: every row,
  * old or new, gets the same column defaults.
@@ -32,7 +32,7 @@ async function countRows(tx: postgres.TransactionSql): Promise<number> {
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DIRECT_URL/DATABASE_URL not set — nothing to migrate against.");
+    console.error("DIRECT_URL/DATABASE_URL not set - nothing to migrate against.");
     process.exitCode = 1;
     return;
   }
@@ -53,10 +53,10 @@ async function main() {
 
       if (before !== after) {
         throw new Error(
-          `Row count changed (${before} → ${after}) — this migration should only ADD columns. Rolling back.`
+          `Row count changed (${before} → ${after}) - this migration should only ADD columns. Rolling back.`
         );
       }
-      console.log("Row count unchanged — safe to commit.");
+      console.log("Row count unchanged - safe to commit.");
     });
 
     console.log("Transaction committed.");

@@ -8,19 +8,19 @@
 | **Site** | noahengine.xyz |
 | **Contact** | ⟦FILL: privacy contact address⟧ |
 
-> **Read this first.** Noah Engine has no email signup, no password, and no identity check. You sign in with a Solana wallet, and that wallet's public address is your account. The most sensitive thing we hold is not information about you: it is the secret key of the trading wallet your agent signs with. Section 4 is about that key, and it is the section worth reading closely.
+> **Read this first.** Noah Engine has no email signup, no password, and no identity check. You sign in with an EVM wallet, and that wallet's public address is your account. The most sensitive thing we hold is not information about you: it is the secret key of the trading wallet your agent signs with. Section 4 is about that key, and it is the section worth reading closely.
 
 ---
 
 ## 1. Scope
 
-This policy covers noahengine.xyz and the Noah Engine platform behind it. It does not cover the Solana blockchain itself, the wallet software you sign in with, or any third-party site you reach from ours.
+This policy covers noahengine.xyz and the Noah Engine platform behind it. It does not cover Robinhood Chain itself, the wallet software you sign in with, or any third-party site you reach from ours.
 
 Fields marked ⟦FILL: …⟧ are values this document cannot assert until they are decided or reviewed. They are listed together in section 14.
 
 ## 2. The short version
 
-- We identify you by your Solana wallet address, and nothing else. No email, no name, no document, no KYC.
+- We identify you by your EVM wallet address, and nothing else. No email, no name, no document, no KYC.
 - We never ask for, receive, or store the private key or seed phrase of **your own** wallet.
 - We do generate and hold the key of a separate wallet belonging to your agent, encrypted at rest. You can export it or empty it at any time.
 - Your agent's trading record is written to our database, and parts of it are public on the fleet by design.
@@ -33,7 +33,7 @@ Fields marked ⟦FILL: …⟧ are values this document cannot assert until they 
 
 | Data | Why | Where it lives |
 |---|---|---|
-| Your Solana wallet address | It is your account identifier and establishes who owns an agent | Our database |
+| Your EVM wallet address | It is your account identifier and establishes who owns an agent | Our database |
 | Agent name and appearance | It is displayed on the public fleet | Our database |
 | Image or GIF URL, if you supply one | Rendered as your agent's face | Our database; the image is fetched from wherever you hosted it |
 | Trading configuration | Position size, stop, target, limits: the rules your agent obeys | Our database |
@@ -47,7 +47,7 @@ Positions, closed trades, execution logs, refusals with their reasons, price obs
 
 ### 3.3 What we do not collect
 
-No email address, legal name, postal address, phone number, date of birth, or identity document. No payment card details: fees are paid in SOL on-chain. We run no advertising or cross-site tracking, and we sell nothing to anyone.
+No email address, legal name, postal address, phone number, date of birth, or identity document. No payment card details: fees are paid in ETH on-chain. We run no advertising or cross-site tracking, and we sell nothing to anyone.
 
 ## 4. Key material
 
@@ -55,7 +55,7 @@ This is the part that matters most, and it is stated plainly rather than reassur
 
 **Your own wallet.** Its private key and seed phrase are never requested, never transmitted to us, and never held by us. Noah will not ask for them under any circumstances, in any interface, under any encryption story. Anything that does is fraudulent and is not us.
 
-**Your agent's wallet.** Deploying an agent generates a fresh Solana keypair belonging to that agent alone. Because an agent has to sign while you are asleep, **we hold that key**. It is:
+**Your agent's wallet.** Deploying an agent generates a fresh Robinhood Chain (EVM) wallet belonging to that agent alone. Because an agent has to sign while you are asleep, **we hold that key**. It is:
 
 - Encrypted at rest with AES-256-GCM.
 - Encrypted under a key held in the server environment and never written to the database, so a database dump on its own is not enough to move funds.
@@ -68,7 +68,7 @@ This is the part that matters most, and it is stated plainly rather than reassur
 
 ## 5. On-chain data is public and permanent
 
-Every trade your agent makes is a public Solana transaction. Amounts, timing, counterparties, and the agent wallet address are visible to anyone, forever, on any block explorer.
+Every trade your agent makes is a public Robinhood Chain transaction. Amounts, timing, counterparties, and the agent wallet address are visible to anyone, forever, on any block explorer.
 
 If you fund an agent wallet from your own wallet, that transfer is also public, and it links the two addresses permanently. Anyone who knows your main address can then follow your agent's activity, and the reverse. **We cannot undo this, delete it, or hide it.** If that linkage matters to you, fund the agent from an address you are willing to have publicly associated with it.
 
@@ -91,10 +91,9 @@ We are not the only party that sees this data. Each of these has its own privacy
 | Recipient | What it receives | Why |
 |---|---|---|
 | Privy | Wallet sign-in | Authentication |
-| Solana RPC providers | Addresses, transactions, balance queries | Reading the chain and submitting trades |
+| Robinhood Chain RPC providers | Addresses, transactions, balance queries | Reading the chain and submitting trades |
 | Jupiter | Token mints, trade sizes, your agent's address | Swap quotes and routing |
 | PumpPortal, GMGN, DexScreener | Token addresses being evaluated | The mint stream and safety data |
-| CoinGecko | Nothing about you | SOL price |
 | A language-model provider (OpenAI, OpenRouter, or Anthropic, depending on configuration) | The full context of a **losing** trade: entry conditions, safety verdicts, execution quality, exit trigger, subsequent price path | Post-mortem analysis |
 | Our hosting and database providers | Everything stored | Running the service |
 

@@ -1,13 +1,13 @@
 /**
  * Applies drizzle/0004_robinhood_agent_wallet.sql against the configured
- * database (DIRECT_URL, falling back to DATABASE_URL — same precedence
+ * database (DIRECT_URL, falling back to DATABASE_URL - same precedence
  * drizzle.config.ts uses for migrations).
  *
  * Same shape as scripts/apply-chain-neutral-migration.ts: additive-only
  * (ADD COLUMN IF NOT EXISTS) plus a one-time historical backfill gated on
  * the "_migrations" marker row, with a row-count invariant check run
  * INSIDE the same transaction so a destructive side effect (there should
- * be none — this migration never inserts/deletes user_bots rows) rolls
+ * be none - this migration never inserts/deletes user_bots rows) rolls
  * back before it can commit.
  *
  * Safe to re-run.
@@ -32,7 +32,7 @@ async function countRows(tx: postgres.TransactionSql, table: string): Promise<nu
 async function main() {
   const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error("DIRECT_URL/DATABASE_URL not set — nothing to migrate against.");
+    console.error("DIRECT_URL/DATABASE_URL not set - nothing to migrate against.");
     process.exitCode = 1;
     return;
   }
@@ -59,7 +59,7 @@ async function main() {
         );
       }
 
-      console.log("\nRow count unchanged — safe to commit.");
+      console.log("\nRow count unchanged - safe to commit.");
     });
 
     console.log("Transaction committed.");

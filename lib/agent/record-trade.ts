@@ -28,7 +28,7 @@ export type RecordTradeResult =
  * the sniper daemon (a plain Node process, not a Next.js request handler)
  * can call this directly instead of hitting its own HTTP API.
  *
- * `walletAddress` scopes the trade to one deployed bot's own ledger —
+ * `walletAddress` scopes the trade to one deployed bot's own ledger -
  * null (the default) means the shared house desk, matching every other
  * caller (the sniper daemon) that never passes one.
  */
@@ -37,7 +37,7 @@ export async function recordClosedTrade(
   walletAddress: string | null = null,
 ): Promise<RecordTradeResult> {
   // PR07 hardening: pnlNative is authoritative when present (a Robinhood
-  // trade), not the pnlSol compatibility shadow — same number/sign for a
+  // trade), not the pnlSol compatibility shadow - same number/sign for a
   // Robinhood row today, but this stops depending on that coincidence.
   // Solana trades never set pnlNative, so this is unchanged for them.
   const pnl = Number(input.pnlNative ?? input.pnlSol);

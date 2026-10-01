@@ -188,7 +188,7 @@ export function SmartMoneyPanel() {
 
               <div className="shrink-0 text-right">
                 <p className="text-sm tabular-nums">
-                  {trade.amountUsd != null ? formatUsd(trade.amountUsd) : "—"}
+                  {trade.amountUsd != null ? formatUsd(trade.amountUsd) : "-"}
                 </p>
                 <p className="text-[0.7rem] text-muted-foreground">
                   {timeAgo(trade.timestamp, now)} ago

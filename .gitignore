@@ -42,7 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 
-# investigation-output datasets (not application state — see
+# investigation-output datasets (not application state - see
 # scripts/collect-robinhood-new-creation-liquidity.ts)
 /data/robinhood-liquidity-snapshots.jsonl
 # PR10 testnet canary: encrypted canary wallet + broadcast ledger

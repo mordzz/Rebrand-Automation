@@ -11,7 +11,7 @@
  *
  * Integrity contract: a provider failure, a malformed provider payload,
  * or a corrupted/invalid existing dataset line must NEVER be treated as
- * "empty market" or silently repaired — each aborts the run and leaves
+ * "empty market" or silently repaired - each aborts the run and leaves
  * the persisted dataset byte-for-byte unchanged. See
  * lib/gmgn/liquidity-collector.ts's parseDataset/mergeObservations.
  *
@@ -35,12 +35,12 @@ import {
 } from "@/lib/gmgn/liquidity-collector";
 
 const DATASET_PATH = join(process.cwd(), "data", "robinhood-liquidity-snapshots.jsonl");
-const LAUNCHPAD_ALLOWLIST = ["pons"]; // v1 scope only — see GMGN_ROBINHOOD_FIELD_MAP.md
+const LAUNCHPAD_ALLOWLIST = ["pons"]; // v1 scope only - see the PR05 GMGN field-mapping notes (git history)
 
 /**
  * Loads the persisted dataset with fail-closed integrity. A corrupted or
  * schema-invalid line throws rather than returning a partial/repaired
- * dataset — callers must not call saveAll() after catching this.
+ * dataset - callers must not call saveAll() after catching this.
  */
 function loadExistingOrThrow(): LiquidityObservation[] {
   if (!existsSync(DATASET_PATH)) return [];
@@ -49,11 +49,11 @@ function loadExistingOrThrow(): LiquidityObservation[] {
   if (!result.ok) {
     if (result.reason === "parse_error") {
       throw new Error(
-        `dataset integrity error: line ${result.lineNumber} could not be parsed as JSON — dataset left untouched`
+        `dataset integrity error: line ${result.lineNumber} could not be parsed as JSON - dataset left untouched`
       );
     }
     throw new Error(
-      `dataset integrity error: line ${result.lineNumber} failed schema validation (${result.detail}) — dataset left untouched`
+      `dataset integrity error: line ${result.lineNumber} failed schema validation (${result.detail}) - dataset left untouched`
     );
   }
   return result.observations;
@@ -75,7 +75,7 @@ type FetchNewCreationResult =
 
 /**
  * Fetches the current `pons new_creation` population. Returns a
- * discriminated result — `new_creation = []` is a VALID empty-market
+ * discriminated result - `new_creation = []` is a VALID empty-market
  * snapshot (`ok: true, candidates: []`); a provider error, a missing
  * `new_creation` key, or a non-array `new_creation` are all collection
  * FAILURES (`ok: false`) and must never be treated as "no new tokens."
@@ -140,15 +140,15 @@ async function runOneCollection(): Promise<RunOutcome> {
 
   const fetchResult = await fetchNewCreationCandidates();
   if (!fetchResult.ok) {
-    console.error(`[collector] collection FAILED — provider error: ${fetchResult.reason}`);
-    console.error("[collector] collection status: PROVIDER_ERROR — dataset unchanged");
+    console.error(`[collector] collection FAILED - provider error: ${fetchResult.reason}`);
+    console.error("[collector] collection status: PROVIDER_ERROR - dataset unchanged");
     return { status: "PROVIDER_ERROR", reason: fetchResult.reason };
   }
 
   const candidates = fetchResult.candidates;
   console.log(`[collector] raw candidates fetched: ${candidates.length}`);
 
-  // Per-quote-address price cache — never assume every pool uses the same
+  // Per-quote-address price cache - never assume every pool uses the same
   // quote token (see the hardened inspection script's earlier bug).
   const quotePriceByAddress = new Map<string, number | null>();
 
@@ -182,8 +182,8 @@ async function runOneCollection(): Promise<RunOutcome> {
     existing = loadExistingOrThrow();
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.error(`[collector] collection FAILED — ${reason}`);
-    console.error("[collector] collection status: DATASET_INTEGRITY_ERROR — dataset unchanged");
+    console.error(`[collector] collection FAILED - ${reason}`);
+    console.error("[collector] collection status: DATASET_INTEGRITY_ERROR - dataset unchanged");
     return { status: "DATASET_INTEGRITY_ERROR", reason };
   }
 
@@ -203,7 +203,7 @@ function printStats(): void {
   try {
     observations = loadExistingOrThrow();
   } catch (error) {
-    console.error(`[collector] cannot print stats — ${error instanceof Error ? error.message : error}`);
+    console.error(`[collector] cannot print stats - ${error instanceof Error ? error.message : error}`);
     return;
   }
   const stats = computeStats(observations);
@@ -216,7 +216,7 @@ function printStats(): void {
   console.log(`number with liquidity = 0: ${stats.numberWithZeroLiquidity}`);
   console.log(`number with liquidity > 0: ${stats.numberWithPositiveLiquidity}`);
   console.log(
-    `quantile method = linear interpolation, index=(n-1)*p, Type-7 — min=${stats.min} p10=${stats.p10} p25=${stats.p25} median=${stats.median} p75=${stats.p75} p90=${stats.p90} p95=${stats.p95} max=${stats.max} mean=${stats.mean}`
+    `quantile method = linear interpolation, index=(n-1)*p, Type-7 - min=${stats.min} p10=${stats.p10} p25=${stats.p25} median=${stats.median} p75=${stats.p75} p90=${stats.p90} p95=${stats.p95} max=${stats.max} mean=${stats.mean}`
   );
   console.log(`coefficient of variation: ${stats.coefficientOfVariation}`);
   console.log(`distinct liquidity values: ${stats.distinctLiquidityValueCount}`);
@@ -227,8 +227,8 @@ function printStats(): void {
   console.log(`\nsample status: ${stats.status}`);
   console.log(
     stats.status === "DATASET_TOO_SMALL"
-      ? `(need ${30 - stats.totalUniqueLaunches} more unique launches for policy review — no threshold decision made here)`
-      : "(sample size is sufficient to bring the threshold/usefulness question back for human review — this script does not make that decision)"
+      ? `(need ${30 - stats.totalUniqueLaunches} more unique launches for policy review - no threshold decision made here)`
+      : "(sample size is sufficient to bring the threshold/usefulness question back for human review - this script does not make that decision)"
   );
 }
 
@@ -269,7 +269,7 @@ async function main() {
     if (outcome.status === "PROVIDER_ERROR") {
       anyProviderError = true;
       // One-shot mode: a provider failure is the whole invocation's
-      // result — stop immediately rather than printing stats as if
+      // result - stop immediately rather than printing stats as if
       // nothing went wrong. Multi-run mode: transient 429s are expected
       // during development, so continue to the next scheduled run.
       if (!isMultiRun) break;
@@ -281,7 +281,7 @@ async function main() {
   }
 
   if (anyDatasetIntegrityError) {
-    console.error("[collector] stopped due to a dataset integrity error — fix the dataset file before re-running.");
+    console.error("[collector] stopped due to a dataset integrity error - fix the dataset file before re-running.");
     process.exitCode = 1;
     return;
   }
@@ -289,8 +289,8 @@ async function main() {
   if (anyProviderError) {
     console.error(
       isMultiRun
-        ? "[collector] one or more runs in this session failed with a provider error — see PROVIDER_ERROR lines above. Dataset was left unchanged for each failed run."
-        : "[collector] the collection run failed with a provider error — dataset left unchanged."
+        ? "[collector] one or more runs in this session failed with a provider error - see PROVIDER_ERROR lines above. Dataset was left unchanged for each failed run."
+        : "[collector] the collection run failed with a provider error - dataset left unchanged."
     );
     process.exitCode = 1;
     if (!isMultiRun) return; // one-shot: do not print stats after the sole run failed

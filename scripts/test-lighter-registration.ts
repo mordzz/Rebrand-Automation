@@ -1,5 +1,5 @@
 /**
- * PR12 Lighter API-key registration tests — no mainnet, no live submission.
+ * PR12 Lighter API-key registration tests - no mainnet, no live submission.
  *
  *   - official ChangePubKey message: our independent rebuild must equal the
  *     REAL official WASM `messageToSign`, byte for byte
@@ -48,7 +48,7 @@ async function rejects(fn: () => Promise<unknown>, re: RegExp, label: string) {
     assert(false, `${label} (no throw)`);
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
-    assert(re.test(m) || re.test((e as { kind?: string }).kind ?? ""), `${label} — ${m.slice(0, 90)}`);
+    assert(re.test(m) || re.test((e as { kind?: string }).kind ?? ""), `${label} - ${m.slice(0, 90)}`);
   }
 }
 

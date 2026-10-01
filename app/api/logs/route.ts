@@ -7,7 +7,7 @@ import { logs } from "@/drizzle/schema";
 export const dynamic = "force-dynamic";
 
 /** `?wallet=` scopes the feed to one deployed bot; omitted means the house
- * desk — the same null-means-house convention as positions/trades. The
+ * desk - the same null-means-house convention as positions/trades. The
  * default must stay house-only: this powers the dashboard terminal, and an
  * unfiltered read would splice every deployed bot's activity into it. */
 export async function GET(request: NextRequest) {

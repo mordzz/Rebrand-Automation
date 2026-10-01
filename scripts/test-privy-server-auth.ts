@@ -5,10 +5,10 @@
  *
  * No network calls. Two layers:
  *   1. The ownership core (`authenticateEvmOwnerWith`) with an injected
- *      backend — every 400/401/403/503 path and the success path.
+ *      backend - every 400/401/403/503 path and the success path.
  *   2. The OFFICIAL @privy-io/node `verifyAccessToken` against real ES256
- *      tokens signed with a locally generated key — valid, expired, wrong
- *      app, wrong key, wrong issuer — wired into the same core.
+ *      tokens signed with a locally generated key - valid, expired, wrong
+ *      app, wrong key, wrong issuer - wired into the same core.
  *
  * Run: npm run test:privy-server-auth
  */
@@ -221,7 +221,7 @@ async function main() {
     assert(!/Solana|solana\//.test(post.match(/import[^;]+;/g)?.join("") ?? ""), `${route}: no Solana imports`);
   }
   // Every mutating handler under app/api/my-bot must authenticate before it
-  // touches the DB — or be a fixed fail-closed stub that reads nothing.
+  // touches the DB - or be a fixed fail-closed stub that reads nothing.
   for (const dir of readdirSync(join(root, "app/api/my-bot"), { recursive: true }) as string[]) {
     if (!dir.endsWith("route.ts")) continue;
     const route = join("app/api/my-bot", dir);
@@ -258,7 +258,7 @@ async function main() {
   }
 
   // Every mutating handler ANYWHERE under app/api must authenticate before
-  // touching state — owner auth, house-admin auth, or a fail-closed stub.
+  // touching state - owner auth, house-admin auth, or a fail-closed stub.
   // Chat endpoints are the documented exception: they only call the LLM and
   // read public stats; they never write trading state.
   const CHAT_ONLY = new Set(["app/api/chat/route.ts", "app/api/atelier/chat/route.ts"]);

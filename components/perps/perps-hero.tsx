@@ -59,7 +59,7 @@ export function PerpsHero() {
         >
           Launch a token backed by a live perpetual futures position. Trading
           fees auto compound into collateral, buy back and burn the token, and
-          strengthen the governance treasury — all onchain, all autonomous.
+          strengthen the governance treasury - all onchain, all autonomous.
         </motion.p>
 
         <motion.div

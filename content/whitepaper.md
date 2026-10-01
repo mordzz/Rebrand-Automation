@@ -3,6 +3,8 @@
 
 **Technical Whitepaper · v1.0-rc**
 
+> **Migration notice.** This whitepaper describes Noah Engine's original Solana design (pump.fun and GMGN feeds, Jupiter routing, SOL-denominated limits and fees). Noah now runs on Robinhood Chain: spot trades settle on Robinhood Chain, perpetuals run on Lighter, discovery comes from GMGN, and the live fee is a one-time 0.022 ETH. The safety, strategy, risk and learning workflow is unchanged. Sections describing Solana-specific execution are historical.
+
 > **Read this first.** Noah Engine is trading software. It's not a fund, not a broker, and not a promise. It doesn't guarantee profit, and it can lose money, including all of it. Memecoin trading is one of the riskiest things you can do in crypto. Nothing here is financial advice. See §22.
 
 ---

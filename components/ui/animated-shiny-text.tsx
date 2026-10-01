@@ -6,7 +6,7 @@ interface AnimatedShinyTextProps extends ComponentPropsWithoutRef<"span"> {
   shimmerWidth?: number;
 }
 
-/** Magic UI AnimatedShinyText — a light sheen periodically sweeping across
+/** Magic UI AnimatedShinyText - a light sheen periodically sweeping across
  * the text. Base text color comes from the caller's className. */
 export function AnimatedShinyText({
   children,

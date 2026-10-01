@@ -1,6 +1,6 @@
 import { getKolTrades, type TrackedTrade } from "./track";
 
-/** Quote-currency mints, not alpha plays — a KOL's wallet "buying WSOL"
+/** Quote-currency mints, not alpha plays - a KOL's wallet "buying WSOL"
  * is the quote leg of some other swap, not a position they're taking.
  * Included defensively because GMGN's `total_supply` figure for
  * established SPL tokens like this doesn't follow the same
@@ -15,14 +15,14 @@ const EXCLUDED_MINTS = new Set([
 
 /**
  * Turns the flat KOL trade feed into individual buy-in/exit cycles per
- * (wallet, token) — the thing lib/gmgn/track.ts's chronological feed
+ * (wallet, token) - the thing lib/gmgn/track.ts's chronological feed
  * can't answer on its own, since it shows individual events rather than
  * "when did they get in, when did they get out, what did they make."
  *
  * Windowed, not ground truth: this only sees the last `getKolTrades()`
  * rows across every tracked KOL combined. A sell with no buy in that
- * window is dropped rather than shown with a fabricated entry — see
- * `pairTrades` — and an open cycle at the end of the window may already
+ * window is dropped rather than shown with a fabricated entry - see
+ * `pairTrades` - and an open cycle at the end of the window may already
  * have been exited outside it. It is only as complete as the window is
  * deep.
  */
@@ -32,15 +32,15 @@ export type KolPositionCycle = {
   wallet: string;
   traderName: string;
   traderHandle: string | null;
-  /** GMGN's own avatar URL — 403s outside gmgn.ai, resolve via
+  /** GMGN's own avatar URL - 403s outside gmgn.ai, resolve via
    * unavatar.io at the API route instead (see app/api/alpha/kols/route.ts). */
   gmgnAvatarUrl: string | null;
   mint: string;
   symbol: string | null;
-  /** Raw GMGN URL — resolve via lib/jupiter/token-icons.ts before
+  /** Raw GMGN URL - resolve via lib/jupiter/token-icons.ts before
    * rendering, same as every other GMGN-sourced token logo here. */
   tokenLogo: string | null;
-  /** Circulating supply as reported alongside the trade — pump.fun mints
+  /** Circulating supply as reported alongside the trade - pump.fun mints
    * are fixed-supply, so this doesn't drift between entry and exit for
    * the vast majority of tokens here. Combined with a live balance (see
    * lib/gmgn/wallet-holdings.ts, fetched at the API route) to show what
@@ -49,16 +49,16 @@ export type KolPositionCycle = {
   status: "open" | "closed";
   enteredAt: number;
   exitedAt: number | null;
-  /** From the entry trade's own price × supply — the cap at the moment
+  /** From the entry trade's own price × supply - the cap at the moment
    * they actually bought, not whatever it is now. */
   entryMarketCapUsd: number | null;
-  /** Same, from the exit trade, when closed. Left null while open — the
+  /** Same, from the exit trade, when closed. Left null while open - the
    * API route fills this with a *current* market cap for unrealized PnL,
    * a distinct enough number (as-of-now vs as-of-exit) that conflating
    * them here would misrepresent a still-open position as already priced. */
   exitMarketCapUsd: number | null;
   investedUsd: number | null;
-  /** GMGN's own cost-basis-vs-proceeds figure from the closing sell —
+  /** GMGN's own cost-basis-vs-proceeds figure from the closing sell -
    * realized only. Never set for an open cycle; unrealized PnL needs a
    * current price this module has no access to (see the route). */
   realizedPnlUsd: number | null;
@@ -109,7 +109,7 @@ function pairTrades(trades: TrackedTrade[]): KolPositionCycle[] {
     }
 
     // A sell with nothing open means the entry happened before our
-    // window starts — there is no honest "entered at" to show, so this
+    // window starts - there is no honest "entered at" to show, so this
     // trade is dropped rather than displayed half-populated.
     if (!open) continue;
 
@@ -130,7 +130,7 @@ function pairTrades(trades: TrackedTrade[]): KolPositionCycle[] {
       entryMarketCapUsd: open.entryMarketCapUsd,
       exitMarketCapUsd: marketCap(trade),
       investedUsd: open.investedUsd,
-      // GMGN's own cost basis for what this sell closed out — trusted
+      // GMGN's own cost basis for what this sell closed out - trusted
       // over re-deriving it from investedUsd, which only reflects buys
       // our own window happened to see.
       realizedPnlUsd:
@@ -167,7 +167,7 @@ function pairTrades(trades: TrackedTrade[]): KolPositionCycle[] {
 }
 
 export type KolProfile = {
-  /** Every wallet address seen trading under this identity — a KOL with
+  /** Every wallet address seen trading under this identity - a KOL with
    * an X handle can (and in practice does) trade from more than one
    * wallet, and GMGN tags all of them with the same identity. Grouping
    * by wallet alone would show that one person as several rows; this is
@@ -176,7 +176,7 @@ export type KolProfile = {
   traderName: string;
   traderHandle: string | null;
   gmgnAvatarUrl: string | null;
-  /** Most recent activity across every position — what the KOL list
+  /** Most recent activity across every position - what the KOL list
    * itself sorts by, so an account active a minute ago outranks one
    * whose only visible trade is from an hour ago. */
   lastActiveAt: number;
@@ -184,7 +184,7 @@ export type KolProfile = {
   positions: KolPositionCycle[];
 };
 
-/** Every tracked KOL, one row each — identified by X handle where GMGN
+/** Every tracked KOL, one row each - identified by X handle where GMGN
  * gives one (so the same person's several wallets collapse into a single
  * row), falling back to wallet address for the rare anonymous-handle
  * case where there is nothing else to key identity on. Buy-in/exit

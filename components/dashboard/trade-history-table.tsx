@@ -5,13 +5,13 @@ import { cn } from "@/lib/utils";
 const TABLE_HEAD =
   "px-4 py-3 text-[0.65rem] font-semibold tracking-[0.15em] uppercase";
 
-/** Signed amount in an explicit native unit — callers pass the row's own
+/** Signed amount in an explicit native unit - callers pass the row's own
  * chain unit (lib/chain/display.ts), never assume SOL (PR14). */
 export function formatSignedNative(n: number, symbol: string, decimals = 2): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(decimals)} ${symbol}`;
 }
 
-/** Closed-trade table with per-trade realized PnL — shared by the house
+/** Closed-trade table with per-trade realized PnL - shared by the house
  * desk (dashboard) and a connected account's own desk (deploy). Callers
  * own the surrounding card chrome so this fits either a Tabs panel or a
  * plain labeled section. */
@@ -74,7 +74,7 @@ export function TradeHistoryTable({
                   {h.strategy}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {h.context?.exitReason ?? "—"}
+                  {h.context?.exitReason ?? "-"}
                 </td>
                 <td
                   className={cn(

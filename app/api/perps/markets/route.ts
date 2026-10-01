@@ -6,9 +6,9 @@ import { getMarketLogo } from "@/lib/perps/markets";
 export const dynamic = "force-dynamic";
 
 /** Active Lighter (Robinhood Chain) perp markets for the ticker and the
- * market picker — PR11. Same response shape as the retired Drift list;
+ * market picker - PR11. Same response shape as the retired Drift list;
  * `marketIndex` is now Lighter's `market_id` and prices are Lighter's own
- * mark price. On a Lighter outage the list is empty with an error — never
+ * mark price. On a Lighter outage the list is empty with an error - never
  * a stale or fabricated price. (Historical Perpspad rows still resolve
  * against the Drift list in lib/perps/markets.ts.) */
 export async function GET() {

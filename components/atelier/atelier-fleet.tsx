@@ -18,7 +18,7 @@ export type OpenPositionDto = {
   strategy: string;
   entryPrice: string;
   sizeSol: string;
-  /** PR04 neutral size + chain — pick the unit per position (PR14). */
+  /** PR04 neutral size + chain - pick the unit per position (PR14). */
   sizeNative?: string | null;
   chain?: string | null;
   lastPrice: string | null;
@@ -36,7 +36,7 @@ export type AgentDto = {
   characterSrc: string | null;
   walletShort: string;
   deployedAt: string;
-  /** The operator's own on/off switch — distinct from tradingPaused
+  /** The operator's own on/off switch - distinct from tradingPaused
    * (the safety circuit breaker) below. Stopped means the operator chose
    * to stop it; paused means it wants to trade but tripped a loss limit. */
   active: boolean;
@@ -50,7 +50,7 @@ export type AgentDto = {
   nativeSymbol: string;
   winRate30d: number | null;
   trades30dCount: number;
-  /** The agent wallet balance in `nativeSymbol` — only populated for live
+  /** The agent wallet balance in `nativeSymbol` - only populated for live
    * bots, null for paper (no wallet to read). */
   agentBalanceNative: number | null;
   openPositions: OpenPositionDto[];
@@ -84,7 +84,7 @@ function shortMint(mint: string): string {
   return `${mint.slice(0, 4)}…${mint.slice(-4)}`;
 }
 
-/** A light, static thumbnail — the fleet view can render many agents at
+/** A light, static thumbnail - the fleet view can render many agents at
  * once, so mounting one live CharacterCanvas (the 3D rig used on /deploy)
  * per card would be needlessly heavy. Image/GIF characters are cheap
  * either way and render for real. */
@@ -139,7 +139,7 @@ function PositionRow({ position }: { position: OpenPositionDto }) {
           changePct != null && changePct < 0 && "text-destructive"
         )}
       >
-        {changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%` : "—"}
+        {changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%` : "-"}
       </span>
     </li>
   );
@@ -213,7 +213,7 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
             <p className="mt-1.5 text-base font-medium tabular-nums">
               {agent.agentBalanceNative != null
                 ? `${agent.agentBalanceNative.toFixed(4)} ${agent.nativeSymbol}`
-                : "—"}
+                : "-"}
             </p>
           </div>
         )}
@@ -242,7 +242,7 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
             </p>
           </div>
           <p className="mt-1.5 text-base font-medium tabular-nums">
-            {agent.winRate30d != null ? `${agent.winRate30d.toFixed(0)}%` : "—"}
+            {agent.winRate30d != null ? `${agent.winRate30d.toFixed(0)}%` : "-"}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-3 py-3">
@@ -269,7 +269,7 @@ function AgentCard({ agent, onOpen }: { agent: AgentDto; onOpen: () => void }) {
   );
 }
 
-/** The Fleet, public directory — every deployed agent, its performance,
+/** The Fleet, public directory - every deployed agent, its performance,
  * and its open positions. No wallet login required to view, same posture
  * as /alpha; deploying your own agent still happens on /deploy. */
 export function AtelierFleet() {

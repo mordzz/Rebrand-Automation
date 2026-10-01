@@ -1,6 +1,6 @@
 -- PR12: additive Lighter (Robinhood perps) credential metadata for user_bots.
 --
--- ADD COLUMN only, nullable, safe to re-run (IF NOT EXISTS) — same
+-- ADD COLUMN only, nullable, safe to re-run (IF NOT EXISTS) - same
 -- convention as 0001/0004. No backfill: no bot had a Lighter account before
 -- PR12, so NULL means "not provisioned", never a guess. Historical Solana
 -- rows are untouched.

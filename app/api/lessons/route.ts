@@ -8,7 +8,7 @@ import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/priv
 /** Agent memory: lessons joined with the trades that taught them.
  *
  * `?wallet=` scopes to one deployed bot's own lessons; omitted means the
- * house desk. A lesson has no wallet of its own — it inherits one from the
+ * house desk. A lesson has no wallet of its own - it inherits one from the
  * trade that produced it, so the scope is applied on the joined trade. The
  * join therefore has to become an inner join when scoping: a lesson whose
  * trade row is missing cannot be attributed to anyone. */

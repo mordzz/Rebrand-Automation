@@ -1,5 +1,5 @@
 /**
- * PR12 Lighter execution tests — deterministic, no mainnet, no submission
+ * PR12 Lighter execution tests - deterministic, no mainnet, no submission
  * to any live venue.
  *
  *   1. precision / intent validation (pure)
@@ -8,7 +8,7 @@
  *   3. executor: nonce handling, resync after failure, replay refusal,
  *      API error, network mismatch, mainnet refusal
  *   4. REAL official WASM (pinned checksum) signing with a throwaway,
- *      unregistered API key — output parsed and cross-checked; never sent
+ *      unregistered API key - output parsed and cross-checked; never sent
  *
  * Run: npm run test:lighter-execution
  */
@@ -40,7 +40,7 @@ async function rejects(fn: () => Promise<unknown>, check: (e: unknown) => boolea
     await fn();
     assert(false, `${label} (no throw)`);
   } catch (e) {
-    assert(check(e), `${label} — ${e instanceof Error ? e.message.slice(0, 80) : e}`);
+    assert(check(e), `${label} - ${e instanceof Error ? e.message.slice(0, 80) : e}`);
   }
 }
 const kind = (k: string) => (e: unknown) => (e as { kind?: string }).kind === k;
@@ -240,7 +240,7 @@ async function main() {
   try {
     verifySignerArtifacts();
   } catch (e) {
-    console.log(`[SKIP] official WASM not built (${(e as Error).message}) — run scripts/build-lighter-signer.sh`);
+    console.log(`[SKIP] official WASM not built (${(e as Error).message}) - run scripts/build-lighter-signer.sh`);
     return finish();
   }
   {

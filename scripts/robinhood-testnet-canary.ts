@@ -1,5 +1,5 @@
 /**
- * PR10 Robinhood Chain TESTNET canary — the first real broadcast.
+ * PR10 Robinhood Chain TESTNET canary - the first real broadcast.
  *
  * Proves the full execution path end to end with tiny amounts:
  *
@@ -8,7 +8,7 @@
  *
  * Steps (each broadcast is ledgered by hash BEFORE it is sent):
  *   1. BUY   0.00001 ETH → test token via the audited native-ETH v4 pool
- *   2. REBROADCAST the exact signed BUY again — must be a no-op
+ *   2. REBROADCAST the exact signed BUY again - must be a no-op
  *   3. APPROVE token → Permit2 (exact amount), if needed
  *   4. AUTHORIZE Permit2 → UniversalRouter (exact amount, bounded expiry), if needed
  *   5. SELL  the tokens received back to native ETH
@@ -58,8 +58,8 @@ import {
   type UnsignedTransaction,
 } from "@/lib/chain/robinhood-v4-swap-tx";
 
-/** The pool ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b verified (testnet
- * dev-test token) — also used by test-robinhood-v4-live.ts. */
+/** The pool the PR08 testnet swap audit (git history) verified (testnet
+ * dev-test token) - also used by test-robinhood-v4-live.ts. */
 const CANARY_POOL: PoolKey = {
   currency0: NATIVE_CURRENCY,
   currency1: "0xf0EA05Cd5FD14189b80616eF36bE2caefd389D4E",
@@ -106,7 +106,7 @@ function decryptCanarySecret(stored: string): Uint8Array {
   }
 }
 
-/** Signer key loader for the canary only — same fail-closed checks as the
+/** Signer key loader for the canary only - same fail-closed checks as the
  * production loader (chain, network, stored address == derived address). */
 async function loadCanaryAccount(bot: AgentWalletBotRow) {
   if (bot.agentChain !== "robinhood" || bot.agentNetwork !== "testnet" || !bot.agentSecretEnc || !bot.agentPublicKey) {
@@ -204,7 +204,7 @@ async function main() {
   console.log(`  received ${received} token base units (quoted min ${buyQuote.quote.amountOutMinimum})`);
   if (received < buyQuote.quote.amountOutMinimum) throw new Error("buy received less than amountOutMinimum");
 
-  // 2. REBROADCAST the exact same signed BUY — must not create a second tx.
+  // 2. REBROADCAST the exact same signed BUY - must not create a second tx.
   const nonceBefore = await getRobinhoodPublicClient().getTransactionCount({ address: sender, blockTag: "latest" });
   const again = await broadcastRobinhoodTransaction(buy.input);
   const nonceAfter = await getRobinhoodPublicClient().getTransactionCount({ address: sender, blockTag: "latest" });
@@ -227,7 +227,7 @@ async function main() {
   if (!sellQuote.ok) throw new Error(`sell quote failed: ${sellQuote.reason}`);
   await execute("sell", buildNativeSellTransaction(config, sellQuote.quote), "swap");
 
-  console.log("\nCanary complete — testnet transaction hashes:");
+  console.log("\nCanary complete - testnet transaction hashes:");
   for (const h of hashes) console.log(`  ${h.step.padEnd(18)} ${h.status.padEnd(8)} ${explorerUrl("tx", h.hash)}`);
   console.log(`  rebroadcast        no-op    (same hash ${again.hash}, no new nonce)`);
 }

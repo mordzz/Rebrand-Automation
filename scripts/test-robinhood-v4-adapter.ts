@@ -4,7 +4,7 @@
  * parts), robinhood-v4-actions.ts, robinhood-v4-slippage.ts,
  * robinhood-v4-swap-tx.ts, robinhood-v4-receipt.ts.
  *
- * No network calls — everything here is pure-function or synthetic-input
+ * No network calls - everything here is pure-function or synthetic-input
  * testing. The one thing this file cannot exercise without a live RPC
  * (validatePoolKey / quoteSwap against real chain state) is covered by
  * scripts/test-robinhood-v4-live.ts instead. Same plain-tsx-script
@@ -69,7 +69,7 @@ function assertThrows(fn: () => void, label: string): void {
   }
 }
 
-// Fixture pool, per ROBINHOOD_SWAP_EXECUTION_AUDIT.md §21b — used only as
+// Fixture pool, per the PR08 testnet swap audit (git history) - used only as
 // a synthetic input here (no RPC), never treated as a production token.
 const AUDIT_FIXTURE_POOL_KEY: PoolKey = {
   currency0: NATIVE_CURRENCY,
@@ -195,7 +195,7 @@ async function main() {
     assertEqual(result.ok, false, "negative amountOutQuoted refused");
   }
   {
-    // A tiny quote at high slippage rounds to zero — must refuse rather
+    // A tiny quote at high slippage rounds to zero - must refuse rather
     // than allow an unbounded-downside fill.
     const result = computeAmountOutMinimum(BigInt(1), 9999);
     assertEqual(result.ok, false, "amountOutMinimum rounding to 0 from a non-zero quote is refused");
@@ -241,7 +241,7 @@ async function main() {
     // The one coincidence explicitly documented in robinhood-v4-actions.ts:
     // ACTION_SETTLE_ALL happens to equal the UNWRAP_WETH command byte
     // (0x0c), but assertNoWrapCommands only ever receives top-level
-    // `commands`, never nested `actions` bytes — so a real encoded V4_SWAP
+    // `commands`, never nested `actions` bytes - so a real encoded V4_SWAP
     // (whose nested actions DO contain 0x0c as SETTLE_ALL) must never trip
     // the guard, because that 0x0c never appears in `commands` itself.
     const { commands } = encodeV4SwapExactInSingle({
@@ -260,7 +260,7 @@ async function main() {
     assertEqual(
       commands,
       "0x10",
-      "commands byte string for the reverse (sell) direction is also exactly V4_SWAP (0x10) — SETTLE_ALL's 0x0c value lives only in the nested actions bytes, never in commands"
+      "commands byte string for the reverse (sell) direction is also exactly V4_SWAP (0x10) - SETTLE_ALL's 0x0c value lives only in the nested actions bytes, never in commands"
     );
   }
 
@@ -380,7 +380,7 @@ async function main() {
     const nowSec = Math.floor(Date.now() / 1000);
     const tx = buildPermit2AuthorizationTransaction(testnetConfig, AUDIT_FIXTURE_POOL_KEY.currency1, BigInt(1000), { expirationSeconds: 300 });
     // expiration is encoded in calldata, not exposed on the returned
-    // UnsignedTransaction shape — proving it's bounded requires only that
+    // UnsignedTransaction shape - proving it's bounded requires only that
     // the call didn't throw and that it differs from the default-expiry
     // encoding, which the two constructed txs below confirm.
     const txDefault = buildPermit2AuthorizationTransaction(testnetConfig, AUDIT_FIXTURE_POOL_KEY.currency1, BigInt(1000));
@@ -409,7 +409,7 @@ async function main() {
     } as TransactionReceipt;
   }
 
-  // ═══ interpretMinedReceipt: pure, no network — the core router-target guard ═
+  // ═══ interpretMinedReceipt: pure, no network - the core router-target guard ═
   {
     const result = interpretMinedReceipt(testnetConfig, makeReceipt());
     assertEqual(result.status, "success", "successful receipt to the configured router → success");
@@ -482,7 +482,7 @@ async function main() {
   }
   {
     // The network/execution-config guard runs before any transaction
-    // lookup — a mismatched config must fail closed as rpc_unavailable,
+    // lookup - a mismatched config must fail closed as rpc_unavailable,
     // never silently proceed to check a hash against the wrong network.
     const result = await interpretSwapReceipt(testnetConfig, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
       fetchStatus: async () => {
@@ -519,7 +519,7 @@ async function main() {
     assertEqual(result.status, "success", "interpretSwapReceipt: mined+success to the correct router flows through to success");
   }
 
-  // ═══ malformed PoolKey validation (no network — fails before any RPC read) ═
+  // ═══ malformed PoolKey validation (no network - fails before any RPC read) ═
   {
     const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: -1 }, testnetConfig);
     assertEqual(result.ok, false, "negative fee is refused");
@@ -546,7 +546,7 @@ async function main() {
   }
   {
     // None of the malformed-field cases above should ever throw an
-    // uncaught exception — every call above already implicitly proves
+    // uncaught exception - every call above already implicitly proves
     // this (an uncaught throw would crash this test script), but assert
     // explicitly that a clearly-invalid PoolKey still returns a well-formed result object.
     const result = await validatePoolKey({ ...AUDIT_FIXTURE_POOL_KEY, fee: NaN, tickSpacing: Infinity }, testnetConfig);
@@ -598,7 +598,7 @@ async function main() {
     );
   }
   {
-    // A synthetic "mainnet" network label on the quote — proving the
+    // A synthetic "mainnet" network label on the quote - proving the
     // guard, never a real usable mainnet execution config (none exists
     // in production code; resolveRobinhoodExecutionConfig("mainnet")
     // still fails closed, as already proven above).
@@ -617,10 +617,10 @@ async function main() {
   }
   {
     // Execution-config/active-network mismatch fails closed for any
-    // RPC-dependent operation — proven here via quoteSwap's own guard by
+    // RPC-dependent operation - proven here via quoteSwap's own guard by
     // constructing a synthetic mismatched config (network label doesn't
     // match ROBINHOOD_NETWORK, which is "testnet" in this environment).
-    // Not a real mainnet config — resolveRobinhoodExecutionConfig never
+    // Not a real mainnet config - resolveRobinhoodExecutionConfig never
     // produces one; this is purely to prove the guard rejects mismatches.
     const mismatchedConfig: RobinhoodExecutionConfig = { ...testnetConfig, network: "mainnet", chainId: 4663 };
     const result = await quoteSwap({

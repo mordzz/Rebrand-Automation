@@ -1,13 +1,13 @@
 /**
- * Unsigned Robinhood v4 swap/approval transaction construction — PR08B.
+ * Unsigned Robinhood v4 swap/approval transaction construction - PR08B.
  *
  * Produces `{ to, data, value }` objects only. Nothing here signs,
  * derives an account, reads a nonce, or calls
- * `eth_sendRawTransaction`/`sendTransaction` — that is PR09's job. Every
+ * `eth_sendRawTransaction`/`sendTransaction` - that is PR09's job. Every
  * builder in this file is a pure function of its inputs plus read-only
  * RPC calls (allowance/gas-estimate reads), and can be exercised with
  * `eth_call`/`eth_estimateGas` for simulation, exactly as
- * `ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §21d did by hand.
+ * the PR08 testnet swap audit (git history) did by hand.
  */
 
 import { encodeFunctionData, type Address, type Hex } from "viem";
@@ -25,7 +25,7 @@ export type UnsignedTransaction = {
   chainId: number;
   to: Address;
   data: Hex;
-  /** Wei to attach — non-zero only for a native-ETH-input (buy) swap.
+  /** Wei to attach - non-zero only for a native-ETH-input (buy) swap.
    * Always 0n for an ERC-20 approval or a sell-side swap. */
   value: bigint;
 };
@@ -36,22 +36,22 @@ export type UnsignedSwapTransaction = UnsignedTransaction & {
   amountOutMinimum: bigint;
 };
 
-export const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes — matches the window used in the audit's live simulation
-/** A generous but finite upper bound (7 days) — rejects absurd/overflow
+export const DEFAULT_DEADLINE_SECONDS = 1200; // 20 minutes - matches the window used in the audit's live simulation
+/** A generous but finite upper bound (7 days) - rejects absurd/overflow
  * values without constraining any legitimate use of this adapter.
  * Exported so PR09's signing-time semantic validation checks a decoded
  * deadline/expiration against the exact same bound PR08 used to build
  * it, rather than a second, possibly-drifted copy of "7 days". */
 export const MAX_DEADLINE_SECONDS = 7 * 24 * 60 * 60;
 
-/** Permit2's `amount` field is `uint160` — `2**160 - 1`. */
+/** Permit2's `amount` field is `uint160` - `2**160 - 1`. */
 const UINT160_MAX = BigInt("0xffffffffffffffffffffffffffffffffffffff");
-/** Permit2's `expiration` field is `uint48` — `2**48 - 1`. */
+/** Permit2's `expiration` field is `uint48` - `2**48 - 1`. */
 const UINT48_MAX = BigInt("0xffffffffffff");
 
 /** Validates a caller-supplied `deadlineSeconds`/`expirationSeconds`
  * option before it's used in any arithmetic. Fails closed on anything
- * that isn't a finite positive integer within a sane bound — never lets
+ * that isn't a finite positive integer within a sane bound - never lets
  * a negative, zero, NaN, Infinity, or absurdly large value silently
  * produce a nonsensical or overflowing deadline. */
 export function validateBoundedSeconds(seconds: number, label: string): number {
@@ -75,7 +75,7 @@ function deadlineFromNow(seconds: number = DEFAULT_DEADLINE_SECONDS): bigint {
 /**
  * A quote produced against one network's execution config must never be
  * handed to a builder constructing calldata against a different
- * network's config — that could target the wrong chain's router with
+ * network's config - that could target the wrong chain's router with
  * the wrong chain's PoolKey/addresses. Checked here at runtime (not left
  * as a TypeScript-only guarantee) since `quote` and `config` are two
  * independent values a caller could mismatch.
@@ -87,14 +87,14 @@ function assertQuoteMatchesConfigNetwork(
   if (quote.network !== config.network || quote.chainId !== config.chainId) {
     throw new Error(
       `quote was produced for ${quote.network}/chainId ${quote.chainId}, but this builder was called with a ` +
-        `config for ${config.network}/chainId ${config.chainId} — refusing to build calldata across networks`
+        `config for ${config.network}/chainId ${config.chainId} - refusing to build calldata across networks`
     );
   }
 }
 
 /** Exported so PR09's signing-time calldata decoder
  * (lib/chain/robinhood-agent-signing.ts) decodes the exact same ABI this
- * module encodes with — one definition, never a second hand-copied one
+ * module encodes with - one definition, never a second hand-copied one
  * that could silently drift out of sync. */
 export const UNIVERSAL_ROUTER_EXECUTE_ABI = [
   {
@@ -114,7 +114,7 @@ export const UNIVERSAL_ROUTER_EXECUTE_ABI = [
  * Builds unsigned calldata for a native-ETH → token swap
  * (`quote.side === "buy"`), using exactly the command/action sequence
  * proven in the audit: `V4_SWAP` → `SWAP_EXACT_IN_SINGLE` →
- * `SETTLE_ALL` → `TAKE_ALL`. No `WRAP_ETH`, no WETH dependency —
+ * `SETTLE_ALL` → `TAKE_ALL`. No `WRAP_ETH`, no WETH dependency -
  * `assertNoWrapCommands` is run before returning as a hard guarantee.
  */
 export function buildNativeBuyTransaction(
@@ -160,7 +160,7 @@ export function buildNativeBuyTransaction(
     chainId: config.chainId,
     to: config.universalRouter,
     data,
-    value: quote.amountIn, // msg.value === amountIn, native ETH attached directly — no WRAP_ETH
+    value: quote.amountIn, // msg.value === amountIn, native ETH attached directly - no WRAP_ETH
     deadline,
     amountIn: quote.amountIn,
     amountOutMinimum: quote.amountOutMinimum,
@@ -170,12 +170,12 @@ export function buildNativeBuyTransaction(
 /**
  * Builds unsigned calldata for a token → native-ETH swap
  * (`quote.side === "sell"`). Requires the caller to already hold a
- * sufficient Permit2 allowance for `config.universalRouter` — this
+ * sufficient Permit2 allowance for `config.universalRouter` - this
  * function does NOT build or check that allowance itself; see
  * `checkErc20AllowanceToPermit2`/`checkPermit2AllowanceToRouter` and
  * `buildErc20ApprovalTransaction`/`buildPermit2AuthorizationTransaction`
  * below for the two prerequisite unsigned steps. No `UNWRAP_WETH` is
- * ever emitted — the swap's output settles as native ETH directly.
+ * ever emitted - the swap's output settles as native ETH directly.
  */
 export function buildNativeSellTransaction(
   config: RobinhoodExecutionConfig,
@@ -201,7 +201,7 @@ export function buildNativeSellTransaction(
       amountOutMinimum: quote.amountOutMinimum,
       hookData: "0x",
     },
-    settleCurrency: quote.currencyIn, // the ERC-20 token — pulled via Permit2 inside SETTLE_ALL
+    settleCurrency: quote.currencyIn, // the ERC-20 token - pulled via Permit2 inside SETTLE_ALL
     settleMaxAmount: quote.amountIn,
     takeCurrency: quote.currencyOut, // native ETH
     takeMinAmount: quote.amountOutMinimum,
@@ -220,7 +220,7 @@ export function buildNativeSellTransaction(
     chainId: config.chainId,
     to: config.universalRouter,
     data,
-    value: BigInt(0), // no native ETH attached on a sell — input is the ERC-20 token
+    value: BigInt(0), // no native ETH attached on a sell - input is the ERC-20 token
     deadline,
     amountIn: quote.amountIn,
     amountOutMinimum: quote.amountOutMinimum,
@@ -229,7 +229,7 @@ export function buildNativeSellTransaction(
 
 // ── Sell-path prerequisites: ERC-20 → Permit2 → UniversalRouter ────────
 
-/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above —
+/** Exported for the same reason as UNIVERSAL_ROUTER_EXECUTE_ABI above -
  * PR09's signer decodes with this exact ABI, never a hand-copied one. */
 export const ERC20_ABI = [
   {
@@ -320,8 +320,8 @@ export async function checkPermit2AllowanceToRouter(
 
 /**
  * Step A of the sell-path prerequisite: unsigned ERC-20
- * `approve(Permit2, amount)`. Exact-amount only — never
- * `type(uint256).max` — per the standing "minimum safe approval" rule.
+ * `approve(Permit2, amount)`. Exact-amount only - never
+ * `type(uint256).max` - per the standing "minimum safe approval" rule.
  */
 export function buildErc20ApprovalTransaction(
   config: RobinhoodExecutionConfig,
@@ -340,7 +340,7 @@ export function buildErc20ApprovalTransaction(
 /**
  * Step B of the sell-path prerequisite: unsigned Permit2
  * `approve(token, UniversalRouter, amount, expiration)`. Exact-amount
- * only, and a bounded expiration — never an unlimited/far-future grant
+ * only, and a bounded expiration - never an unlimited/far-future grant
  * by default.
  */
 export function buildPermit2AuthorizationTransaction(
@@ -351,7 +351,7 @@ export function buildPermit2AuthorizationTransaction(
 ): UnsignedTransaction {
   if (amount <= BigInt(0)) throw new Error("buildPermit2AuthorizationTransaction refuses a zero/negative amount");
   if (amount > UINT160_MAX) {
-    // Permit2's `amount` field is uint160 — reject anything that
+    // Permit2's `amount` field is uint160 - reject anything that
     // wouldn't fit rather than silently truncating.
     throw new Error("buildPermit2AuthorizationTransaction: amount exceeds uint160 range");
   }

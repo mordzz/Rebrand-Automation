@@ -1,9 +1,9 @@
 /**
- * Uniswap v4 native-ETH quote adapter — PR08B.
+ * Uniswap v4 native-ETH quote adapter - PR08B.
  *
  * Read-only. Calls the real, deployed v4 `Quoter` contract via a
  * non-persistent `eth_call` (`quoteExactInputSingle`), exactly the call
- * `ROBINHOOD_SWAP_EXECUTION_AUDIT.md` §20e/§21c already proved succeeds
+ * the PR08 testnet swap audit (git history) already proved succeeds
  * against real testnet pools. No signing, no transaction, no state
  * change.
  */
@@ -25,7 +25,7 @@ export type SwapSide = "buy" | "sell";
 
 export type QuoteSwapInput = {
   config: RobinhoodExecutionConfig;
-  /** Explicitly-verified PoolKey — see robinhood-v4-pool.ts for why this
+  /** Explicitly-verified PoolKey - see robinhood-v4-pool.ts for why this
    * adapter does not discover pools itself. */
   poolKey: PoolKey;
   /** "buy" = native ETH -> token; "sell" = token -> native ETH. Which
@@ -33,11 +33,11 @@ export type QuoteSwapInput = {
    * guessed. */
   side: SwapSide;
   /** Input amount, in the input currency's own base units (wei for a
-   * buy, the token's own smallest unit for a sell). Always a bigint —
+   * buy, the token's own smallest unit for a sell). Always a bigint -
    * never a floating-point SOL/ETH-style decimal. */
   amountIn: bigint;
   /** Basis points, e.g. 500 = 5%. Must be Noah's already-resolved
-   * slippage value — this module does not read SniperConfig itself. */
+   * slippage value - this module does not read SniperConfig itself. */
   slippageBps: number;
 };
 
@@ -57,7 +57,7 @@ export type QuoteSwapResult =
         /** The currency the caller receives. */
         currencyOut: `0x${string}`;
         /** Provenance of the execution config this quote was produced
-         * against — a builder consuming this quote must refuse to use it
+         * against - a builder consuming this quote must refuse to use it
          * with a different network/chainId's config. See
          * robinhood-v4-swap-tx.ts's builders. */
         network: RobinhoodExecutionConfig["network"];
@@ -102,8 +102,8 @@ const QUOTER_ABI = [
 
 /**
  * Quotes a native-ETH v4 swap and derives `amountOutMinimum` from the
- * caller-supplied `slippageBps`. Fails closed — never fabricates a quote
- * — on: an invalid/unliquid pool (validatePoolKey), a reverted Quoter
+ * caller-supplied `slippageBps`. Fails closed - never fabricates a quote
+ * - on: an invalid/unliquid pool (validatePoolKey), a reverted Quoter
  * call, or an invalid slippage value.
  */
 export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult> {
@@ -117,7 +117,7 @@ export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult>
 
   // "buy" always means native ETH is the input; "sell" always means the
   // token is. zeroForOne is derived from which side of the PoolKey
-  // native ETH sits on — never assumed to be currency0.
+  // native ETH sits on - never assumed to be currency0.
   const nativeIsCurrency0 = pool.poolKey.currency0 === NATIVE_CURRENCY;
   const zeroForOne = input.side === "buy" ? nativeIsCurrency0 : !nativeIsCurrency0;
   const currencyIn = zeroForOne ? pool.poolKey.currency0 : pool.poolKey.currency1;
@@ -133,7 +133,7 @@ export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult>
     return {
       ok: false,
       reason:
-        `pool ${pool.poolId} has a non-zero hook (${pool.poolKey.hooks}) — this adapter does not ` +
+        `pool ${pool.poolId} has a non-zero hook (${pool.poolKey.hooks}) - this adapter does not ` +
         `invent hookData and only supports hookless pools today`,
     };
   }
@@ -161,7 +161,7 @@ export async function quoteSwap(input: QuoteSwapInput): Promise<QuoteSwapResult>
           zeroForOne,
           exactAmount: input.amountIn,
           // Empty hookData for a hookless pool. A hooked pool's required
-          // hookData is not invented — see robinhood-v4-pool.ts; callers
+          // hookData is not invented - see robinhood-v4-pool.ts; callers
           // must not pass a hooked PoolKey to this function today.
           hookData: "0x",
         },

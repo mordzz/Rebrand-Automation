@@ -6,7 +6,7 @@ import { getSniperConfig, type SniperConfig } from "./config";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The control/heartbeat row is a singleton — create it on first use. */
+/** The control/heartbeat row is a singleton - create it on first use. */
 export async function getOrCreateSniperState(): Promise<SniperState | null> {
   const db = getDb();
   if (!db) return null;
@@ -29,16 +29,16 @@ export async function recordHeartbeat(mode: "dry_run" | "live"): Promise<void> {
 
 /**
  * `allOpenPositions` must be the wallet's FULL open-position list (every
- * chain) — `maxConcurrentPositions` is a single wallet-global cap.
+ * chain) - `maxConcurrentPositions` is a single wallet-global cap.
  *
  * `solanaOpenPositions` must be pre-filtered to Solana rows only (chain
- * IS NULL, for legacy pre-PR04 history, or chain = "solana") — the
+ * IS NULL, for legacy pre-PR04 history, or chain = "solana") - the
  * deployed-SOL sum below reads ONLY these. A Robinhood row's `sizeSol`
  * is a compatibility shadow of its ETH notional (see
  * lib/sniper/positions.ts's OpenPositionInput doc comments), and summing
  * it here would silently count ETH exposure as SOL exposure. Callers
  * (see scripts/paper-daemon.ts) are responsible for passing the correct,
- * pre-filtered second list — this function does not re-derive it, to
+ * pre-filtered second list - this function does not re-derive it, to
  * keep the filtering logic in exactly one place
  * (lib/sniper/positions.ts#getOpenSolanaPositions).
  */
@@ -73,7 +73,7 @@ export function canOpenNewPosition(
       const remaining = Math.ceil(config.cooldownAfterLossSec - elapsedSec);
       return {
         allowed: false,
-        reason: `cooldown after loss — ${remaining}s remaining`,
+        reason: `cooldown after loss - ${remaining}s remaining`,
       };
     }
   }
@@ -86,7 +86,7 @@ export function sizeForSnipe(config: SniperConfig): number {
 
 /**
  * Called after every closed trade (win or loss). Trips the circuit breaker
- * — pausing without requiring a daemon restart — when consecutive losses
+ * - pausing without requiring a daemon restart - when consecutive losses
  * or daily drawdown exceed configured thresholds.
  */
 export async function recordTradeOutcome(pnlSol: number): Promise<void> {
@@ -145,7 +145,7 @@ export type DerivedTradeStats = {
 
 /**
  * Per-user circuit breaker, re-derived fresh every call from that wallet's
- * own trades — deliberately NOT persisted/sticky like sniper_state's
+ * own trades - deliberately NOT persisted/sticky like sniper_state's
  * tradingPaused. The house breaker never auto-clears (only a manual
  * /api/sniper/toggle call resets it); doing the same per-user with no
  * per-user pause UI in scope would mean a bot could permanently stop

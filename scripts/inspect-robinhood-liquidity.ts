@@ -4,9 +4,9 @@
  * Never signs a transaction, never requires a private key. Uses the
  * configured GMGN_API_KEY (server-side env var) and a read-only Robinhood
  * mainnet RPC client for on-chain cross-checks. Prints only public
- * on-chain data and public GMGN market data — no secrets are logged (the
+ * on-chain data and public GMGN market data - no secrets are logged (the
  * API key itself is never printed). Uses GMGN + read-only Robinhood RPC
- * only — no external price API (CoinGecko/CoinMarketCap/etc.) dependency.
+ * only - no external price API (CoinGecko/CoinMarketCap/etc.) dependency.
  *
  * Purpose: gather evidence for the still-open "is GMGN Robinhood
  * `liquidity` really USD, and is it a useful safety discriminator"
@@ -20,7 +20,7 @@ loadEnv({ path: ".env.local" });
 import { gmgnRequest } from "@/lib/gmgn/client";
 import { createPublicClient, http, defineChain } from "viem";
 
-// GMGN's Robinhood market data indexes MAINNET (chain id 4663) — the
+// GMGN's Robinhood market data indexes MAINNET (chain id 4663) - the
 // repo's configured PR03 RPC client defaults to testnet
 // (NEXT_PUBLIC_ROBINHOOD_NETWORK), which returns no bytecode for any of
 // these addresses (confirmed during the earlier Pons investigation).
@@ -74,7 +74,7 @@ function num(v: unknown): number | null {
 }
 
 /** Standard Type-7 quantile (the common "linear interpolation" method,
- * same one most stats packages default to) — NOT the earlier
+ * same one most stats packages default to) - NOT the earlier
  * `floor(p/100 * length)` implementation, which is not a standard
  * quantile and gives a misleading median for small/even-sized samples
  * (e.g. it never averages the two middle values for even n). */
@@ -110,11 +110,11 @@ async function main() {
   const newCreation = await fetchTrenches("new_creation", 80);
   console.log(`  got ${newCreation.length} item(s)`);
 
-  console.log("Fetching pons near_completion candidates (verification only — not enabled in Noah)...");
+  console.log("Fetching pons near_completion candidates (verification only - not enabled in Noah)...");
   const nearCompletion = await fetchTrenches("near_completion", 30);
   console.log(`  got ${nearCompletion.length} item(s)`);
 
-  console.log("Fetching pons completed candidates (verification only — not enabled in Noah)...");
+  console.log("Fetching pons completed candidates (verification only - not enabled in Noah)...");
   const completed = await fetchTrenches("completed", 30);
   console.log(`  got ${completed.length} item(s)`);
 
@@ -154,7 +154,7 @@ async function main() {
   // populated by querying each UNIQUE quote address's own GMGN
   // token/info once (cached, not re-fetched per sample). Using one
   // sample's quote price for every comparison would only be valid if
-  // every pool shares the same quote token — that assumption is now
+  // every pool shares the same quote token - that assumption is now
   // verified explicitly, not assumed. ──
   const uniqueQuoteAddresses = [...new Set(samples.map((s) => s.quoteAddress).filter((a): a is string => a != null))];
   console.log(`Distinct quote token addresses across all samples: ${uniqueQuoteAddresses.length}`);
@@ -186,7 +186,7 @@ async function main() {
     const quoteInfo = quotePriceByAddress.get(s.quoteAddress);
     if (!quoteInfo || quoteInfo.price == null) {
       excludedNoQuotePrice++;
-      console.log(`Token ${s.address} (${s.stage}) — EXCLUDED from formula (b): quote token ${s.quoteAddress} has no GMGN price available.\n`);
+      console.log(`Token ${s.address} (${s.stage}) - EXCLUDED from formula (b): quote token ${s.quoteAddress} has no GMGN price available.\n`);
       continue;
     }
 
