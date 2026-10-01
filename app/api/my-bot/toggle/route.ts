@@ -8,7 +8,7 @@ import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server
 
 export const dynamic = "force-dynamic";
 
-/** Starts or stops a deployed bot — the master switch scripts/paper-daemon.ts
+/** Starts or stops a deployed bot - the master switch scripts/paper-daemon.ts
  * reads to decide whether to open new positions for it (see the comment on
  * lib/db/schema.ts#userBots.active). Requires a verified Privy owner of
  * the EVM wallet (lib/auth/privy-server.ts), like every my-bot mutation. Takes an explicit

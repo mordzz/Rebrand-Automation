@@ -20,7 +20,7 @@ const CharacterCanvas = dynamic(
   }
 );
 
-/** Renders any deployable character — the built-in 3D automaton, or an
+/** Renders any deployable character - the built-in 3D automaton, or an
  * image/GIF that reacts to the bot's mood with motion instead of rigging. */
 export function CharacterAvatar({
   kind,
@@ -36,7 +36,7 @@ export function CharacterAvatar({
   }
   return (
     <div className="flex h-full w-full items-center justify-center p-8">
-      {/* Arbitrary user-supplied URLs — next/image would need a remote-host
+      {/* Arbitrary user-supplied URLs - next/image would need a remote-host
           allowlist, so a plain img is the right tool here. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

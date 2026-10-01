@@ -69,7 +69,7 @@ function formatUsd(v: number): string {
 }
 
 /** Cheap, honest read of the risk fields GMGN ships with each token. Not a
- * trading verdict — the engine's own gate (lib/gmgn/safety.ts) decides
+ * trading verdict - the engine's own gate (lib/gmgn/safety.ts) decides
  * that. This only flags what a human scanning the list should notice. */
 function riskFlags(t: DiscoveredToken): string[] {
   const flags: string[] = [];
@@ -239,7 +239,7 @@ export function NewLaunches() {
 
                     <div className="shrink-0 text-right">
                       <p className="text-xs tabular-nums">
-                        {t.marketCapUsd != null ? formatUsd(t.marketCapUsd) : "—"}
+                        {t.marketCapUsd != null ? formatUsd(t.marketCapUsd) : "-"}
                       </p>
                       <p className="text-[0.7rem] text-muted-foreground">
                         {ageLabel(t.createdAt, now)}

@@ -5,16 +5,14 @@ import { getDb } from "@/lib/db";
 import { positions, trades, userBots } from "@/lib/db/schema";
 import { robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { deriveTradingPause } from "@/lib/sniper/risk-limits";
-import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 
-// Stats are derived from live position/trade rows — never cache this route.
+// Stats are derived from live position/trade rows - never cache this route.
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** `?wallet=` scopes every figure to one deployed bot's own ledger;
- * omitted means the house desk — see app/api/positions/route.ts for the
+ * omitted means the house desk - see app/api/positions/route.ts for the
  * same null-means-house convention. */
 export async function GET(request: NextRequest) {
   const db = getDb();
@@ -51,26 +49,15 @@ export async function GET(request: NextRequest) {
       : Promise.resolve(null),
   ]);
 
-  // Per-wallet circuit breaker — re-derived fresh, not persisted, so a
+  // Per-wallet circuit breaker - re-derived fresh, not persisted, so a
   // deployed bot's /deploy page can show *why* it stopped trading rather
   // than just going quiet. House-desk requests (no `wallet`) skip this;
-  // that status is shown separately via the dashboard's own sniper_state.
+  // there is no per-bot switch or breaker there.
   let breaker: { tradingPaused: boolean; pauseReason: string | null } | null = null;
   if (wallet && bot) {
     const config = await getEffectiveConfig(bot);
-    if (bot.agentChain === "robinhood") {
-      // Same breaker scripts/paper-daemon.ts enforces for Robinhood bots.
-      breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
-    } else {
-      // Historical Solana bot: its own (retired) Solana breaker rules.
-      const [recentOutcomes, dailyPnlSol, lastLossAt] = await Promise.all([
-        getRecentOutcomes(wallet, 50, bot.breakerResetAt),
-        getDailyPnlSol(wallet, bot.breakerResetAt),
-        getLastLossAt(wallet, bot.breakerResetAt),
-      ]);
-      const derived = deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
-      breaker = { tradingPaused: derived.tradingPaused, pauseReason: derived.pauseReason };
-    }
+    // Same breaker scripts/paper-daemon.ts enforces.
+    breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
   }
 
   const openPositionsInProfit = openPositions.filter((p) => {
@@ -78,7 +65,6 @@ export async function GET(request: NextRequest) {
     return Number(p.lastPrice) > Number(p.entryPrice);
   }).length;
 
-  // Per chain: never sum ETH and SOL together (PR14).
   const pnl24h = summarizePnl(trades24h);
 
   const wins30d = trades30d.filter(tradeWon).length;
@@ -91,13 +77,11 @@ export async function GET(request: NextRequest) {
     openPositionsInProfit,
     pnl24hNative: pnl24h.pnlNative,
     nativeSymbol: pnl24h.nativeSymbol,
-    /** Historical Solana PnL in the same window (SOL), kept separate. */
-    pnl24hSol: pnl24h.pnlSolHistorical,
     winRate30d,
     trades30dCount: trades30d.length,
     wins30dCount: wins30d,
     // The operator's own on/off switch (app/api/my-bot/toggle), separate
-    // from tradingPaused below (the safety circuit breaker) — house-desk
+    // from tradingPaused below (the safety circuit breaker) - house-desk
     // requests (no `wallet`) have no such switch, so this is always true.
     active: wallet ? (bot?.active ?? false) : true,
     tradingMode: wallet ? (bot?.tradingMode ?? "paper") : "live",

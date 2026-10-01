@@ -9,7 +9,7 @@ import { formatChange, formatPrice, useMarkets } from "./use-markets";
  * Live price strip for every market Perpspad can back a token with.
  *
  * Sits above the tab content, so whichever tab is open the page always
- * shows something real and moving — these are genuine Pyth oracle prices
+ * shows something real and moving - these are genuine Pyth oracle prices
  * (see lib/perps/markets.ts), the same feed Drift's own perp markets
  * mark against, not decoration.
  */

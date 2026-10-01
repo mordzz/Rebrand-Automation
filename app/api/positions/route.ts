@@ -5,12 +5,12 @@ import { getDb } from "@/lib/db";
 import { positions } from "@/lib/db/schema";
 import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
-// Position state changes continuously while the sniper daemon runs —
+// Position state changes continuously while the paper daemon runs -
 // never cache this route.
 export const dynamic = "force-dynamic";
 
 /** `?wallet=` scopes to one deployed bot's own positions; omitted means
- * the house desk (walletAddress is null there) — never both mixed
+ * the house desk (walletAddress is null there) - never both mixed
  * together, so a user's bot never shows the house desk's numbers. */
 export async function GET(request: NextRequest) {
   const db = getDb();
@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
     configured: true,
     data: rows.map((r) => ({
       ...r,
-      entryMarketCapUsd: caps.get(r.token)?.entryUsd ?? null,
-      currentMarketCapUsd: caps.get(r.token)?.currentUsd ?? null,
+      entryMarketCapUsd: caps.get(r.tokenAddress)?.entryUsd ?? null,
+      currentMarketCapUsd: caps.get(r.tokenAddress)?.currentUsd ?? null,
     })),
   });
 }

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 /**
- * Agent private-key export — RETIRED (PR09A).
+ * Agent private-key export - RETIRED (PR09A).
  *
  * The only implemented reveal path was for legacy Solana agent wallets,
  * proven by an ed25519 challenge signed with the owner's Solana wallet.

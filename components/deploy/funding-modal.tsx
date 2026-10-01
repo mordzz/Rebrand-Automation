@@ -10,8 +10,8 @@ import { ModalShell } from "@/components/ui/modal";
  * Warns when a live agent cannot afford to trade.
  *
  * The failure this prevents is a quiet one: a bot switched to live with an
- * empty wallet looks like it is working — it is started, it is scanning,
- * it likes candidates — and simply never fills, logging a rejection each
+ * empty wallet looks like it is working - it is started, it is scanning,
+ * it likes candidates - and simply never fills, logging a rejection each
  * time. Without this the operator would have to read the console to find
  * out why nothing happened.
  *

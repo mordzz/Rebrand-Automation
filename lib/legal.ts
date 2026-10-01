@@ -27,7 +27,7 @@ export function legalTitle(doc: LegalDoc) {
 const cache = new Map<LegalDoc, string>();
 
 /** ⟦FILL: …⟧ markers become the same badge the whitepaper renders, and
- * §N references become links into the whitepaper — these documents cite it
+ * §N references become links into the whitepaper - these documents cite it
  * constantly and a reader should be able to follow the citation rather
  * than being told a section number and left to find it. The whitepaper's
  * own transform links §N within its own page; here the target is a

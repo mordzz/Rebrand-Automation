@@ -11,7 +11,7 @@ const TRADE_LIMIT = 100;
 const FEED_LIMIT = 150;
 
 /** Accepts either a legacy Solana wallet (base58) or a Robinhood/EVM
- * wallet (0x + 40 hex chars) — see app/api/my-bot/route.ts. */
+ * wallet (0x + 40 hex chars) - see app/api/my-bot/route.ts. */
 function isPlausibleWalletAddress(addr: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr) || /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
@@ -22,14 +22,14 @@ type FeedRow = {
   source: string;
   message: string;
   /** Only ever a real on-chain signature. Paper fills store the literal
-   * "paper", which is not a transaction and is normalised away here —
+   * "paper", which is not a transaction and is normalised away here -
    * rendering it as a txid would invite an operator to go looking for
    * something that was never broadcast. */
   txHash: string | null;
-  /** The token itself (ERC-20 contract, or a historical Solana mint) —
+  /** The token itself (ERC-20 contract) -
    * real even for a paper fill. */
   tokenAddress: string | null;
-  /** "robinhood" | "solana" | null — picks the explorer and unit (PR14). */
+  /** "robinhood" | "solana" | null - picks the explorer and unit (PR14). */
   chain: string | null;
   createdAt: string;
 };
@@ -45,8 +45,8 @@ function realSignature(value: unknown): string | null {
  * One chronological feed of everything a deployed bot has done.
  *
  * Merges two sources on purpose:
- *   - `logs`   — events written as they happen (fills, exits, guard trips)
- *   - `trades` — the closed-trade ledger, which reaches back further than
+ *   - `logs`   - events written as they happen (fills, exits, guard trips)
+ *   - `trades` - the closed-trade ledger, which reaches back further than
  *                the log does. Per-bot logging only started when the
  *                wallet column was added, so without this half the console
  *                would look empty for every trade that came before it.
@@ -84,15 +84,15 @@ export async function GET(request: Request) {
     level: row.level,
     source: row.source,
     message: row.message,
-    txHash: realSignature(row.txHash ?? row.txSignature),
-    tokenAddress: row.tokenAddress ?? row.tokenMint,
+    txHash: realSignature(row.txHash),
+    tokenAddress: row.tokenAddress,
     chain: row.chain,
     createdAt: row.createdAt.toISOString(),
   }));
 
   /* A closed trade that already produced a log line is the same event
      seen twice. The two tables share no key, and matching on mint fails
-     for log rows written before that column existed — so match on the
+     for log rows written before that column existed - so match on the
      message, which both sides build to the identical format, within a
      window wide enough to absorb the gap between writing the log and
      committing the trade. */
@@ -106,28 +106,20 @@ export async function GET(request: Request) {
 
   for (const trade of tradeRows) {
     const context = (trade.context ?? {}) as Record<string, unknown>;
-    const robinhood = trade.chain === "robinhood";
-    const mint =
-      typeof context.tokenAddress === "string"
-        ? context.tokenAddress
-        : typeof context.mint === "string"
-          ? context.mint
-          : null;
+    const mint = typeof context.tokenAddress === "string" ? context.tokenAddress : null;
     const closedAt = trade.closedAt;
-    const pnl = Number(robinhood ? (trade.pnlNative ?? trade.pnlSol) : trade.pnlSol);
+    const pnl = Number(trade.pnlNative);
     const reason =
       typeof context.exitReason === "string" ? context.exitReason : "closed";
-    // Same per-chain formats scripts/paper-daemon.ts logs, so dedupe matches.
-    const message = robinhood
-      ? `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(6)} ${trade.nativeSymbol ?? "ETH"} (Robinhood paper)`
-      : `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} SOL`;
+    // Same format scripts/paper-daemon.ts logs, so dedupe matches.
+    const message = `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(6)} ${trade.nativeSymbol ?? "ETH"} (Robinhood paper)`;
 
     const match = loggedByMessage
       .get(message)
       ?.find((c) => Math.abs(c.at - closedAt.getTime()) <= DEDUPE_WINDOW_MS);
 
     if (match) {
-      // Same event. Keep the log line, but take the mint from the trade —
+      // Same event. Keep the log line, but take the mint from the trade -
       // rows logged before the mint column existed have none, and that is
       // exactly the link the console wants to render.
       if (!feed[match.index].tokenAddress && mint) {

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { userBots, type UserBot } from "@/lib/db/schema";
 
-/** The single public "Noah" agent shown on /dashboard — see
+/** The single public "Noah" agent shown on /dashboard - see
  * lib/db/schema.ts#userBots.isOfficial. `null` when unconfigured or not
  * yet provisioned (see scripts/provision-official-bot.ts). */
 export async function getOfficialBot(): Promise<UserBot | null> {
@@ -21,7 +21,7 @@ export async function getOfficialBot(): Promise<UserBot | null> {
 /** Every mutating /api/my-bot/* route calls this right after loading its
  * bot row. Noah's wallet address is printed on a public page, so the
  * client-asserted-wallet trust the rest of that surface relies on no
- * longer holds — refuse outright rather than trust the caller. */
+ * longer holds - refuse outright rather than trust the caller. */
 export function assertNotOfficial(bot: UserBot | null): NextResponse | null {
   if (!bot?.isOfficial) return null;
   return NextResponse.json(

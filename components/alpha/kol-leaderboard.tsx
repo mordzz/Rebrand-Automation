@@ -30,7 +30,7 @@ type KolPosition = {
   entryMarketCapUsd: number | null;
   exitMarketCapUsd: number | null;
   pnlUsd: number | null;
-  /** Live on-chain fact, not derived from the trade window — see
+  /** Live on-chain fact, not derived from the trade window - see
    * lib/gmgn/wallet-holdings.ts. Can be non-null even on a "closed"
    * position: that just means the pairing saw a sell, not that the
    * wallet sold everything. */
@@ -114,12 +114,12 @@ function formatCount(value: number): string {
 const HEAD_CELL =
   "px-3 py-2 text-left text-[0.6rem] font-semibold tracking-[0.12em] uppercase text-muted-foreground";
 
-/** One tracked KOL per section — not one row per position, so an account
+/** One tracked KOL per section - not one row per position, so an account
  * with several buys doesn't repeat its own identity down the table.
  * Win rate / realized PnL / follower count come straight from GMGN's own
  * wallet_stats (7d, computed across that wallet's full history), while
  * each listed position's entry/exit/market-cap/PnL comes from pairing
- * this account's own recent buy/sell trades — see
+ * this account's own recent buy/sell trades - see
  * lib/gmgn/kol-positions.ts for both derivations. Complements
  * smart-money-panel.tsx (the raw chronological feed, KOL + smart money
  * together) rather than replacing it. */
@@ -231,7 +231,7 @@ export function KolLeaderboard() {
                             : "text-destructive"
                       )}
                     >
-                      {kol.winRate != null ? `${(kol.winRate * 100).toFixed(0)}%` : "—"}
+                      {kol.winRate != null ? `${(kol.winRate * 100).toFixed(0)}%` : "-"}
                     </span>
                   </span>
                   <span className="text-muted-foreground">
@@ -250,7 +250,7 @@ export function KolLeaderboard() {
                     >
                       {kol.realizedProfitUsd7d != null
                         ? `${kol.realizedProfitUsd7d > 0 ? "+" : ""}${formatUsd(kol.realizedProfitUsd7d)}`
-                        : "—"}
+                        : "-"}
                     </span>
                   </span>
                   {kol.followersCount != null && (
@@ -356,7 +356,7 @@ export function KolLeaderboard() {
                                 <Send className="size-3.5" />
                               </a>
                             )}
-                            {!p.tokenTwitter && !p.tokenWebsite && !p.tokenTelegram && "—"}
+                            {!p.tokenTwitter && !p.tokenWebsite && !p.tokenTelegram && "-"}
                           </div>
                         </td>
 
@@ -375,7 +375,7 @@ export function KolLeaderboard() {
                         </td>
 
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {p.entryMarketCapUsd != null ? formatUsd(p.entryMarketCapUsd) : "—"}
+                          {p.entryMarketCapUsd != null ? formatUsd(p.entryMarketCapUsd) : "-"}
                         </td>
 
                         <td className="px-3 py-2 text-right tabular-nums">
@@ -404,7 +404,7 @@ export function KolLeaderboard() {
                               )}
                             </>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </td>
 
@@ -422,7 +422,7 @@ export function KolLeaderboard() {
                               {formatUsd(p.pnlUsd)}
                             </>
                           ) : (
-                            "—"
+                            "-"
                           )}
                         </td>
                       </tr>

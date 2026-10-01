@@ -8,7 +8,7 @@ const VENUES = [
   { name: "Privy" },
 ];
 
-/** Real infrastructure this product actually integrates with — the
+/** Real infrastructure this product actually integrates with - the
  * trencher-voice answer to a "trusted partners" logo strip, without
  * fabricating logos or affiliations that don't exist. */
 export function VenuesStrip() {

@@ -12,7 +12,7 @@
 /** True while perps on-chain actions are unavailable pending the
  * Robinhood Lighter migration (PR11). */
 export const PERPS_MIGRATION_MESSAGE =
-  "Perps launches are paused while Perpspad migrates from Solana to Robinhood Chain (Lighter).";
+  "Perps launches are paused. The Solana launch flow is retired, and a Robinhood Chain launch product has not been decided yet.";
 
 export const PERPSPAD_CLUSTER = "devnet" as const;
 

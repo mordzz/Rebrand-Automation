@@ -6,8 +6,6 @@ import {
 } from "@/lib/sniper/config";
 
 const BOOLEAN_KEYS: (keyof SniperConfig)[] = [
-  "requireMintAuthorityRenounced",
-  "requireFreezeAuthorityRenounced",
   "requireSocialLink",
   "trailingStopEnabled",
   "requireOwnerRenounced",
@@ -15,12 +13,8 @@ const BOOLEAN_KEYS: (keyof SniperConfig)[] = [
 ];
 
 const NUMBER_KEYS: (keyof SniperConfig)[] = [
-  "minLiquiditySol",
-  "maxCreatorBuyPct",
   "minTokenAgeSec",
-  "maxSolPerSnipe",
   "maxConcurrentPositions",
-  "maxTotalDeployedSol",
   "takeProfitPct",
   "stopLossPct",
   "trailingStopActivationPct",
@@ -28,7 +22,6 @@ const NUMBER_KEYS: (keyof SniperConfig)[] = [
   "crashDropPct",
   "exitCheckIntervalMs",
   "maxConsecutiveLosses",
-  "maxDailyDrawdownSol",
   "cooldownAfterLossSec",
   "metadataFetchTimeoutMs",
 ];
@@ -39,34 +32,24 @@ const NULLABLE_NUMBER_KEYS: (keyof SniperConfig)[] = [
   "maxHoldTimeSec",
 ];
 
-/** PR07 hardening: Robinhood-native risk limits, per-bot overridable the
- * same way maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol already
- * are for Solana. Validated the same way as NULLABLE_NUMBER_KEYS (null,
- * or a finite number — anything else is dropped, not thrown, matching
- * this function's existing "advisory input" posture) — kept as a
- * separate list only so the intent (these are risk limits, not generic
- * numeric knobs) is visible at the call site below.
- *
- * This does NOT choose any ETH value, and does NOT derive one from the
- * SOL-denominated fields — resolveRobinhoodNativeLimits() in
- * lib/sniper/risk-limits-robinhood.ts still fails closed unless all
- * three (plus nativeSymbol="ETH") are explicitly configured, whether at
- * the house level or via this overlay. */
+/** Robinhood native risk limits, per-bot overridable. Validated like
+ * NULLABLE_NUMBER_KEYS (null, or a finite number - anything else is
+ * dropped). This never chooses an ETH value:
+ * resolveRobinhoodNativeLimits() in lib/sniper/risk-limits-robinhood.ts
+ * still fails closed unless all three (plus nativeSymbol="ETH") are
+ * explicitly configured, at the house level or via this overlay. */
 const ROBINHOOD_NATIVE_NUMBER_KEYS: (keyof SniperConfig)[] = [
   "maxNativePerSnipe",
   "maxNativeDeployed",
   "maxDailyDrawdownNative",
 ];
 
-/** Known native-symbol values this codebase actually has behavior for —
- * "ETH" for Robinhood (lib/sniper/risk-limits-robinhood.ts requires
- * exactly this string), "SOL" kept valid for compatibility/display even
- * though the Solana path never reads nativeSymbol at all. An arbitrary
- * string is rejected rather than silently accepted, since this field
- * gates whether Robinhood risk limits are trusted at all. */
-const KNOWN_NATIVE_SYMBOLS = new Set(["ETH", "SOL"]);
+/** The only native symbol this codebase has behavior for (Robinhood ETH).
+ * Any other string is rejected, since this field gates whether Robinhood
+ * risk limits are trusted at all. */
+const KNOWN_NATIVE_SYMBOLS = new Set(["ETH"]);
 
-/** Keeps only known SniperConfig fields with the right primitive types — a
+/** Keeps only known SniperConfig fields with the right primitive types - a
  * user's overlay can never introduce fields the daemon doesn't know. */
 export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
   const out: Record<string, unknown> = {};
@@ -91,7 +74,7 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
   // decision), so it goes through the same range validation as the
   // house config write path (lib/sniper/config.ts's authoritative
   // validateMaxCreatorHoldPct) rather than the generic "any finite
-  // number" acceptance above. An invalid value is dropped — same
+  // number" acceptance above. An invalid value is dropped - same
   // "ignore, keep the house default" posture sanitize() already uses for
   // every other malformed overlay field, not a thrown error (a per-bot
   // overlay is advisory input, unlike the house config PATCH route).
@@ -99,7 +82,7 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
     try {
       out.maxCreatorHoldPct = validateMaxCreatorHoldPct(raw.maxCreatorHoldPct);
     } catch {
-      // invalid — leave unset, house default (or no override) applies
+      // invalid - leave unset, house default (or no override) applies
     }
   }
   if (raw.exitMode === "fixed" || raw.exitMode === "tiered") out.exitMode = raw.exitMode;
@@ -134,7 +117,7 @@ export function sanitize(raw: Record<string, unknown>): Partial<SniperConfig> {
 }
 
 /** A deployed bot's effective trading config: the house base config with
- * that bot's saved overlay applied on top — new bots start from the house
+ * that bot's saved overlay applied on top - new bots start from the house
  * tune until a user changes something. Shared by the /deploy config panel
  * (app/api/my-bot/config/route.ts) and any execution loop that needs to
  * know what a specific bot is actually configured to do (e.g. a per-user

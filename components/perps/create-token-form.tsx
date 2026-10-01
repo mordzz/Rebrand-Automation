@@ -3,13 +3,13 @@
 import { PERPS_MIGRATION_MESSAGE } from "@/lib/perps/program";
 
 /**
- * Perpspad token launch form — paused (PR09A).
+ * Perpspad token launch form - paused (PR09A).
  *
  * The launch flow signed a Solana `register_token` transaction through a
- * Solana wallet. That runtime is retired; the Robinhood Chain (Lighter)
- * launch flow arrives in PR11–PR13. Until then this surface stays in place
- * but states plainly that launches are unavailable, rather than offering a
- * form that cannot complete.
+ * Solana wallet. That runtime is retired, and whether a Robinhood Chain
+ * launch product exists is UNRESOLVED (the PR13 Perpspad decision (git history)). This surface
+ * states plainly that launches are unavailable rather than offering a form
+ * that cannot complete.
  */
 export function CreateTokenForm() {
   return (

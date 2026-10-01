@@ -11,9 +11,7 @@ import { isLlmConfigured, llmLabel } from "@/lib/agent/llm";
 import { getDb } from "@/lib/db";
 import { lessons, trades, userBots } from "@/lib/db/schema";
 import { getOpenPositions } from "@/lib/sniper/positions";
-import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 
 export const dynamic = "force-dynamic";
@@ -22,18 +20,18 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /* How many turns of the caller's conversation are re-sent to the model.
    The conversation itself is never stored: /atelier has no visitor login,
    so a persisted thread would be one shared transcript that every visitor
-   reads and writes — one person's questions shown to the next. Keeping it
+   reads and writes - one person's questions shown to the next. Keeping it
    in the browser tab makes each visit its own conversation, and closing
    the modal ends it. The agent's *own* memory (its post-mortems and trade
-   record) still lives in the database and is what gives it an identity —
+   record) still lives in the database and is what gives it an identity -
    see the memory field on AgentChatContext. */
 const MODEL_HISTORY_TURNS = 12;
-/** Bounds on the client-supplied window — this route is public and
+/** Bounds on the client-supplied window - this route is public and
  *  unauthenticated, so neither length is allowed to be a caller's choice. */
 const MAX_TEXT_LEN = 2000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // How far back selectNotableTrades is allowed to look for a "biggest
-// win"/"biggest loss" — bounded so the query stays cheap no matter how long
+// win"/"biggest loss" - bounded so the query stays cheap no matter how long
 // an agent has been trading; going deeper than this for a live chat answer
 // has sharply diminishing value anyway.
 const NOTABLE_TRADE_WINDOW = 100;
@@ -45,9 +43,9 @@ const MEMORY_LIMIT = 6;
 // A chat burst is a few turns over seconds to minutes; nothing about a
 // bot's own performance data changes that fast (it moves at paper-trade
 // speed, not chat speed), so re-deriving the full context on every single
-// turn is pure waste. Short, self-expiring, in-memory — same shape as the
+// turn is pure waste. Short, self-expiring, in-memory - same shape as the
 // daemon's own breaker cache in scripts/paper-daemon.ts. This caches only
-// performance data, never the conversation itself — the conversation is
+// performance data, never the conversation itself - the conversation is
 // always read from and written to agent_chat_messages below.
 const CONTEXT_CACHE_TTL_MS = 10_000;
 const contextCache = new Map<string, { context: AgentChatContext; expiresAt: number }>();
@@ -67,20 +65,17 @@ async function buildContext(
   const since24h = new Date(Date.now() - DAY_MS);
   const since30d = new Date(Date.now() - 30 * DAY_MS);
 
-  const [config, openPositions, trades24h, trades30d, recentOutcomes, dailyPnlSol, lastLossAt, tradeWindow, memoryRows] =
+  const [config, openPositions, trades24h, trades30d, tradeWindow, memoryRows] =
     await Promise.all([
       getEffectiveConfig(bot),
       getOpenPositions(wallet),
       db.select().from(trades).where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since24h))),
       db.select().from(trades).where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since30d))),
-      getRecentOutcomes(wallet, 50, bot.breakerResetAt),
-      getDailyPnlSol(wallet, bot.breakerResetAt),
-      getLastLossAt(wallet, bot.breakerResetAt),
       db
         .select({
           id: trades.id,
           symbol: trades.token,
-          pnlSol: trades.pnlSol,
+          pnlNative: trades.pnlNative,
           closedAt: trades.closedAt,
           cause: lessons.cause,
           lessonStatus: lessons.status,
@@ -90,7 +85,7 @@ async function buildContext(
         .where(eq(trades.walletAddress, wallet))
         .orderBy(desc(trades.closedAt))
         .limit(NOTABLE_TRADE_WINDOW),
-      /* This agent's own post-mortems — joined through its own trades, so
+      /* This agent's own post-mortems - joined through its own trades, so
          one agent can never be handed another's conclusions. */
       db
         .select({
@@ -110,10 +105,7 @@ async function buildContext(
   const pnl24h = summarizePnl(trades24h);
   const wins30d = trades30d.filter(tradeWon).length;
   const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
-  const breaker =
-    bot.agentChain === "robinhood"
-      ? await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config)
-      : deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+  const breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
 
   // The agent's own trading wallet balance (Robinhood RPC, ETH).
   const agentBalanceNative = await agentNativeBalance(bot);
@@ -132,8 +124,9 @@ async function buildContext(
     agentBalanceNative,
     openPositions: openPositions.map((p) => ({
       symbol: p.symbol,
-      token: p.token,
-      sizeSol: p.sizeSol,
+      tokenAddress: p.tokenAddress,
+      sizeNative: p.sizeNative,
+      nativeSymbol: p.nativeSymbol ?? "ETH",
       entryPrice: p.entryPrice,
       lastPrice: p.lastPrice,
       openedAt: p.openedAt.toISOString(),
@@ -142,7 +135,7 @@ async function buildContext(
       tradeWindow.map((t) => ({
         id: t.id,
         symbol: t.symbol,
-        pnlSol: Number(t.pnlSol),
+        pnlNative: Number(t.pnlNative),
         closedAt: t.closedAt.toISOString(),
         cause: t.cause,
         lessonStatus: t.lessonStatus as "learning" | "applied" | null,
@@ -162,14 +155,14 @@ async function buildContext(
 }
 
 /**
- * POST { botId, messages } — answers one turn as this agent, grounded in
+ * POST { botId, messages } - answers one turn as this agent, grounded in
  * its own performance and its own post-mortems (never bot.config; see the
  * opacity note on lib/agent/agent-chat.ts).
  *
  * Stateless: the caller sends the conversation it wants remembered and
  * nothing is written back. Looked up by bot id rather than wallet address,
  * because /api/atelier only ever sends the client a truncated wallet
- * string — the full address never has to round-trip from the browser.
+ * string - the full address never has to round-trip from the browser.
  */
 export async function POST(request: Request) {
   const db = getDb();

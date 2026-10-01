@@ -16,7 +16,6 @@ type LessonApiRow = {
   createdAt: string;
   token: string | null;
   strategy: string | null;
-  pnlSol: string | null;
   pnlNative?: string | null;
   chain?: string | null;
   closedAt: string | null;
@@ -36,13 +35,13 @@ function formatDate(row: LessonApiRow): string {
  * from it.
  *
  * Deliberately a card list rather than the dashboard's seven-column table
- * (components/dashboard/llm-connections.tsx) — that table needs ~860px to
+ * (components/dashboard/llm-connections.tsx) - that table needs ~860px to
  * breathe, and this renders inside a column roughly half that wide. Same
  * data, laid out for the space it actually has.
  */
 export function AgentMemory({
   endpoint = "/api/lessons",
-  emptyHint = "No lessons yet — the first losing trade will be analysed and stored here.",
+  emptyHint = "No lessons yet - the first losing trade will be analysed and stored here.",
 }: {
   endpoint?: string;
   emptyHint?: string;
@@ -110,9 +109,9 @@ export function AgentMemory({
               <li key={row.id} className="border-b border-white/5 px-4 py-3 last:border-b-0">
                 <div className="flex items-center justify-between gap-3">
                   <p className="truncate text-sm font-medium">
-                    ${row.token ?? "—"}
+                    ${row.token ?? "-"}
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      {row.strategy ?? "—"}
+                      {row.strategy ?? "-"}
                     </span>
                   </p>
                   <div className="flex shrink-0 items-center gap-2">

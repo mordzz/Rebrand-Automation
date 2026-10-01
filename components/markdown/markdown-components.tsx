@@ -7,7 +7,7 @@ import { slugForHeading } from "@/lib/whitepaper";
 /* Shared markdown styling for the site's long-form documents: the
    whitepaper, the privacy policy and the terms. Extracted so the legal
    pages cannot drift into a second, slightly different set of type styles
-   — a reader moving between them should not be able to tell they are
+   - a reader moving between them should not be able to tell they are
    rendered by different components. */
 
 function flattenText(node: React.ReactNode): string {
@@ -27,7 +27,7 @@ function flattenText(node: React.ReactNode): string {
 }
 
 /** react-markdown component overrides styled for long-form reading against
- * the site's dark theme — this document is read start-to-finish and cross-
+ * the site's dark theme - this document is read start-to-finish and cross-
  * references itself constantly, so headings get stable ids (matching
  * lib/whitepaper.ts#slugForHeading) and §-references become real jumps. */
 /* Running text is capped at a reading measure rather than the column
@@ -97,7 +97,7 @@ export const markdownComponents: Components = {
   ),
   code: ({ className, children }) => {
     // Fenced code blocks arrive with a `language-*` className on the inner
-    // <code>; inline code doesn't. Only fenced blocks need block styling —
+    // <code>; inline code doesn't. Only fenced blocks need block styling -
     // inline code (e.g. `pending`) stays inline.
     if (!className) {
       return (

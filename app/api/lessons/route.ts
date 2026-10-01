@@ -3,12 +3,12 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { lessons, trades } from "@/lib/db/schema";
-import { houseAdminErrorResponse, authenticateHouseAdmin } from "@/lib/auth/privy-server";
+import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** Agent memory: lessons joined with the trades that taught them.
  *
  * `?wallet=` scopes to one deployed bot's own lessons; omitted means the
- * house desk. A lesson has no wallet of its own — it inherits one from the
+ * house desk. A lesson has no wallet of its own - it inherits one from the
  * trade that produced it, so the scope is applied on the joined trade. The
  * join therefore has to become an inner join when scoping: a lesson whose
  * trade row is missing cannot be attributed to anyone. */
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     createdAt: lessons.createdAt,
     token: trades.token,
     strategy: trades.strategy,
-    pnlSol: trades.pnlSol,
+    nativeSymbol: trades.nativeSymbol,
     pnlNative: trades.pnlNative,
     chain: trades.chain,
     closedAt: trades.closedAt,
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
 
 /** Mark a lesson as applied (or back to learning). */
 export async function PATCH(request: Request) {
-  // PR17: house-level mutation — verified Privy user with a linked EVM
-  // wallet in HOUSE_ADMIN_WALLETS (fail closed when unset).
-  const admin = await authenticateHouseAdmin(request);
-  if (!admin.ok) return houseAdminErrorResponse(admin);
+  // House dashboard action: any verified signed-in Noah operator (Privy
+  // access token). Never anonymous; no separate admin role.
+  const auth = await authenticateSignedInUser(request);
+  if (!auth.ok) return signedInErrorResponse(auth);
   const db = getDb();
   if (!db) {
     return NextResponse.json(

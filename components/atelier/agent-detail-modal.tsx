@@ -38,7 +38,7 @@ function greeting(name: string): ChatMessage {
   };
 }
 
-/** Detail preview for one agent — performance and open positions only,
+/** Detail preview for one agent - performance and open positions only,
  * never its configuration (see the opacity note on lib/agent/agent-chat.ts
  * for why: this modal simply never fetches bot.config in the first
  * place). Includes a live chat with the agent itself, grounded in the
@@ -46,7 +46,7 @@ function greeting(name: string): ChatMessage {
  *
  * The conversation lives only in this component's state. /atelier has no
  * visitor login, so a stored thread would be one transcript shared by
- * every visitor — each person reading the last person's questions.
+ * every visitor - each person reading the last person's questions.
  * Closing the modal ends the conversation. What persists is the agent's
  * own memory (its post-mortems and trade record), which is what the
  * replies are grounded in. */
@@ -72,7 +72,7 @@ export function AgentDetailModal({
 
   async function send(text: string) {
     /* The route is stateless, so the conversation has to travel with the
-       request. Built from the messages already on screen plus this turn —
+       request. Built from the messages already on screen plus this turn -
        the greeting is dropped because the agent never actually said it. */
     const outgoing = [
       ...messages
@@ -131,12 +131,12 @@ export function AgentDetailModal({
           transition={{ duration: 0.25, ease: EASE }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Left — avatar, identity, chat */}
+          {/* Left - avatar, identity, chat */}
           <div className="order-2 flex flex-col lg:order-none lg:col-span-2 lg:min-h-0 lg:overflow-hidden lg:border-r lg:border-white/5">
             <div /* Definite heights, not aspect-ratio: CharacterAvatar's image branch
                  sizes itself with h-full, which against an aspect-ratio-derived
                  (indefinite) height resolves to the image's own size and pushes
-                 the box past the ratio — measured 375px where 16/9 asked for
+                 the box past the ratio - measured 375px where 16/9 asked for
                  210px, eating half the dialog on a phone. overflow-hidden keeps
                  any character type inside whatever we allot. */
               className="relative h-40 shrink-0 overflow-hidden border-t border-white/5 sm:h-52 lg:h-auto lg:max-h-[38%] lg:min-h-[9rem] lg:flex-1 lg:border-t-0">
@@ -166,7 +166,7 @@ export function AgentDetailModal({
             </div>
           </div>
 
-          {/* Right — identity header, performance, open positions */}
+          {/* Right - identity header, performance, open positions */}
           <div className="order-1 flex flex-col lg:order-none lg:col-span-3 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex items-start justify-between gap-3 px-4 py-4 sm:px-5">
               <div className="min-w-0">
@@ -176,7 +176,7 @@ export function AgentDetailModal({
                 </p>
               </div>
               {/* Below lg this pane comes first, so the avatar's overlay
-                  close button is far down the page — this is the reachable
+                  close button is far down the page - this is the reachable
                   one there, and it steps aside once the avatar is visible. */}
               <button
                 type="button"
@@ -225,7 +225,7 @@ export function AgentDetailModal({
                   <p className="mt-2 text-lg font-medium tabular-nums sm:text-xl">
                     {agent.agentBalanceNative != null
                       ? `${agent.agentBalanceNative.toFixed(4)} ${agent.nativeSymbol}`
-                      : "—"}
+                      : "-"}
                   </p>
                 </div>
               )}
@@ -248,7 +248,7 @@ export function AgentDetailModal({
                   Win rate · 30d
                 </p>
                 <p className="mt-2 text-lg font-medium tabular-nums sm:text-xl">
-                  {agent.winRate30d != null ? `${agent.winRate30d.toFixed(0)}%` : "—"}
+                  {agent.winRate30d != null ? `${agent.winRate30d.toFixed(0)}%` : "-"}
                 </p>
                 <p className="mt-0.5 text-[0.7rem] text-muted-foreground">
                   {agent.trades30dCount} trades
@@ -284,7 +284,7 @@ export function AgentDetailModal({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {p.symbol ? `$${p.symbol}` : shortMint(p.token)}
+                          {p.symbol ? `$${p.symbol}` : shortMint(p.tokenAddress)}
                           <span className="ml-2 font-normal text-muted-foreground">
                             {p.strategy}
                           </span>
@@ -310,7 +310,7 @@ export function AgentDetailModal({
                           changePct != null && changePct < 0 && "text-destructive"
                         )}
                       >
-                        {changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%` : "—"}
+                        {changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%` : "-"}
                       </span>
                     </li>
                   );

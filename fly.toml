@@ -1,25 +1,18 @@
 # Deploy: fly deploy
-# One image (see Dockerfile), shared by multiple process groups — only
+# One image (see Dockerfile), shared by multiple process groups - only
 # `app` serves HTTP traffic. `paper` runs the per-user trading worker.
 #
-# Its name is historical and its comment used to read "always-safe … can't
-# touch real funds". That is false: the worker signs and spends for any bot
-# set to live, using that bot's own agent wallet, which is why
-# AGENT_WALLET_ENCRYPTION_KEY has to be present for it. It holds no house
-# wallet key, which is a different and much narrower claim.
-#
-# `sniper` (the real house trading daemon, holds PRIVATE_KEY_SOLANA_WALLET)
-# is intentionally NOT listed below yet — it's not defined as a process
-# group at all, so no machine for it exists and its secret never needs to
-# be pushed to Fly. To add it later, once ready:
-#   1. add `sniper = "npm run sniper"` under [processes]
-#   2. fly secrets set PRIVATE_KEY_SOLANA_WALLET="..." SOLANA_RPC_URL="..."
-#   3. fly deploy
+# The `paper` worker trades every deployed bot on Robinhood Chain in paper
+# mode (live Robinhood execution is not wired into the daemon; mainnet is
+# disabled). It needs AGENT_WALLET_ENCRYPTION_KEY and
+# LIGHTER_API_KEY_ENCRYPTION_KEY to read the bots' encrypted credentials.
+# There is no house trading daemon and no house wallet key: the retired
+# Solana `sniper` process and its PRIVATE_KEY_SOLANA_WALLET are gone.
 app = "noah-engine"
 primary_region = "iad"
 
 [build]
-  # Public by design (inlined into the client bundle) — not a secret, safe
+  # Public by design (inlined into the client bundle) - not a secret, safe
   # to commit. Matches components/providers.tsx's PRIVY_APP_ID.
   [build.args]
     NEXT_PUBLIC_PRIVY_APP_ID = "cmroz267200ju0cjqohmdfj5j"

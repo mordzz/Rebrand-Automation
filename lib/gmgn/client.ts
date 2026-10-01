@@ -4,7 +4,7 @@
  *
  * Auth: read-only routes take a plain `X-APIKEY` header. GMGN's swap and
  * strategy-order routes additionally require an Ed25519 request signature
- * — this client cannot reach them and has no signing code, so no key it
+ * - this client cannot reach them and has no signing code, so no key it
  * holds can move funds. That's the same "structurally incapable" posture
  * scripts/paper-daemon.ts takes toward wallet signing.
  *
@@ -22,12 +22,12 @@ export function isGmgnConfigured(): boolean {
 }
 
 /** Discriminated failure kinds a caller might need to react to differently
- * — e.g. "GMGN said nothing new happened" (empty `data`) is not the same
+ * - e.g. "GMGN said nothing new happened" (empty `data`) is not the same
  * situation as "we couldn't reach GMGN at all" or "GMGN rejected our key",
  * and a discovery loop that treats them identically will silently run
  * blind on an outage while logging nothing unusual. `gmgnGet` (below)
  * intentionally collapses all of this to `null` for its existing callers
- * — this richer variant is for callers (e.g. the Robinhood discovery
+ * - this richer variant is for callers (e.g. the Robinhood discovery
  * adapter) that need to tell the difference. */
 export type GmgnRequestResult<T> =
   | { ok: true; data: T }
@@ -67,7 +67,7 @@ export async function gmgnRequest<T>(
       signal: controller.signal,
       // Next.js caches server-side fetch() by URL+options by default; a
       // call with identical params (e.g. getKolTrades' fixed chain+limit)
-      // would otherwise freeze on whatever it first returned — wrong for
+      // would otherwise freeze on whatever it first returned - wrong for
       // trade/price data that's stale within seconds. Every caller here
       // already marks its own route `force-dynamic` for the same reason;
       // this is that same intent applied to the fetch itself.
@@ -114,12 +114,12 @@ export async function gmgnRequest<T>(
 }
 
 /** Call a read-only endpoint. Returns the unwrapped `data` payload, or null
- * on any failure (unconfigured, network, non-zero API code) — kept as the
+ * on any failure (unconfigured, network, non-zero API code) - kept as the
  * simple, backward-compatible surface every existing caller here already
  * uses.
  *
  * Some read endpoints are POST with a JSON body (`/v1/trenches` takes its
- * filters that way) — that is still read-only; the signed-request family
+ * filters that way) - that is still read-only; the signed-request family
  * this client cannot reach is what actually moves funds. */
 export async function gmgnGet<T>(
   path: string,

@@ -1,7 +1,7 @@
 // One-time, idempotent setup script. Run via `npm run provision-official-bot`.
 //
 // Creates the single public "Noah" agent shown on /dashboard with no
-// login — a real user_bots row, provisioned through the exact same
+// login - a real user_bots row, provisioned through the exact same
 // agent-wallet generator a normal /deploy uses, so it's picked up by
 // the already-running scripts/paper-daemon.ts roster loop (unconditional
 // `select * from user_bots`, refreshed every 20s) with zero daemon
@@ -15,7 +15,7 @@
 // key here (unlike a normal deploy, where walletAddress is the human
 // operator's own Phantom address). Noah has no human operator, and
 // agentPublicKey is only ever read for real signing when tradingMode is
-// "live" — which this bot can never reach — so a second identity key
+// "live" - which this bot can never reach - so a second identity key
 // would add nothing but a confusing second address on the public page.
 import "dotenv/config";
 
@@ -27,13 +27,13 @@ import { getOfficialBot } from "@/lib/db/official-bot";
 async function main() {
   const db = getDb();
   if (!db) {
-    console.error("DATABASE_URL is not set — nothing to provision against.");
+    console.error("DATABASE_URL is not set - nothing to provision against.");
     process.exit(1);
   }
 
   if (!isAgentWalletConfigured()) {
     console.error(
-      "AGENT_WALLET_ENCRYPTION_KEY is not set — refusing to provision a bot with no way to encrypt its wallet secret."
+      "AGENT_WALLET_ENCRYPTION_KEY is not set - refusing to provision a bot with no way to encrypt its wallet secret."
     );
     process.exit(1);
   }
@@ -65,7 +65,7 @@ async function main() {
       isOfficial: true,
     });
   } catch (err) {
-    // Backstop for a provisioning race (two runs at once) — the partial
+    // Backstop for a provisioning race (two runs at once) - the partial
     // unique index on isOfficial is the real guarantee here, this just
     // turns that into a friendly message instead of a crash.
     const again = await getOfficialBot();
@@ -78,7 +78,7 @@ async function main() {
 
   console.log(`Provisioned Noah: ${wallet.address}`);
   console.log(
-    "This address is now public (shown on /dashboard). It stays paper-mode permanently — do not fund it expecting live execution."
+    "This address is now public (shown on /dashboard). It stays paper-mode permanently - do not fund it expecting live execution."
   );
 }
 

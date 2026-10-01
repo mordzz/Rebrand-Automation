@@ -5,9 +5,9 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
 export const metadata: Metadata = {
-  title: "Deploy Your Agent — Noah Engine",
+  title: "Deploy Your Agent - Noah Engine",
   description:
-    "Connect your wallet, choose a character for your agent, tune its rules, and start in paper mode — all study, no spending.",
+    "Connect your wallet, choose a character for your agent, tune its rules, and start in paper mode - all study, no spending.",
 };
 
 export default function DeployPage() {
@@ -39,7 +39,7 @@ export default function DeployPage() {
               </h1>
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
                 Connect your wallet, choose a face for your agent, and tune its
-                trading rules. It starts in paper mode — all study, no
+                trading rules. It starts in paper mode - all study, no
                 spending.
               </p>
             </div>

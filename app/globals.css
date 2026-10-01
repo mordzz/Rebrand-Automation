@@ -117,7 +117,7 @@
 }
 
 :root {
-  /* Editorial dark-navy palette — near-black ink, cool paper, electric blue.
+  /* Editorial dark-navy palette - near-black ink, cool paper, electric blue.
      --primary is ink (monochrome buttons, inverted sections); --accent is
      the one spot of colour, reserved for links, chips, and live indicators. */
 
@@ -160,7 +160,7 @@
 }
 
 .dark {
-  /* Noah Engine — cinematic cream-on-black, matching the landing page.
+  /* Noah Engine - cinematic cream-on-black, matching the landing page.
      Warm cream (#DEDBC8) carries every interactive accent; body ink is
      #E1E0CC. Green (#5ed29c) is reserved strictly for P&L / live
      semantics in the dashboard, never brand decoration. */
@@ -217,7 +217,7 @@
   font-family: var(--font-display);
 }
 
-/* Apple-style liquid glass — near-transparent fill, blur, and a gradient
+/* Apple-style liquid glass - near-transparent fill, blur, and a gradient
    hairline drawn via a masked ::before so it follows any border-radius */
 @layer components {
   .liquid-glass {
@@ -255,7 +255,7 @@
   }
 }
 
-/* Frosted glass panel — pair with a `border` class; needs color behind it
+/* Frosted glass panel - pair with a `border` class; needs color behind it
    (the ambient glow blobs) to read as glass rather than plain translucency */
 @utility glass {
   background: color-mix(in srgb, var(--card) 55%, transparent);

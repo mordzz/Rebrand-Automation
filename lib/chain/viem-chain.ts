@@ -7,7 +7,7 @@
  *
  * Only the active network (testnet by default; mainnet only once
  * explicitly enabled via NEXT_PUBLIC_ROBINHOOD_NETWORK, per PR01) is
- * exposed here — the user-wallet layer must not offer a testnet/mainnet
+ * exposed here - the user-wallet layer must not offer a testnet/mainnet
  * switch before the mainnet readiness gate.
  */
 import { defineChain, type Chain } from "viem";
@@ -22,7 +22,7 @@ import {
 
 /** The single Robinhood Chain network this deployment is configured for.
  * Client code (Privy's browser-side wallet flows) only ever gets the
- * public RPC — never the server-only ROBINHOOD_RPC_URL, which may carry
+ * public RPC - never the server-only ROBINHOOD_RPC_URL, which may carry
  * a provider API key. */
 export const robinhoodChain: Chain = defineChain({
   id: ROBINHOOD_CHAIN_ID,

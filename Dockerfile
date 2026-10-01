@@ -1,4 +1,4 @@
-# Single image, three entrypoints — the Next.js web app (`npm run start`)
+# Single image, three entrypoints - the Next.js web app (`npm run start`)
 # and the two standalone trading daemons (`npm run sniper` / `npm run paper`,
 # both run via tsx against the same lib/ source, not a compiled bundle).
 # Fly.io picks which command to run per process group (see fly.toml), all
@@ -22,7 +22,7 @@ WORKDIR /src
 RUN git clone --quiet https://github.com/elliottech/lighter-go.git .  && git checkout --quiet "$LIGHTER_GO_COMMIT"  && GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o /out/lighter-signer.wasm ./wasm/  && cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" /out/wasm_exec.js  && echo "$LIGHTER_WASM_SHA256  /out/lighter-signer.wasm" | sha256sum -c -  && echo "$LIGHTER_WASM_EXEC_SHA256  /out/wasm_exec.js" | sha256sum -c -
 
 # ---- deps: full install (incl. devDependencies) for the build step ----
-# npm install rather than npm ci — the local lockfile was generated with a
+# npm install rather than npm ci - the local lockfile was generated with a
 # different npm minor version than this image's, which resolves some
 # optional/peer deps differently and trips npm ci's strict match.
 FROM base AS deps
@@ -32,7 +32,7 @@ RUN npm install
 # ---- builder: compile the Next.js app ----
 FROM base AS builder
 # NEXT_PUBLIC_* vars are inlined into the client bundle at build time, not
-# read at container runtime — must be passed as a build arg (fly deploy
+# read at container runtime - must be passed as a build arg (fly deploy
 # --build-arg NEXT_PUBLIC_PRIVY_APP_ID=...), a plain `fly secrets set`
 # would have no effect on this one.
 ARG NEXT_PUBLIC_PRIVY_APP_ID
@@ -57,7 +57,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
-# The daemons import only from lib/ — no app/ or components/ needed here.
+# The daemons import only from lib/ - no app/ or components/ needed here.
 COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/scripts ./scripts
 # Verified official Lighter signer (see the lighter-signer stage above);

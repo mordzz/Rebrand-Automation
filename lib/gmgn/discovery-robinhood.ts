@@ -5,13 +5,12 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  * GMGN Robinhood-Chain discovery adapter (PR05).
  *
  * ══════════════════════════════════════════════════════════════════════
- * VERIFICATION STATUS — read before trusting any field mapping below.
+ * VERIFICATION STATUS - read before trusting any field mapping below.
  * ══════════════════════════════════════════════════════════════════════
  * LIVE-VERIFIED 2026-09-29 against `chain=robinhood`, `new_creation`, via
  * GMGN's public read-only demo key (60 sampled items, 3 launchpads: flap,
- * flap_pve, longxyz — see GMGN_ROBINHOOD_FIELD_MAP.md for the full
- * comparison and scripts/inspect-gmgn-robinhood.ts for how to re-run
- * this). Fields below are now real-payload-confirmed unless noted
+ * flap_pve, longxyz - see the PR05 GMGN field-mapping notes (git history) for the full
+ * comparison). Fields below are now real-payload-confirmed unless noted
  * otherwise:
  *
  *   - `address`, `created_timestamp`, `launchpad_platform`/`launchpad`,
@@ -20,23 +19,23 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  *     absent items fall back to the twitter/telegram/website check,
  *     which still works), `total_supply`, `holder_count`,
  *     `creator_balance_rate`, `creator_created_count`, `is_wash_trading`,
- *     `image_dup` — all confirmed present with the expected shape.
- *   - `market_cap` (NOT `usd_market_cap` — that key never appeared in any
+ *     `image_dup` - all confirmed present with the expected shape.
+ *   - `market_cap` (NOT `usd_market_cap` - that key never appeared in any
  *     sampled Robinhood item; `usd_market_cap ?? market_cap` below
  *     already falls through to the right one). Denomination is
- *     UNCONFIRMED — GMGN's field name carries no explicit currency label
+ *     UNCONFIRMED - GMGN's field name carries no explicit currency label
  *     here (unlike the Solana adapter's `usd_market_cap`), though the
  *     observed scale (~$5,000 for freshly-launched tokens) is consistent
  *     with USD.
- *   - `liquidity` — present, but its VALUES ARE ON A COMPLETELY DIFFERENT
+ *   - `liquidity` - present, but its VALUES ARE ON A COMPLETELY DIFFERENT
  *     SCALE than `market_cap` (liquidity ~0.001-0.005, market_cap
  *     ~4,900-5,200 in the same items). On Solana, `lib/gmgn/safety.ts`
- *     assumes liquidity and usd_market_cap share a unit — that assumption
+ *     assumes liquidity and usd_market_cap share a unit - that assumption
  *     does NOT hold here. Liquidity looks like it may be native-ETH-
  *     denominated instead of USD. This is a PR06 blocker, not fixed here
- *     (PR05 doesn't touch safety.ts) — flagged prominently in
- *     GMGN_ROBINHOOD_FIELD_MAP.md.
- *   - `creator` — LIVE-VERIFIED present on 60/60 sampled items as a valid
+ *     (PR05 doesn't touch safety.ts) - flagged prominently in
+ *     the PR05 GMGN field-mapping notes (git history).
+ *   - `creator` - LIVE-VERIFIED present on 60/60 sampled items as a valid
  *     EVM address. Corrects the earlier (pre-verification) assumption,
  *     inherited from the Solana adapter's lack of this field, that it
  *     wouldn't exist here. Now mapped to `creatorAddress` below.
@@ -46,27 +45,27 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  *     which ARE real booleans). `bool()` below now handles both. Observed
  *     `is_honeypot` values: "unknown", "no" (no "yes" seen in this
  *     sample). `owner_renounced`/`open_source`/`burn_status` were "yes"
- *     on every sampled item (no "no" observed) — plausible EVM analogs to
+ *     on every sampled item (no "no" observed) - plausible EVM analogs to
  *     Solana's mint/freeze-authority checks, but mapping them into safety
  *     policy is explicitly PR06's job, not this adapter's; they are not
  *     added to RobinhoodDiscoveredToken in this PR.
  *   - No `renounced_mint`/`renounced_freeze_account`/SPL `standard`
- *     fields exist on this chain (as expected — those are Solana-SPL
+ *     fields exist on this chain (as expected - those are Solana-SPL
  *     concepts). No dedicated nested "security" object was found either;
  *     risk signals are flat scalar fields.
  *   - Launchpad allow-list: the ONLY `launchpad_platform` values observed
  *     across 60 sampled items were `flap`, `flap_pve`, `longxyz`.
- *     `trench` and `pons` — the earlier documentation-derived guess for
- *     the eventual production allow-list — were NOT observed at all in
+ *     `trench` and `pons` - the earlier documentation-derived guess for
+ *     the eventual production allow-list - were NOT observed at all in
  *     this sample. That guess should not be treated as a starting point;
  *     the allow-list decision remains unresolved and gated behind
  *     `GMGN_ROBINHOOD_LAUNCHPADS`/an explicit caller argument regardless
- *     (see resolveLaunchpadAllowlist below) — this finding doesn't change
+ *     (see resolveLaunchpadAllowlist below) - this finding doesn't change
  *     the fail-closed mechanism, only what evidence exists to inform the
  *     eventual choice.
  *
  * This was a single ~60-item sample from one point in time via a shared
- * public demo key, not a production-scale audit — treat it as strong
+ * public demo key, not a production-scale audit - treat it as strong
  * evidence, not exhaustive proof (e.g. no "yes" is_honeypot or "no"
  * owner_renounced was observed, but that doesn't mean those values never
  * occur).
@@ -75,14 +74,14 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
 /**
  * Resolves the production launchpad allow-list from an explicit caller
  * argument or the server-only `GMGN_ROBINHOOD_LAUNCHPADS` env var
- * (comma-separated). Deliberately has NO built-in default — choosing
+ * (comma-separated). Deliberately has NO built-in default - choosing
  * which Robinhood launchpads are safe enough to snipe from is a
  * product/risk decision this adapter is not authorized to make, and a
  * hardcoded default here would silently become the de facto answer the
  * moment this code shipped. Returns null (fail closed) when neither
  * source provides a non-empty list.
  *
- * Never read from a `NEXT_PUBLIC_*` var — this is server-only
+ * Never read from a `NEXT_PUBLIC_*` var - this is server-only
  * configuration, same posture as GMGN_API_KEY itself.
  */
 export function resolveLaunchpadAllowlist(
@@ -108,13 +107,13 @@ export type RobinhoodDiscoveredToken = {
   name: string | null;
   logo: string | null;
   launchpad: string | null;
-  /** Always "new_creation" in v1 — near_completion/completed are out of
+  /** Always "new_creation" in v1 - near_completion/completed are out of
    * scope per the plan (new product behavior, not this migration). */
   stage: "new_creation";
   /** Unix seconds. */
   createdAt: number;
 
-  /** Always null for now — see the module-level verification-status
+  /** Always null for now - see the module-level verification-status
    * comment. Not the same as "verified absent"; it is "not yet checked". */
   creatorAddress: string | null;
 
@@ -124,14 +123,14 @@ export type RobinhoodDiscoveredToken = {
   website: string | null;
 
   isHoneypot: boolean | null;
-  /** 0–100 percentage (e.g. 8.99, not 0.0899) — GMGN's raw `buy_tax`/
+  /** 0–100 percentage (e.g. 8.99, not 0.0899) - GMGN's raw `buy_tax`/
    * `sell_tax` are 0–1 ratios; see ratioToPct(). */
   buyTaxPct: number | null;
   sellTaxPct: number | null;
-  /** 0–1 ratio, NOT converted to percent — unlike buyTaxPct/sellTaxPct
+  /** 0–1 ratio, NOT converted to percent - unlike buyTaxPct/sellTaxPct
    * above. Kept as GMGN reports it; do not assume the same 0–100 scale
    * without checking each field's own contract. Range-validated via
-   * ratio01() — out-of-range (negative or >1) normalizes to null rather
+   * ratio01() - out-of-range (negative or >1) normalizes to null rather
    * than passing a malformed value through to a safety threshold. */
   rugRatio: number | null;
   top10HolderRate: number | null;
@@ -154,7 +153,7 @@ export type RobinhoodDiscoveredToken = {
   chain: "robinhood";
   network: RobinhoodNetwork;
 
-  /** Unnormalized source payload, for logging/debugging — never spread
+  /** Unnormalized source payload, for logging/debugging - never spread
    * into sniper/safety/risk code, per the plan's "do not leak
    * provider-specific shape" rule. */
   raw: Record<string, unknown>;
@@ -171,13 +170,13 @@ function num(v: unknown): number | null {
 }
 
 /** GMGN's `buy_tax`/`sell_tax` are 0–1 ratios (0.0899 = 8.99%), live-
- * verified against the real Robinhood payload — but this module's
+ * verified against the real Robinhood payload - but this module's
  * `buyTaxPct`/`sellTaxPct` fields are named (and documented) as 0–100
  * percentages, matching every other `*Pct` field here. Converting at the
  * normalization boundary keeps that contract honest instead of silently
  * handing callers a value 100x too small. */
 /** A tax ratio outside [0, 1] is malformed upstream data, not a real tax
- * rate — normalizing it anyway would let a safety-critical field become
+ * rate - normalizing it anyway would let a safety-critical field become
  * a negative or >100% percentage, which is worse than just refusing to
  * guess. Out-of-range collapses to null, same as missing/invalid. */
 function ratioToPct(v: unknown): number | null {
@@ -190,9 +189,9 @@ function ratioToPct(v: unknown): number | null {
  * fields that are consumed as-is (not converted to a percentage). A
  * malformed value like `rug_ratio: -0.2` must not silently pass a
  * `> 0.1` threshold just because `-0.2` is technically a number less
- * than the limit — it's invalid data, not a real low-risk reading, and
+ * than the limit - it's invalid data, not a real low-risk reading, and
  * normalizing it to null lets the Robinhood safety evaluator's existing
- * "unknown — fails closed" handling catch it instead. */
+ * "unknown - fails closed" handling catch it instead. */
 function ratio01(v: unknown): number | null {
   const ratio = num(v);
   if (ratio == null || ratio < 0 || ratio > 1) return null;
@@ -200,11 +199,11 @@ function ratio01(v: unknown): number | null {
 }
 
 /** Handles both real booleans and GMGN's own "yes"/"no"/"unknown" string
- * convention — confirmed live on the Robinhood payload (is_honeypot,
+ * convention - confirmed live on the Robinhood payload (is_honeypot,
  * owner_renounced, open_source, burn_status all use "yes"/"no"/"unknown"
  * strings, not JSON booleans, unlike the boolean has_at_least_one_social/
  * is_wash_trading fields). "unknown" (and anything else unrecognized)
- * falls through to null — never guessed as false. */
+ * falls through to null - never guessed as false. */
 function bool(v: unknown): boolean | null {
   if (typeof v === "boolean") return v;
   if (v === 1 || v === "1" || v === "true") return true;
@@ -232,13 +231,13 @@ function evmAddressOrNull(v: unknown): string | null {
 /**
  * Normalizes one raw GMGN trenches item into the chain-neutral shape
  * above. Returns null for anything missing a usable token address or
- * creation timestamp — same "skip rather than half-populate" contract
+ * creation timestamp - same "skip rather than half-populate" contract
  * lib/gmgn/discovery.ts already uses for Solana, extended here to also
  * reject an address that isn't EVM-shaped (a `0x...` value is a hard
  * requirement for this chain, unlike Solana's base58 addresses).
  *
  * A null return here means "structurally unusable" (malformed), not
- * "policy-excluded" — launchpad allow-list filtering happens separately,
+ * "policy-excluded" - launchpad allow-list filtering happens separately,
  * in parseNewCreationPayload, on tokens that DID normalize successfully.
  */
 export function normalizeRobinhoodToken(
@@ -267,7 +266,7 @@ export function normalizeRobinhoodToken(
     createdAt,
     // LIVE-VERIFIED 2026-09-29 (public GMGN demo key, chain=robinhood):
     // `creator` is present on 60/60 sampled new_creation items and is a
-    // valid EVM address — see GMGN_ROBINHOOD_FIELD_MAP.md. Corrects the
+    // valid EVM address - see the PR05 GMGN field-mapping notes (git history). Corrects the
     // earlier (Solana-derived) assumption that this field doesn't exist.
     creatorAddress: evmAddressOrNull(raw.creator),
 
@@ -288,7 +287,7 @@ export function normalizeRobinhoodToken(
     isWashTrading: bool(raw.is_wash_trading),
     imageDup: num(raw.image_dup),
 
-    // `market_cap`, not `usd_market_cap` — the latter never appears on
+    // `market_cap`, not `usd_market_cap` - the latter never appears on
     // Robinhood (live-verified). `usd_market_cap` kept as a fallback only
     // in case a future/other response shape uses it; primary key
     // reordered to match what's actually observed.
@@ -314,20 +313,20 @@ export type ParseOutcome =
 
 /**
  * Pure parser: turns a raw `/v1/trenches` response body into normalized,
- * allow-list-filtered, deduplicated tokens — or an explicit
+ * allow-list-filtered, deduplicated tokens - or an explicit
  * `malformed_payload` result. Factored out from discoverRobinhoodTokens
  * specifically so it's testable without a network mock (see
- * scripts/test-gmgn-robinhood-adapter.ts).
+ * tests/gmgn.ts).
  *
  * Required semantics (do not weaken without re-reading the PR05 review):
  *   - `new_creation` missing/not-an-array/response-not-an-object → malformed_payload
  *   - `new_creation = []` → success, zero tokens (a quiet market, not a break)
  *   - every item present but every one fails normalizeRobinhoodToken()
  *     (missing/malformed required fields) → malformed_payload, NOT an
- *     empty success — a provider schema change must not look identical
+ *     empty success - a provider schema change must not look identical
  *     to "no new tokens"
  *   - items that normalize successfully but whose launchpad isn't in
- *     `allowlist` are filtered out — this is policy, not malformation,
+ *     `allowlist` are filtered out - this is policy, not malformation,
  *     and does NOT count toward malformedCount or trigger malformed_payload
  *   - duplicate token addresses collapse to one entry
  */
@@ -407,7 +406,7 @@ export type RobinhoodDiscoveryResult =
   | { ok: false; reason: "malformed_payload"; detail: string };
 
 /**
- * Fetches fresh Robinhood-chain launches (new_creation only — v1 scope,
+ * Fetches fresh Robinhood-chain launches (new_creation only - v1 scope,
  * see the plan) through GMGN's `/v1/trenches`.
  *
  * Fails closed on launchpad configuration: if `launchpadAllowlist` isn't
@@ -417,7 +416,7 @@ export type RobinhoodDiscoveryResult =
  *
  * Returns a discriminated result rather than an empty array on failure:
  * a provider outage, malformed response, or missing API key must not
- * read the same as "no new tokens this cycle" to a caller — see
+ * read the same as "no new tokens this cycle" to a caller - see
  * lib/gmgn/client.ts's `gmgnRequest` and parseNewCreationPayload above.
  */
 export async function discoverRobinhoodTokens(
@@ -433,7 +432,7 @@ export async function discoverRobinhoodTokens(
       filters: ["offchain", "onchain"],
       launchpad_platform_v2: true,
       limit,
-      // Upstream filter — kept even though we also enforce the allow-list
+      // Upstream filter - kept even though we also enforce the allow-list
       // locally below. Defense in depth: an unexpected upstream response
       // (a GMGN bug, a future API change) must not bypass the boundary
       // just because the server-side filter usually does the work.
@@ -465,9 +464,9 @@ export async function discoverRobinhoodTokens(
   if (!outcome.ok) return outcome;
 
   if (outcome.malformedCount > 0) {
-    // No secrets here — just counts and the (non-secret) endpoint path.
+    // No secrets here - just counts and the (non-secret) endpoint path.
     // Denominator is the actual raw item count, not malformedCount +
-    // tokens.length — that sum silently excludes policy-filtered
+    // tokens.length - that sum silently excludes policy-filtered
     // (allow-list) and deduplicated rows, understating how many items
     // GMGN actually sent.
     console.warn(

@@ -2,7 +2,7 @@ import { gmgnGet, isGmgnConfigured } from "./client";
 
 /**
  * A wallet's real, current on-chain balance of one token, via GMGN's
- * `/v1/user/wallet_token_balance` — verified live against a known KOL
+ * `/v1/user/wallet_token_balance` - verified live against a known KOL
  * wallet + mint pair. Separate from anything in lib/gmgn/kol-positions.ts:
  * that module only knows what the trade window it saw implies about a
  * position; this is the actual balance right now, which also catches a
@@ -33,7 +33,7 @@ function cacheKey(wallet: string, mint: string): string {
 }
 
 /* A holding doesn't move on every 20-30s poll the way a trade feed does
-   — cached generously, same posture as lib/gmgn/wallet-stats.ts, and for
+   - cached generously, same posture as lib/gmgn/wallet-stats.ts, and for
    the same reason: this is a per-row fan-out call (one per position on
    the page), the exact shape of call volume that tripped GMGN's rate
    limiter before every GMGN call here had a cache. */

@@ -3,7 +3,7 @@
 import { ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { explorerName, tokenLink, txLink } from "@/lib/chain/display";
+import { EXPLORER_NAME, tokenLink, txLink } from "@/lib/chain/display";
 import { cn } from "@/lib/utils";
 
 type Level = "info" | "buy" | "sell" | "guard" | "warn" | "error";
@@ -13,14 +13,10 @@ type LogRow = {
   level: string;
   source: string;
   message: string;
-  /** Neutral tx hash (PR04/PR14); legacy rows only have txSignature. */
   txHash?: string | null;
-  txSignature?: string | null;
-  /** Token contract (or historical Solana mint). Paper fills never
-   * broadcast a transaction, so the token is the only real thing to open. */
+  /** Token contract. Paper fills never broadcast a transaction, so the
+   * token is the only real thing to open. */
   tokenAddress?: string | null;
-  tokenMint?: string | null;
-  /** "robinhood" | "solana" | null — picks explorer (PR14). */
   chain?: string | null;
   createdAt: string;
 };
@@ -68,7 +64,7 @@ export function ExecutionTerminal({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
 
-  // Real events from the sniper daemon (and future sources) — fast polling
+  // Real events from the sniper daemon (and future sources) - fast polling
   // rather than a fake generator. See lib/logs.ts for what actually writes here.
   useEffect(() => {
     let disposed = false;
@@ -114,7 +110,7 @@ export function ExecutionTerminal({
             <span className="size-2.5 rounded-full bg-[#7faE6f]" />
           </div>
           <p className="font-mono text-xs text-[#a8a094]">
-            noah@enginex — execution.log
+            noah@enginex - execution.log
           </p>
         </div>
         <span className="flex items-center gap-1.5 font-mono text-xs text-[#a8a094]">
@@ -140,7 +136,7 @@ export function ExecutionTerminal({
           </p>
         ) : rows.length === 0 ? (
           <p className="text-[#a8a094]">
-            No log entries yet — start the Raven daemon (`npm run sniper`) to
+            No log entries yet - start the Raven daemon (`npm run sniper`) to
             see live activity.
           </p>
         ) : (
@@ -161,16 +157,16 @@ export function ExecutionTerminal({
                 <span className="min-w-0 flex-1 break-words text-[#d8d2c4]">
                   {row.message}
                   {(() => {
-                    const raw = row.txHash ?? row.txSignature ?? null;
+                    const raw = row.txHash ?? null;
                     const hash = raw && raw !== "dry-run" && raw !== "paper" ? raw : null;
-                    const token = row.tokenAddress ?? row.tokenMint ?? null;
+                    const token = row.tokenAddress ?? null;
                     if (hash) {
                       return (
                         <a
-                          href={txLink(row, hash)}
+                          href={txLink(hash)}
                           target="_blank"
                           rel="noreferrer"
-                          title={`View transaction on ${explorerName(row)}`}
+                          title={`View transaction on ${EXPLORER_NAME}`}
                           className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
                         >
                           {hash.slice(0, 8)}…{hash.slice(-8)}
@@ -183,10 +179,10 @@ export function ExecutionTerminal({
                        token rather than as a transaction. */
                     return token ? (
                       <a
-                        href={tokenLink(row, token)}
+                        href={tokenLink(token)}
                         target="_blank"
                         rel="noreferrer"
-                        title={`View token on ${explorerName(row)}`}
+                        title={`View token on ${EXPLORER_NAME}`}
                         className="ml-2 inline-flex items-center gap-1 text-[#b07aff] hover:underline"
                       >
                         {token.slice(0, 6)}…{token.slice(-4)}

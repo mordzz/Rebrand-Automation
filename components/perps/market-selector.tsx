@@ -95,7 +95,7 @@ export function MarketSelector({
                 </span>
               </div>
 
-              {/* Active accent — a hairline along the bottom edge rather
+              {/* Active accent - a hairline along the bottom edge rather
                   than a floating dot, so it reads as "this card is
                   selected" instead of "this card has a notification". */}
               <span

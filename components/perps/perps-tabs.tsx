@@ -16,7 +16,7 @@ const TABS = [
   { value: "fees", label: "Route Fees" },
 ] as const;
 
-/* `flex-none` because TabsTrigger's base class is `flex-1` — without it
+/* `flex-none` because TabsTrigger's base class is `flex-1` - without it
    the three labels stretch to fill the row and end up marooned at
    opposite edges of the viewport, reading as three separate things
    rather than one control. Active state is `data-active` (base-ui), not
@@ -27,7 +27,7 @@ const TRIGGER_CLASS =
 
 export function PerpsTabs() {
   // Controlled so the empty-state CTA on the tokens tab can send someone
-  // straight to the launch form — an uncontrolled Tabs has no way to do
+  // straight to the launch form - an uncontrolled Tabs has no way to do
   // that from a child.
   const [tab, setTab] = useState<string>("tokens");
 
@@ -37,7 +37,7 @@ export function PerpsTabs() {
       onValueChange={(v) => setTab(String(v))}
       className="w-full gap-0"
     >
-      {/* Live oracle prices, full-bleed above the tab bar — real Pyth
+      {/* Live oracle prices, full-bleed above the tab bar - real Pyth
           data, visible whichever tab is open. */}
       <MarketTicker />
 

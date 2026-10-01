@@ -12,7 +12,7 @@ import { DEFAULT_FEE_SPLIT, type FeeSplitConfig } from "@/lib/perps/perpspad-typ
  * create-form preview bar, the create-form's copy, and the how-it-works
  * steps), and every one of them drifting independently is precisely the
  * failure the Perpspad plan called out. `DEFAULT_FEE_SPLIT` is the
- * fallback while in flight or if the request fails — never a separately
+ * fallback while in flight or if the request fails - never a separately
  * typed-out literal.
  */
 export function useFeeSplit(): FeeSplitConfig {

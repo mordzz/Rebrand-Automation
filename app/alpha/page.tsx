@@ -45,8 +45,8 @@ export default function AlphaPage() {
           {/* Table full width and stacked, not side-by-side: it's a real
               table now (six columns), and squeezing it into half the page
               forced a horizontal scrollbar at every desktop width. Robinhood
-              Chain is left out entirely until a paid RPC is wired up —
-              see components/alpha/robinhood-chain-panel.tsx — a permanently
+              Chain is left out entirely until a paid RPC is wired up -
+              see components/alpha/robinhood-chain-panel.tsx - a permanently
               "not connected" card doesn't belong on a live page. */}
           <div className="flex flex-col gap-5">
             <TopTokensMarquee />

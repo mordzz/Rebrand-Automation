@@ -40,7 +40,7 @@ export function FeaturedVideoSection() {
             </p>
             <p className="text-sm leading-relaxed text-white md:text-base">
               Every course is built around a real project, reviewed by a real
-              engineer. No filler lectures, no busywork — just the skills that
+              engineer. No filler lectures, no busywork - just the skills that
               show up on day one of the job.
             </p>
           </div>

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export type TocEntry = { id: string; text: string };
 
-/** Top-level sections + appendices only (27 entries) — the full TOC
+/** Top-level sections + appendices only (27 entries) - the full TOC
  * including every subsection runs past 70 entries, taller than the
  * viewport on any normal screen, which forced an internal scrollbar and
  * made the sidebar read as cluttered rather than a clean fixed rail.

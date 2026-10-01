@@ -54,7 +54,7 @@ const STEPS = [
     step: "03",
     title: "Autonomous Keeper",
     // Percentages come from the live config, not a fourth hardcoded copy
-    // of "50/25/25" — see components/perps/use-fee-split.ts.
+    // of "50/25/25" - see components/perps/use-fee-split.ts.
     description: (s: FeeSplitConfig) =>
       `Every ~60 seconds the keeper claims fees and splits them: ${s.collateralTopUp}% tops up the perp collateral, ${s.tokenBuybackBurn}% buys back and burns the token, ${s.governanceBuybackBurn}% strengthens governance.`,
     icon: (

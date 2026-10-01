@@ -1,5 +1,5 @@
 /**
- * Per-bot Lighter credential service (DB-backed) — PR12.
+ * Per-bot Lighter credential service (DB-backed) - PR12.
  *
  * Main-thread code here only ever handles the ENCRYPTED API key blob and
  * public metadata. Routine L2 signing (orders, cancels, leverage, auth

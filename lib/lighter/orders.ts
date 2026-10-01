@@ -1,5 +1,5 @@
 /**
- * Lighter semantic order execution — PR12.
+ * Lighter semantic order execution - PR12.
  *
  *   Noah strategy/risk → PerpOrderIntent (this module validates + scales)
  *   → LighterSigner (official WASM) → POST /api/v1/sendTx → Lighter

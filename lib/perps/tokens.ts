@@ -12,9 +12,9 @@ function num(value: string | number | null | undefined): number | null {
 }
 
 /** DB row → the shape components/perps/* already render. Only maps
- * fields this table actually stores — `unrealizedPnl`/`effectiveLeverage`
+ * fields this table actually stores - `unrealizedPnl`/`effectiveLeverage`
  * are left undefined rather than derived from partial inputs, since a
- * wrong-but-plausible-looking P&L number is worse than a "—" in the UI.
+ * wrong-but-plausible-looking P&L number is worse than a "-" in the UI.
  * Phase 2+'s keeper is the right place to decide whether those become
  * their own stored columns once there's real position data to compute
  * them from. */
@@ -44,7 +44,7 @@ function toApiToken(row: PerpspadTokenRow): PerpspadToken {
   };
 }
 
-/** Every launched token, newest first — powers the "Launched Tokens" tab.
+/** Every launched token, newest first - powers the "Launched Tokens" tab.
  * Empty array (not an error) when the DB isn't configured, same
  * graceful-degrade shape as app/api/positions. */
 export async function getPerpspadTokens(limit = 50): Promise<PerpspadToken[]> {

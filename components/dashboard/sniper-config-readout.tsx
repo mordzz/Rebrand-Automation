@@ -3,17 +3,13 @@
 import { Loader2, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 
-/** Mirrors lib/sniper/config.ts#SniperConfig — kept as a plain type here
+/** Mirrors lib/sniper/config.ts#SniperConfig - kept as a plain type here
  * (not imported) since this file is a client component and the source
  * type lives in server-only code that also touches the DB driver. */
 type TakeProfitTier = { atPct: number; sellPortionPct: number };
 
 type SniperConfigValue = {
-  requireMintAuthorityRenounced: boolean;
-  requireFreezeAuthorityRenounced: boolean;
   requireSocialLink: boolean;
-  maxCreatorBuyPct: number;
-  /* Robinhood/EVM fields the active runtime reads (PR06.5/PR07). */
   requireOwnerRenounced: boolean;
   requireNoBlacklistCapability: boolean;
   maxCreatorHoldPct: number | null;
@@ -23,9 +19,7 @@ type SniperConfigValue = {
   minTokenAgeSec: number;
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
-  maxSolPerSnipe: number;
   maxConcurrentPositions: number;
-  maxTotalDeployedSol: number;
   exitMode: "fixed" | "tiered";
   takeProfitPct: number;
   stopLossPct: number;
@@ -38,7 +32,6 @@ type SniperConfigValue = {
   crashDropPct: number;
   exitCheckIntervalMs: number;
   maxConsecutiveLosses: number;
-  maxDailyDrawdownSol: number;
   cooldownAfterLossSec: number;
   metadataFetchTimeoutMs: number;
 };
@@ -149,7 +142,7 @@ function buildSections(c: SniperConfigValue): { title: string; rows: SpecRow[] }
 
 /** Read-only view of a bot's live effective config. Defaults to the house
  * desk (`/api/sniper/config`); /dashboard passes `endpoint` to point this
- * at Noah's own `/api/my-bot/config` instead — same component, same
+ * at Noah's own `/api/my-bot/config` instead - same component, same
  * read-only posture, different bot. The interactive editor
  * (sniper-config-panel.tsx) is reserved for the deploy-your-own-bot flow,
  * never exposed here. */

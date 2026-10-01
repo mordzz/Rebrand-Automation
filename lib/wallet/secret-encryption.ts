@@ -1,13 +1,13 @@
 // Server-only module. Holds the chain-neutral encryption-at-rest
-// implementation for agent trading-wallet secrets — no Solana or EVM
-// assumption anywhere in this file — and must never be imported from a
+// implementation for agent trading-wallet secrets - no Solana or EVM
+// assumption anywhere in this file - and must never be imported from a
 // client component.
 //
 // Extracted from lib/solana/agent-wallet.ts (PR09 hardening) so both the
 // legacy Solana agent-wallet path and the Robinhood/EVM agent-wallet path
 // (lib/chain/robinhood-agent-wallet.ts) share exactly one AES-256-GCM
 // implementation, never two independently-maintained copies. The
-// encryption format is UNCHANGED by this move — an existing encrypted
+// encryption format is UNCHANGED by this move - an existing encrypted
 // secret produced before this extraction remains decryptable by this
 // module exactly as it was by lib/solana/agent-wallet.ts.
 import * as crypto from "node:crypto";
@@ -19,7 +19,7 @@ import * as crypto from "node:crypto";
  *
  * AES-256-GCM: authenticated, so a tampered ciphertext fails to decrypt
  * rather than silently producing a wrong key. The encryption key lives in
- * the environment, never in the database — otherwise a database dump
+ * the environment, never in the database - otherwise a database dump
  * alone would be enough to drain every agent wallet, which is exactly the
  * failure this is here to prevent.
  */
@@ -53,7 +53,7 @@ function requireKey(): Buffer {
   return key;
 }
 
-/** Encrypts opaque secret bytes — a Solana 64-byte keypair seed, an EVM
+/** Encrypts opaque secret bytes - a Solana 64-byte keypair seed, an EVM
  * 32-byte private key, or anything else a future chain's agent wallet
  * needs to store. This module has no opinion on what the bytes mean. */
 export function encryptSecret(secret: Uint8Array): string {

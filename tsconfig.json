@@ -31,7 +31,6 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules",
-    "drift_perp.ts"
+    "node_modules"
   ]
 }

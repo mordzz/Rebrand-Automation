@@ -81,15 +81,15 @@ const STATUS_ORDER = [
 ] as const;
 
 function usd(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   if (n >= 1000) return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
-/** Every launched Perpspad token, from /api/perps/tokens — real (possibly
+/** Every launched Perpspad token, from /api/perps/tokens - real (possibly
  * empty) data, not the MOCK_TOKENS this component used to render. Every
  * row currently comes back `status: "pending"` until the Phase 1
- * on-chain program exists to actually register/activate a token — see
+ * on-chain program exists to actually register/activate a token - see
  * the Perpspad plan. */
 export function LivePositions({
   onLaunchClick,
@@ -118,20 +118,20 @@ export function LivePositions({
           </em>
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Every token below is backed by a real perpetual futures position
-          on Drift Protocol.
+          Historical launches from the retired Solana/Drift Perpspad. New
+          launches are paused.
         </p>
       </div>
 
-      {/* Protocol stat strip — one row of real aggregates instead of a
+      {/* Protocol stat strip - one row of real aggregates instead of a
           lone status chip stranded at the far edge of the header. */}
       <div className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/8 bg-white/6 sm:grid-cols-4">
-        <Stat label="Tokens launched" value={loading ? "—" : String(tokens.length)} />
-        <Stat label="Active positions" value={loading ? "—" : String(activeCount)} />
-        <Stat label="Fees routed" value={loading ? "—" : usd(totalFees)} />
+        <Stat label="Tokens launched" value={loading ? "-" : String(tokens.length)} />
+        <Stat label="Active positions" value={loading ? "-" : String(activeCount)} />
+        <Stat label="Fees routed" value={loading ? "-" : usd(totalFees)} />
         <Stat
           label="Tokens burned"
-          value={loading ? "—" : totalBurned.toLocaleString("en-US")}
+          value={loading ? "-" : totalBurned.toLocaleString("en-US")}
         />
       </div>
 
@@ -255,7 +255,7 @@ export function LivePositions({
                     value={
                       token.unrealizedPnl != null
                         ? `${token.unrealizedPnl >= 0 ? "+" : ""}${usd(token.unrealizedPnl)}`
-                        : "—"
+                        : "-"
                     }
                     valueClass={cn(
                       pnlPositive && "text-[#5ed29c]",

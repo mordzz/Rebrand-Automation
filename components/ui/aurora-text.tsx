@@ -9,7 +9,7 @@ interface AuroraTextProps {
   speed?: number;
 }
 
-/** Magic UI AuroraText — text filled with a slowly drifting gradient.
+/** Magic UI AuroraText - text filled with a slowly drifting gradient.
  * Defaults to a single-hue electric-blue shimmer. */
 export const AuroraText = memo(
   ({

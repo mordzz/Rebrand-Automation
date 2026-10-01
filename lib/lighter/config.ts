@@ -1,12 +1,12 @@
 /**
- * Lighter (Robinhood Chain perps) configuration — PR11.
+ * Lighter (Robinhood Chain perps) configuration - PR11.
  *
  * Source: Lighter's first-party Robinhood-instance docs,
  * https://apidocs.rh.lighter.xyz/docs/get-started (read 2026-10-01), and the
  * live `/info` endpoints (which report the rollup contract below).
  *
  * The Lighter network always follows the active Robinhood network
- * (lib/chain/config.ts) — testnet Noah never talks to mainnet Lighter.
+ * (lib/chain/config.ts) - testnet Noah never talks to mainnet Lighter.
  *
  * NOTE: Lighter's own `chainId` (signing domain for L2 transactions:
  * 466324 mainnet / 300 testnet) is NOT the Robinhood EVM chain id
@@ -20,7 +20,7 @@ export type LighterConfig = {
   apiBaseUrl: string;
   /** Origin for non-versioned endpoints such as `/info`. */
   apiOrigin: string;
-  /** Lighter L2 signing chain id (per docs) — not an EVM chain id. */
+  /** Lighter L2 signing chain id (per docs) - not an EVM chain id. */
   lighterChainId: number;
   /** ZkLighter proxy contract on Robinhood Chain (receives margin). */
   rollupContract: `0x${string}`;

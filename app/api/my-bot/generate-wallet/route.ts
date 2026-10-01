@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * PR09C: requires a verified Privy access token whose user has `wallet`
  * linked as an EVM account (see lib/auth/privy-server.ts). Checked before
  * any DB read or key generation. Solana agent-wallet generation is retired
- * (PR09A) — a non-EVM wallet is rejected by the auth check itself.
+ * (PR09A) - a non-EVM wallet is rejected by the auth check itself.
  */
 export async function POST(request: Request) {
   const db = getDb();

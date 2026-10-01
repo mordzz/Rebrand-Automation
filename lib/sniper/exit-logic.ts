@@ -2,28 +2,22 @@ import type { LogLevel } from "@/lib/logs";
 import type { SniperConfig } from "@/lib/sniper/config";
 
 /**
- * Pure trading math extracted from scripts/sniper-daemon.ts#checkExits so
- * both the house daemon and any other execution loop (e.g. a per-user
- * paper daemon) run the exact same tested exit logic instead of forking
- * it. No DB, no logging, no side effects — callers own persistence and
+ * Pure trading math extracted from the original checkExits so
+ * every execution loop (e.g. the per-user paper daemon) run the exact same tested exit logic instead of forking
+ * it. No DB, no logging, no side effects - callers own persistence and
  * signing/selling.
  */
 
-// Below this remaining notional, treat a tiered position as fully exited
-// rather than leaving a dust-sized "open" row behind. Shared with the
+// Below this remaining native notional, treat a tiered position as fully
+// exited rather than leaving a dust-sized "open" row behind. Shared with the
 // tiered-ladder caller loop, which stops issuing further sells once a
-// position hits this. Named _NATIVE (not _SOL) because this same numeric
-// threshold and math is reused for a Robinhood position's ETH notional
-// (PR07 hardening) — the value and Solana behavior are unchanged, this is
-// a naming fix only. DUST_THRESHOLD_SOL is kept as a backwards-compatible
-// alias for existing Solana imports (scripts/sniper-daemon.ts).
+// position hits this.
 export const DUST_THRESHOLD_NATIVE = 1e-6;
-export const DUST_THRESHOLD_SOL = DUST_THRESHOLD_NATIVE;
 
 export type FullExitInput = {
   entryPrice: number;
-  sizeSol: number;
-  /** Previously recorded price, if any — drives the crash-exit check. */
+  sizeNative: number;
+  /** Previously recorded price, if any - drives the crash-exit check. */
   lastPrice: number | null;
   /** Previously recorded high-water mark, if any. */
   peakPrice: number | null;
@@ -49,7 +43,7 @@ export type FullExitDecision =
       peakPrice: number | null;
       exit: true;
       reason: string;
-      pnlSol: number;
+      pnlNative: number;
       exitLevel: LogLevel;
       /** The price this exit is modelled as filling at, which for a
        *  threshold exit is the trigger rather than the observed price. */
@@ -58,7 +52,7 @@ export type FullExitDecision =
 
 /**
  * Evaluates crash-exit, time-exit, trailing-stop, breakeven-stop/stop-loss,
- * and fixed take-profit — whichever full-position exit condition fires
+ * and fixed take-profit - whichever full-position exit condition fires
  * first, in that priority order. Always returns the updated `peakPrice`
  * watermark (trailing-stop/breakeven-lock share one "highest price ever
  * seen" value, tracked from open, not just after arming) so the caller can
@@ -69,7 +63,7 @@ export function evaluateFullExit(
   config: FullExitConfig,
   currentPrice: number
 ): FullExitDecision {
-  const { entryPrice, sizeSol, lastPrice: previousPrice, openedAt } = input;
+  const { entryPrice, sizeNative, lastPrice: previousPrice, openedAt } = input;
   const changePct = ((currentPrice - entryPrice) / entryPrice) * 100;
 
   const trackPeak = config.trailingStopEnabled || config.breakevenAfterPct != null;
@@ -80,7 +74,7 @@ export function evaluateFullExit(
   const peakChangePct =
     trackPeak && peakPrice != null ? ((peakPrice - entryPrice) / entryPrice) * 100 : changePct;
 
-  // "Fast out" — a sudden drop since the last check (a live rug/dump in
+  // "Fast out" - a sudden drop since the last check (a live rug/dump in
   // progress) triggers an immediate exit regardless of every other rule
   // below, so a position sitting at +80% that suddenly craters doesn't
   // wait around for a slower stop to eventually catch up.
@@ -102,7 +96,7 @@ export function evaluateFullExit(
     ((peakPrice - currentPrice) / peakPrice) * 100 >= config.trailingStopPct;
 
   // Once price has ever reached breakevenAfterPct, the stop floor moves up
-  // to entry price (0%) instead of the configured stop-loss distance — this
+  // to entry price (0%) instead of the configured stop-loss distance - this
   // guarantees no loss from that point on, at the cost of a smaller
   // worst-case exit than letting the full stop-loss run.
   const breakevenActive =
@@ -110,7 +104,7 @@ export function evaluateFullExit(
   const effectiveStopLossPct = breakevenActive ? 0 : config.stopLossPct;
   const shouldStopLoss = changePct <= -effectiveStopLossPct;
 
-  // The flat take-profit target only drives a full exit in "fixed" mode —
+  // The flat take-profit target only drives a full exit in "fixed" mode -
   // in "tiered" mode, profit-taking is handled by evaluateTieredExits,
   // while stop-loss/trailing/crash/time-exit still apply as a safety net.
   const shouldFixedTakeProfit = config.exitMode === "fixed" && changePct >= config.takeProfitPct;
@@ -169,18 +163,18 @@ export function evaluateFullExit(
       : currentPrice;
 
   const fillChangePct = ((fillPrice - entryPrice) / entryPrice) * 100;
-  const pnlSol = sizeSol * (fillChangePct / 100);
+  const pnlNative = sizeNative * (fillChangePct / 100);
   // guard = took profit on purpose; warn = a fast-out crash exit (urgent);
   // sell = realized at or below cost.
-  const exitLevel: LogLevel = shouldCrashExit ? "warn" : pnlSol >= 0 ? "guard" : "sell";
+  const exitLevel: LogLevel = shouldCrashExit ? "warn" : pnlNative >= 0 ? "guard" : "sell";
 
-  return { peakPrice, exit: true, reason, pnlSol, exitLevel, fillPrice };
+  return { peakPrice, exit: true, reason, pnlNative, exitLevel, fillPrice };
 }
 
 export type TieredExitInput = {
   entryPrice: number;
-  sizeSol: number;
-  /** Tier indices already triggered on this position — never fires twice. */
+  sizeNative: number;
+  /** Tier indices already triggered on this position - never fires twice. */
   triggeredTiers: number[];
 };
 
@@ -189,11 +183,11 @@ type TieredExitConfig = Pick<SniperConfig, "exitMode" | "takeProfitTiers">;
 export type TieredExitResult = {
   tierIndex: number;
   sellPortionPct: number;
-  /** Absolute SOL sold by this tranche — remainingSizeSol shrinks
+  /** Absolute native amount sold by this tranche - remainingSizeNative shrinks
    * tier-over-tier within the same evaluation, so this is NOT
-   * `sizeSol * sellPortionPct / 100`. */
-  soldSol: number;
-  pnlSol: number;
+   * `sizeNative * sellPortionPct / 100`. */
+  soldNative: number;
+  pnlNative: number;
   /** Modelled fill price for this rung: its own trigger, not the observed
    *  price, so a multi-tier gap cannot book every rung at the top. */
   fillPrice: number;
@@ -204,14 +198,14 @@ export type TieredExitResult = {
  * been crossed sells sellPortionPct of the *currently remaining* size, so a
  * position can ladder through several tiers in one tick if price gapped
  * past more than one at once. Only meaningful when a full exit didn't
- * already fire this tick — callers should skip calling this otherwise (the
+ * already fire this tick - callers should skip calling this otherwise (the
  * function itself is defensive and returns [] when exitMode isn't
  * "tiered", but doesn't know about a same-tick full-exit decision).
  *
  * Results are computed sequentially assuming each prior tier in the
  * returned array executes successfully. A caller that stops partway
  * through (e.g. a real sell fails) should simply stop applying results
- * from that point on — everything before it remains valid, since those are
+ * from that point on - everything before it remains valid, since those are
  * exactly the tiers that did succeed.
  */
 export function evaluateTieredExits(
@@ -226,29 +220,29 @@ export function evaluateTieredExits(
     .map((tier, index) => ({ ...tier, index }))
     .sort((a, b) => a.atPct - b.atPct);
 
-  let remainingSizeSol = input.sizeSol;
+  let remainingSizeNative = input.sizeNative;
   const results: TieredExitResult[] = [];
 
   for (const tier of sortedTiers) {
     if (input.triggeredTiers.includes(tier.index)) continue;
     if (changePct < tier.atPct) continue;
-    if (remainingSizeSol <= DUST_THRESHOLD_NATIVE) break;
+    if (remainingSizeNative <= DUST_THRESHOLD_NATIVE) break;
 
-    const soldSol = remainingSizeSol * (tier.sellPortionPct / 100);
+    const soldNative = remainingSizeNative * (tier.sellPortionPct / 100);
     /* At the tier's own trigger, not wherever price reached. A ladder is a
        sequence of thresholds, so the same reasoning as the full-exit cap
        applies to each rung: a gap that clears three tiers at once must book
        three fills at three trigger prices, not three fills at the top. */
     const fillChangePct = Math.min(changePct, tier.atPct);
-    const pnlSol = soldSol * (fillChangePct / 100);
+    const pnlNative = soldNative * (fillChangePct / 100);
     results.push({
       tierIndex: tier.index,
       sellPortionPct: tier.sellPortionPct,
-      soldSol,
-      pnlSol,
+      soldNative,
+      pnlNative,
       fillPrice: input.entryPrice * (1 + fillChangePct / 100),
     });
-    remainingSizeSol -= soldSol;
+    remainingSizeNative -= soldNative;
   }
 
   return results;

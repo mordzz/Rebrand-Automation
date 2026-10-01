@@ -13,11 +13,11 @@ import { useEffect, useState } from "react";
 import { TokenIcon } from "@/components/token-icon";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { explorerUrl } from "@/lib/chain/config";
 
-/** Mirrors lib/sniper/safety-checks.ts#SafetyCheckResult — kept as a plain
- * type here (not imported) since this file is a client component and the
- * source type lives in server-only code (same convention as
- * components/dashboard/sniper-config-readout.tsx). */
+/** Mirrors lib/gmgn/safety-robinhood.ts's result - kept as a plain type here
+ * (not imported) since this file is a client component and the source type
+ * lives in server-only code. */
 type SafetyMetadata = {
   name?: string;
   symbol?: string;
@@ -30,22 +30,22 @@ type SafetyMetadata = {
 type SafetyResult = {
   passed: boolean;
   reasons: string[];
-  mintAuthorityRenounced: boolean | null;
-  freezeAuthorityRenounced: boolean | null;
-  creatorBuyPct: number | null;
+  ownerRenounced?: boolean | null;
+  isBlacklistCapable?: boolean | null;
+  creatorHoldPct?: number | null;
   hasSocialLink: boolean | null;
   alphaWalletDetected: boolean | null;
   matchedAlphaWallets: string[];
   metadata: SafetyMetadata | null;
 };
 
-/** Live figures from DexScreener, added per row by app/api/alpha — see
+/** Live figures from DexScreener, added per row by app/api/alpha - see
  * lib/sniper/token-market.ts. Null for a mint with no pair yet. */
 type TokenMarket = {
   marketCapUsd: number | null;
   priceUsd: number | null;
   changePct: number | null;
-  /** Which window changePct covers — a minutes-old mint usually only has
+  /** Which window changePct covers - a minutes-old mint usually only has
    * a 24h figure, so the row labels the window instead of implying "5m". */
   changeWindow: "5m" | "1h" | "6h" | "24h" | null;
   volumeH24Usd: number | null;
@@ -53,14 +53,11 @@ type TokenMarket = {
 
 type AlphaCandidateRow = {
   id: string;
+  chain?: "robinhood";
   token: string;
   symbol: string | null;
   name: string | null;
-  ageSec: string;
-  creatorBuyPct: string | null;
-  mintAuthorityRenounced: boolean | null;
-  freezeAuthorityRenounced: boolean | null;
-  hasSocialLink: boolean | null;
+  ageSec: string | number;
   safety: SafetyResult;
   detectedAt: string;
   icon: string | null;
@@ -126,6 +123,8 @@ type AlphaResponse = {
   total: number;
   totalPages: number;
   newestDetectedAt: string | null;
+  source?: "robinhood";
+  error?: string | null;
 };
 
 const CHECK_GLYPH_OK = (
@@ -137,55 +136,42 @@ const CHECK_GLYPH_SKIPPED = (
   </span>
 );
 
-/** Why a row earned its shield: the same criteria the page's own tagline
- * promises ("mint/freeze authority, creator buy %, socials"), made
- * concrete per-token instead of just a green checkmark. `reasons` on a
- * stored row is always empty (only passing candidates are inserted — see
- * app/api/alpha/route.ts), so this reads the underlying booleans instead. */
+/** Why a row earned its shield: the facts the house's Robinhood safety
+ * policy actually checked (owner, blacklist, creator holding, socials). */
 function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
-  const creatorPct =
-    row.creatorBuyPct != null ? Number(row.creatorBuyPct) : null;
-  const alphaWalletDetected = row.safety?.alphaWalletDetected === true;
-
+  const s = row.safety;
   return (
     <span className="group/shield relative inline-flex shrink-0">
-      <button
-        type="button"
-        className="appearance-none border-0 bg-transparent p-0"
-        aria-label="Why this token passed"
-      >
-        <ShieldCheck
-          className="text-sol-green-ink size-3.5 shrink-0"
-          aria-hidden="true"
-        />
+      <button type="button" className="appearance-none border-0 bg-transparent p-0" aria-label="Why this token passed">
+        <ShieldCheck className="text-sol-green-ink size-3.5 shrink-0" aria-hidden="true" />
       </button>
       <div
         role="tooltip"
         className="invisible absolute top-full left-0 z-20 mt-2 w-60 rounded-lg border border-white/10 bg-popover p-3 opacity-0 shadow-lg transition-opacity duration-150 group-hover/shield:visible group-hover/shield:opacity-100 group-focus-within/shield:visible group-focus-within/shield:opacity-100"
       >
         <p className="mb-1.5 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
-          Passed the checks
+          Passed the house checks
         </p>
         <ul className="space-y-1 text-xs text-popover-foreground">
           <li className="flex items-center gap-1.5">
-            {row.mintAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
-            Mint authority renounced
+            {s?.ownerRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            Contract ownership renounced
           </li>
           <li className="flex items-center gap-1.5">
-            {row.freezeAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
-            Freeze authority renounced
+            {s?.isBlacklistCapable === false ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            No blacklist capability
           </li>
           <li className="flex items-center gap-1.5">
-            {row.hasSocialLink ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
+            {s?.hasSocialLink ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
             Has a social link
           </li>
-          {creatorPct != null && (
+          {s?.creatorHoldPct != null && (
             <li className="flex items-center gap-1.5">
               {CHECK_GLYPH_OK}
-              Creator bought {creatorPct.toFixed(1)}%
+              Creator holds {s.creatorHoldPct.toFixed(1)}%
             </li>
           )}
-          {alphaWalletDetected && (
+          {s?.alphaWalletDetected === true && (
             <li className="flex items-center gap-1.5">
               {CHECK_GLYPH_OK}
               Tracked wallet already in
@@ -199,7 +185,7 @@ function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
 
 export function AlphaTable() {
   const [page, setPage] = useState(1);
-  const response = usePolledJson<AlphaResponse>(`/api/alpha?page=${page}`, 25_000);
+  const response = usePolledJson<AlphaResponse>("/api/alpha", 25_000);
   const [now, setNow] = useState(() => Date.now());
   const [copiedMint, setCopiedMint] = useState<string | null>(null);
 
@@ -241,13 +227,11 @@ export function AlphaTable() {
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
         <div className="flex items-center gap-3">
           <div>
-            <p className="text-[0.7rem] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
-              Solana · historical
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Archive from the retired Solana engine, newest first, one row
-              per ticker. Every row passed the Raven&apos;s Solana entry
-              criteria at the time: mint/freeze authority, creator buy %, socials.
+            <span className="rounded-full bg-secondary px-2.5 py-1 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-foreground">
+              Robinhood Chain · live
+            </span>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Fresh Robinhood Chain launches that passed the house&apos;s own entry checks: contract ownership, blacklist capability, creator holding, socials.
             </p>
           </div>
         </div>
@@ -278,9 +262,11 @@ export function AlphaTable() {
 
       {rows.length === 0 ? (
         <p className="px-4 py-12 text-center text-sm text-muted-foreground">
-          {response
-            ? "No candidates yet; the engine is still watching."
-            : "Loading…"}
+          {!response
+            ? "Loading…"
+            : response.error
+              ? `No passing launches yet (${/429|provider_error/.test(response.error) ? "GMGN is rate-limiting right now" : response.error}).`
+              : "No candidates yet; the engine is still watching."}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -290,7 +276,7 @@ export function AlphaTable() {
                 <th className={HEAD_CELL}>Token</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Market cap</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Change</th>
-                <th className={cn(HEAD_CELL, "text-right")}>Dev buy</th>
+                <th className={cn(HEAD_CELL, "text-right")}>Creator holds</th>
                 <th className={HEAD_CELL}>Who&apos;s in</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Seen</th>
                 <th className={cn(HEAD_CELL, "text-right")}>
@@ -300,8 +286,7 @@ export function AlphaTable() {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const creatorPct =
-                  row.creatorBuyPct != null ? Number(row.creatorBuyPct) : null;
+                const creatorPct = row.safety?.creatorHoldPct ?? null;
                 const social = row.safety?.metadata;
                 const socialLink =
                   social?.twitter || social?.website || social?.telegram;
@@ -364,12 +349,12 @@ export function AlphaTable() {
                           )}
                         </>
                       ) : (
-                        "—"
+                        "-"
                       )}
                     </td>
 
                     <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {creatorPct != null ? `${creatorPct.toFixed(1)}%` : "—"}
+                      {creatorPct != null ? `${creatorPct.toFixed(1)}%` : "-"}
                     </td>
 
                     <td className="px-3 py-2.5">
@@ -390,7 +375,7 @@ export function AlphaTable() {
                           )}
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </td>
 
@@ -414,7 +399,7 @@ export function AlphaTable() {
                           )}
                         </button>
                         <a
-                          href={socialLink || `https://pump.fun/coin/${row.token}`}
+                          href={socialLink || explorerUrl("address", row.token)}
                           target="_blank"
                           rel="noreferrer"
                           aria-label={`Open ${row.symbol ?? "token"}`}

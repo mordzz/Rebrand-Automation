@@ -42,10 +42,8 @@ yarn-error.log*
 next-env.d.ts
 
 
-# investigation-output datasets (not application state — see
-# scripts/collect-robinhood-new-creation-liquidity.ts)
+# retired local investigation and canary artifacts (never commit)
 /data/robinhood-liquidity-snapshots.jsonl
-# PR10 testnet canary: encrypted canary wallet + broadcast ledger
 /data/robinhood-testnet-canary.wallet.json
 /data/robinhood-testnet-canary.ledger.jsonl
 # PR12 official Lighter signer build output (reproducible: npm run build:lighter-signer)

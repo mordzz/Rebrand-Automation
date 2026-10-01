@@ -9,7 +9,7 @@ import { getTokenMarkets } from "@/lib/sniper/token-market";
 
 /** A KOL identity can span several wallets (see lib/gmgn/kol-positions.ts);
  * GMGN's wallet_stats is per-wallet, so this combines them into one figure
- * per identity — weighted by each wallet's own token count where a plain
+ * per identity - weighted by each wallet's own token count where a plain
  * average would let an inactive wallet's win rate distort an active one's. */
 function aggregateWalletStats(
   wallets: string[],
@@ -37,7 +37,7 @@ function aggregateWalletStats(
   return { winRate, realizedProfitUsd, tokenCount, followersCount };
 }
 
-// Tracked wallets trade continuously — never cache this route.
+// Tracked wallets trade continuously - never cache this route.
 export const dynamic = "force-dynamic";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -50,15 +50,15 @@ function positiveInt(raw: string | null, fallback: number, max?: number): number
   return max ? Math.min(floored, max) : floored;
 }
 
-/** Every tracked KOL, one row per account (not per position — see
+/** Every tracked KOL, one row per account (not per position - see
  * lib/gmgn/kol-positions.ts), each with their own win rate and realized
  * PnL from GMGN's own wallet_stats (7d, GMGN's computed figure across
- * that wallet's full history — not re-derived from the trade window this
+ * that wallet's full history - not re-derived from the trade window this
  * page also uses for the position list), plus the tokens they've bought
  * in that window. GMGN's `/v1/user/kol` is a recent-activity feed with a
  * hard 100-row cap, not a directory of every KOL it has ever tagged, so
  * "how many KOLs" here is bounded by how many distinct accounts show up
- * in that recent window — not the full roster GMGN maintains internally. */
+ * in that recent window - not the full roster GMGN maintains internally. */
 export async function GET(request: NextRequest) {
   if (!isGmgnConfigured()) {
     return NextResponse.json({
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
 
   const mints = [...new Set(kols.flatMap((k) => k.positions.map((p) => p.mint)))];
   const allWallets = kols.flatMap((k) => k.wallets);
-  // Every position's own wallet, not just each KOL's primary one — a
+  // Every position's own wallet, not just each KOL's primary one - a
   // multi-wallet KOL's second wallet holds this position, not the first.
   const walletMintPairs = kols.flatMap((k) =>
     k.positions.map((p) => ({ wallet: p.wallet, mint: p.mint }))
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     getTokenSocials(mints),
     // Priced for every mint on the page, not just open ones: a "closed"
     // cycle can still be a partial exit with a real balance left, and
-    // that leftover needs a current price to value — see holdingValueUsd
+    // that leftover needs a current price to value - see holdingValueUsd
     // below.
     getTokenMarkets(mints),
     getManyWalletStats(allWallets),
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
         : null,
       lastActiveAt: k.lastActiveAt,
       // GMGN's own 7d record, combined across every wallet this identity
-      // trades from — deliberately separate from anything derived from
+      // trades from - deliberately separate from anything derived from
       // `positions` below, which is only this page's visible window.
       winRate: stats.winRate,
       realizedProfitUsd7d: stats.realizedProfitUsd,
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
             ? p.investedUsd * (currentMarketCapUsd / p.entryMarketCapUsd - 1)
             : null;
 
-        // What this position's own wallet actually holds right now — a
+        // What this position's own wallet actually holds right now - a
         // live on-chain fact, not something the trade window implies. A
         // "closed" cycle with balance > 0 here is a partial exit our own
         // pairing had no way to see.

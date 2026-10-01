@@ -1,14 +1,14 @@
 /**
- * Uniswap v4 pool resolution — PR08B.
+ * Uniswap v4 pool resolution - PR08B.
  *
  * Deliberately NOT a general-purpose pool-discovery algorithm. Finding
  * "the" v4 pool for an arbitrary token requires either an indexer (GMGN
- * doesn't expose v4 pool data for Robinhood — it wasn't even the source
+ * doesn't expose v4 pool data for Robinhood - it wasn't even the source
  * this repo's testnet v4 pools were found through; they were found by a
  * raw `PoolManager.Initialize` event scan in
- * `ROBINHOOD_SWAP_EXECUTION_AUDIT.md`) or scanning a very large block
+ * the PR08 testnet swap audit (git history)) or scanning a very large block
  * range that the testnet public RPC cannot serve in full (it is not an
- * archive node — same audit, §14). Building a fake/best-guess discovery
+ * archive node - same audit, §14). Building a fake/best-guess discovery
  * algorithm on top of that would be exactly the kind of invented
  * behavior this PR must not add.
  *
@@ -32,7 +32,7 @@ const UINT24_MAX = 16_777_215; // 2**24 - 1
 const INT24_MIN = -8_388_608; // -(2**23)
 const INT24_MAX = 8_388_607; // 2**23 - 1
 
-/** v4's native-currency sentinel — NOT a WETH address. See
+/** v4's native-currency sentinel - NOT a WETH address. See
  * robinhood-execution-config.ts's module comment for why this codebase
  * never substitutes WETH for this on testnet. */
 export const NATIVE_CURRENCY: Address = zeroAddress;
@@ -51,7 +51,7 @@ export type VerifiedPool = {
   liquidity: bigint;
   sqrtPriceX96: bigint;
   tick: number;
-  /** True when `hooks === address(0)` — a vanilla pool. A non-zero hook
+  /** True when `hooks === address(0)` - a vanilla pool. A non-zero hook
    * means execution may depend on that hook's own logic, which this
    * module does not inspect or validate. */
   isHookless: boolean;
@@ -90,7 +90,7 @@ const STATE_VIEW_ABI = [
   },
 ] as const;
 
-/** v4's `PoolId` is `keccak256(abi.encode(poolKey))` — the same
+/** v4's `PoolId` is `keccak256(abi.encode(poolKey))` - the same
  * derivation `PoolManager`/`StateView` use internally. Computing it here
  * (rather than requiring the caller to supply it) means a caller can
  * never pass a `poolId` that doesn't actually correspond to the
@@ -112,7 +112,7 @@ export type PoolValidationResult =
  *   - the pool has never been initialized (sqrtPriceX96 == 0)
  *   - the pool has zero liquidity
  *
- * Never invents a PoolKey — the caller must supply one obtained from a
+ * Never invents a PoolKey - the caller must supply one obtained from a
  * verified source (a prior on-chain scan, a future discovery module, or
  * a hand-verified fixture during testing).
  */
@@ -150,13 +150,13 @@ export async function validatePoolKey(
   }
   if (poolKey.currency0 !== NATIVE_CURRENCY && poolKey.currency1 !== NATIVE_CURRENCY) {
     // Not a hard on-chain requirement, but this adapter only implements
-    // the native-ETH path (see module doc comment) — a token/token pool
+    // the native-ETH path (see module doc comment) - a token/token pool
     // is out of scope until a WETH-safe (mainnet, or a fixed testnet
     // router) path is verified.
     return {
       ok: false,
       reason:
-        "neither currency is native ETH (address(0)) — this adapter only implements the verified native-ETH v4 path",
+        "neither currency is native ETH (address(0)) - this adapter only implements the verified native-ETH v4 path",
     };
   }
 
@@ -167,7 +167,7 @@ export async function validatePoolKey(
     // Belt-and-suspenders: the explicit range checks above should make
     // this unreachable, but a future PoolKey field or ABI-encoding
     // change must never crash the caller (e.g. a daemon processing
-    // externally-sourced route data) — fail closed instead.
+    // externally-sourced route data) - fail closed instead.
     return {
       ok: false,
       reason: `failed to compute poolId: ${error instanceof Error ? error.message : String(error)}`,
@@ -213,7 +213,7 @@ export async function validatePoolKey(
     return { ok: false, reason: `pool ${poolId} has never been initialized (sqrtPriceX96 == 0)` };
   }
   if (liquidity <= BigInt(0)) {
-    return { ok: false, reason: `pool ${poolId} has zero liquidity — refusing to quote/build against it` };
+    return { ok: false, reason: `pool ${poolId} has zero liquidity - refusing to quote/build against it` };
   }
 
   return {

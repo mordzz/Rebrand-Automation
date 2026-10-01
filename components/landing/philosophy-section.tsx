@@ -13,7 +13,7 @@ const BLOCKS = [
   },
   {
     label: "Learn on your schedule",
-    body: "Lessons, projects, and mentor feedback fit around your week — mornings before work, nights after the kids are asleep, whenever you have an hour. Every submission gets reviewed by a real engineer, not an autograder.",
+    body: "Lessons, projects, and mentor feedback fit around your week - mornings before work, nights after the kids are asleep, whenever you have an hour. Every submission gets reviewed by a real engineer, not an autograder.",
   },
 ];
 

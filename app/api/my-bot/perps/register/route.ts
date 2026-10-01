@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Registers (idempotently) the bot's Lighter API key on the agent-wallet-
- * owned Lighter account — PR12, testnet only. Owner-authenticated. Never
+ * owned Lighter account - PR12, testnet only. Owner-authenticated. Never
  * rotates an existing key; never returns key material.
  */
 export async function POST(request: Request) {

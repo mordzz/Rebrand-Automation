@@ -18,7 +18,7 @@ By deploying an agent or otherwise using Noah Engine, you agree to these terms. 
 
 ## 2. What Noah Engine is, and is not
 
-**It is** software that runs autonomous trading agents against Solana memecoin markets on your instruction, inside limits you configure.
+**It is** software that runs autonomous trading agents against Robinhood Chain token markets on your instruction, inside limits you configure.
 
 **It is not** an investment adviser, a broker-dealer, a fund, a managed account, a custodian in the regulated sense, an exchange, or a money transmitter. We do not manage your money, exercise discretion over your strategy, or give advice. Your agent executes the rules you set; you chose them.
 
@@ -32,7 +32,7 @@ You may not use Noah Engine if you are subject to sanctions, or are located in a
 
 ## 4. Your account
 
-Your Solana wallet is your account. There is no password to recover and no support channel that can restore access, because we hold nothing that would let us do so. If you lose access to your wallet, you lose access to the agents it owns.
+Your EVM wallet is your account. There is no password to recover and no support channel that can restore access, because we hold nothing that would let us do so. If you lose access to your wallet, you lose access to the agents it owns.
 
 We will never ask for your seed phrase or private key, never message you first, and never ask you to send funds to an address. Anything that does is fraudulent and is not us.
 
@@ -40,7 +40,7 @@ We will never ask for your seed phrase or private key, never message you first, 
 
 This section is the one that decides whether you should fund an agent. Read it before you deposit.
 
-**a. A separate wallet.** Deploying an agent generates a fresh Solana keypair belonging to that agent alone. Your own wallet is used only to establish ownership; its keys are never requested, held, or delegated.
+**a. A separate wallet.** Deploying an agent generates a fresh Robinhood Chain (EVM) wallet belonging to that agent alone. Your own wallet is used only to establish ownership; its keys are never requested, held, or delegated.
 
 **b. We hold the agent's key.** An agent must sign while you are absent, so we hold its key, encrypted at rest under a key kept in the server environment. This means **we can technically sign anything that key can sign, including a transfer out**. Nothing in program logic prevents it. The constraint is operational, not cryptographic. Any claim that funds in an agent wallet "cannot be taken" would be false, and we do not make it.
 
@@ -70,9 +70,9 @@ Paper mode runs the full decision pipeline with simulated fills and no capital.
 
 ## 8. Fees
 
-Paper mode is free. A live agent is priced at a one-time fee of 0.5 SOL per deployed agent. Desk arrangements are priced separately.
+Paper mode is free. A live agent is priced at a one-time fee of 0.022 ETH per deployed agent. Desk arrangements are priced separately.
 
-**This fee is not currently collected.** There is no billing step in the product today, and switching an agent to live trading does not require or trigger any payment. The terms below describe the fee as designed, for when collection exists, not a charge you should expect right now. Once it is collected: it is charged once at deploy, denominated in SOL, and **non-refundable**, including if your agent loses money, if you stop it, or if you delete it. It buys the ability to deploy a live agent, not a result.
+**This fee is not currently collected.** There is no billing step in the product today, and switching an agent to live trading does not require or trigger any payment. The terms below describe the fee as designed, for when collection exists, not a charge you should expect right now. Once it is collected: it is charged once at deploy, denominated in ETH, and **non-refundable**, including if your agent loses money, if you stop it, or if you delete it. It buys the ability to deploy a live agent, not a result.
 
 Fees may change with notice; a change does not apply retroactively to an agent already deployed.
 

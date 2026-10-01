@@ -5,7 +5,7 @@ import { createContext, createElement, useCallback, useContext, type ReactNode }
 
 /**
  * `fetch` that attaches the caller's Privy access token as
- * `Authorization: Bearer …` — required by every mutating /api/my-bot route
+ * `Authorization: Bearer …` - required by every mutating /api/my-bot route
  * (verified server-side in lib/auth/privy-server.ts).
  *
  * Must render under PrivyProvider. If no token is available (logged out /
@@ -20,7 +20,7 @@ export function usePrivyAuthedFetch(): typeof fetch {
       const token = await getAccessToken();
       if (!token) {
         return Response.json(
-          { error: "Your session expired — reconnect your wallet and try again." },
+          { error: "Your session expired - reconnect your wallet and try again." },
           { status: 401 },
         );
       }
@@ -35,7 +35,7 @@ export function usePrivyAuthedFetch(): typeof fetch {
 /** Authed fetch for components that may render with or without Privy
  * (PR17). Inside PrivyProvider, <AuthedFetchBridge> supplies the token-
  * attaching fetch; without Privy the default is plain fetch, which every
- * protected route refuses — fail closed, never a bypass. */
+ * protected route refuses - fail closed, never a bypass. */
 export const AuthedFetchContext = createContext<typeof fetch>((input, init) => fetch(input, init));
 
 export function useAuthedFetch(): typeof fetch {

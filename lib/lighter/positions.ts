@@ -1,5 +1,5 @@
 /**
- * Lighter positions / PnL / margin mapping — PR12.
+ * Lighter positions / PnL / margin mapping - PR12.
  *
  * Maps PR11's read-only account state into Noah's perps view. Direction
  * follows Lighter's official example (lighter-python

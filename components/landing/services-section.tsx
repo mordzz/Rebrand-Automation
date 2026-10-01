@@ -10,7 +10,7 @@ const VIDEO_CARDS = [
     tag: "Track No. 1",
     title: "Frontend Engineering",
     description:
-      "React, TypeScript, and component architecture — build production-grade interfaces and ship a portfolio-ready capstone reviewed by a senior frontend engineer.",
+      "React, TypeScript, and component architecture - build production-grade interfaces and ship a portfolio-ready capstone reviewed by a senior frontend engineer.",
     video:
       "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4",
   },
@@ -18,7 +18,7 @@ const VIDEO_CARDS = [
     tag: "Track No. 2",
     title: "Backend & Systems",
     description:
-      "APIs, databases, and infrastructure that hold up under real traffic — design, build, and deploy a service, with your own tests and your own on-call runbook.",
+      "APIs, databases, and infrastructure that hold up under real traffic - design, build, and deploy a service, with your own tests and your own on-call runbook.",
     video:
       "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260324_151826_c7218672-6e92-402c-9e45-f1e0f454bdc4.mp4",
   },

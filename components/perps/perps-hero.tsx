@@ -6,20 +6,20 @@ import Link from "next/link";
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 /* Three claims the product actually makes, stated plainly. Deliberately
-   not metrics — there is no launched-token history to draw real numbers
-   from yet, and inventing some would be worse than saying nothing. */
+   not metrics. Perpspad launches are paused: these describe how the
+   historical Solana/Drift launches worked, not a live product. */
 const PILLARS = [
   {
     title: "Real perp backing",
-    body: "Each token maps to its own isolated position on Drift Protocol.",
+    body: "Each historical token mapped to its own isolated position on Drift (Solana).",
   },
   {
     title: "Fees compound",
-    body: "Pool trading fees route straight back into collateral and burns.",
+    body: "Pool trading fees routed back into collateral and burns.",
   },
   {
     title: "Runs itself",
-    body: "An autonomous keeper claims, splits and settles every ~60 seconds.",
+    body: "A keeper claimed, split and settled fees on a fixed cadence.",
   },
 ];
 
@@ -35,7 +35,7 @@ export function PerpsHero() {
         >
           <span className="size-1.5 rounded-full bg-[#5ed29c]" />
           <span className="font-mono text-[9px] tracking-[0.2em] text-muted-foreground uppercase">
-            Perpspad · Drift Protocol
+            Perpspad · paused
           </span>
         </motion.div>
 
@@ -59,7 +59,7 @@ export function PerpsHero() {
         >
           Launch a token backed by a live perpetual futures position. Trading
           fees auto compound into collateral, buy back and burn the token, and
-          strengthen the governance treasury — all onchain, all autonomous.
+          strengthen the governance treasury - all onchain, all autonomous.
         </motion.p>
 
         <motion.div

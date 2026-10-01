@@ -19,7 +19,7 @@ function resolveEnabled(envVar: string, configured: boolean): boolean {
 }
 
 /**
- * Real provider status — no user-facing toggle, no runtime restart needed
+ * Real provider status - no user-facing toggle, no runtime restart needed
  * to "connect": whichever of these are enabled is exactly what
  * lib/eliza/runtime.ts wires up on process start. Order reflects the same
  * priority order used there (see lib/eliza/character.ts).

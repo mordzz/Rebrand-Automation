@@ -7,7 +7,7 @@ import { useEffect, type ReactNode } from "react";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 /**
- * Backdrop, entrance animation, escape-to-close and click-outside — the
+ * Backdrop, entrance animation, escape-to-close and click-outside - the
  * parts every modal needs and none of them should reimplement.
  *
  * Deliberately unopinionated about the body: callers own their own
@@ -23,7 +23,7 @@ export function ModalShell({
 }: {
   title: ReactNode;
   icon?: ReactNode;
-  /** `danger` tints the icon well red — for actions that spend real money. */
+  /** `danger` tints the icon well red - for actions that spend real money. */
   tone?: "default" | "danger";
   onClose: () => void;
   children: ReactNode;

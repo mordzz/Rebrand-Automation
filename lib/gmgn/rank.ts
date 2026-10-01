@@ -1,13 +1,13 @@
 import { gmgnGet, isGmgnConfigured } from "./client";
 
 /**
- * Market-wide token ranking via GMGN's `/v1/market/rank` — every indexed
+ * Market-wide token ranking via GMGN's `/v1/market/rank` - every indexed
  * Robinhood Chain token ranked by a chosen metric (volume, market cap, ...), unlike
  * `/v1/trenches` (discovery.ts) which is scoped to fresh launches only.
  * This is the "what's moving right now" view.
  *
- * The response is double-wrapped — `{ code, data: { code, data: { rank:
- * [...] } } }`, verified directly against the live endpoint — and gmgnGet
+ * The response is double-wrapped - `{ code, data: { code, data: { rank:
+ * [...] } } }`, verified directly against the live endpoint - and gmgnGet
  * already strips one `{code,data}` layer, so callers here strip the
  * second explicitly rather than assuming a flat `{ rank }` shape.
  */
@@ -19,8 +19,8 @@ export type RankedToken = {
   mint: string;
   symbol: string | null;
   name: string | null;
-  /** GMGN's own logo URL — same 403-to-non-gmgn-origins restriction as
-   * discovery.ts#DiscoveredToken.logo. Resolve via lib/jupiter/token-icons
+  /** GMGN's own logo URL - same 403-to-non-gmgn-origins restriction as
+   * discovery.ts#DiscoveredToken.logo. Resolve via components/token-icon.tsx
    * before rendering, never as-is. */
   logo: string | null;
   priceUsd: number | null;
@@ -79,7 +79,7 @@ function normalize(raw: RawRankToken): RankedToken | null {
 
 /* The marquee polls this on a fixed cadence from every browser tab that
  * has it open; a shared cache collapses those into one upstream call per
- * window instead of one per tab. Single-slot cache is fine — the route
+ * window instead of one per tab. Single-slot cache is fine - the route
  * always calls this with the same opts, so there is only ever one cache
  * key in practice. TTL above the marquee's own poll interval, same
  * reasoning as lib/gmgn/track.ts's caches. */
@@ -117,7 +117,7 @@ export async function getRankedTokens(opts: {
       if (token) out.push(token);
     }
   }
-  // Cached even on failure (empty `list`) — a rate-limit ban should back
+  // Cached even on failure (empty `list`) - a rate-limit ban should back
   // off for a full cache window, not get retried by every poll from
   // every open tab, which is what extended the ban this comment refers
   // to in the first place.

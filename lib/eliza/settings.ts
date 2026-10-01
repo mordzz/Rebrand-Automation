@@ -3,7 +3,7 @@
  * plugins expect. No secret is duplicated under a second env var name.
  *
  * Solana isn't handled here: @elizaos/plugin-solana was dropped (it throws
- * on import in the published 2.0.0-alpha.6 build — a name mismatch between
+ * on import in the published 2.0.0-alpha.6 build - a name mismatch between
  * its generated action-spec registry and its own lookup key, unrelated to
  * anything in this app). Wallet reads and the gated transfer action talk to
  * nothing: the Solana house wallet (PRIVATE_KEY_SOLANA_WALLET) and its
@@ -24,14 +24,14 @@ export function buildElizaSettings(): Record<string, string> {
     // its whole free catalog. Tried pinning to specific free models first
     // (meta-llama/llama-3.3-70b-instruct:free, nvidia/nemotron-3-ultra-550b-
     // a55b:free, openai/gpt-oss-120b:free) and hit a different real failure
-    // on each — 429 rate-limited, upstream DEGRADED, 429 again — within a
+    // on each - 429 rate-limited, upstream DEGRADED, 429 again - within a
     // few minutes of each other. That's the free tier being genuinely
     // congested, not a bad model choice; the auto-router routes around
     // exactly this by picking a different available model per request,
     // at the cost of less predictable tool-calling reliability than any
     // one pinned model would have. Overridable via .env
     // (OPENROUTER_LARGE_MODEL/OPENROUTER_SMALL_MODEL) without touching this
-    // file — `||`, not `??`, so an empty-string placeholder left in .env
+    // file - `||`, not `??`, so an empty-string placeholder left in .env
     // (as .env.example ships it) falls back to the default below instead
     // of handing OpenRouter an empty model name.
     settings.OPENROUTER_LARGE_MODEL =
@@ -39,8 +39,12 @@ export function buildElizaSettings(): Record<string, string> {
     settings.OPENROUTER_SMALL_MODEL =
       process.env.OPENROUTER_SMALL_MODEL || "openrouter/free";
   }
-  if (process.env.POSTGRES_URL) {
-    settings.POSTGRES_URL = process.env.POSTGRES_URL;
+  // ElizaOS's SQL plugin reads its connection from the POSTGRES_URL
+  // setting. POSTGRES_URL is honored where a deployment provides it;
+  // otherwise it is the same database as the app's DATABASE_URL.
+  const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  if (postgresUrl) {
+    settings.POSTGRES_URL = postgresUrl;
   }
 
   return settings;
