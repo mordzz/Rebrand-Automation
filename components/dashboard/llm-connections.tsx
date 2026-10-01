@@ -156,7 +156,7 @@ export function LlmConnections({ officialWallet }: { officialWallet?: string } =
   // waiting out the 15s poll before the button's own row updates.
   const [locallyApplied, setLocallyApplied] = useState<Set<string>>(new Set());
   const [applyingId, setApplyingId] = useState<string | null>(null);
-  // PR17: applying a lesson changes the house config — house admin only.
+  // Applying a lesson changes the house config — signed-in operator only.
   const authedFetch = useAuthedFetch();
 
   async function applySuggestion(id: string) {

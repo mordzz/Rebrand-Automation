@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { getSniperConfig, updateSniperConfig } from "@/lib/sniper/config";
-import { houseAdminErrorResponse, authenticateHouseAdmin } from "@/lib/auth/privy-server";
+import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +18,10 @@ export async function GET() {
 /** Applies a partial config change from the dashboard — takes effect on the
  * daemon's next cycle, no restart needed. */
 export async function PATCH(request: Request) {
-  // PR17: house-level mutation — verified Privy user with a linked EVM
-  // wallet in HOUSE_ADMIN_WALLETS (fail closed when unset).
-  const admin = await authenticateHouseAdmin(request);
-  if (!admin.ok) return houseAdminErrorResponse(admin);
+  // House dashboard action: any verified signed-in Noah operator (Privy
+  // access token). Never anonymous; no separate admin role.
+  const auth = await authenticateSignedInUser(request);
+  if (!auth.ok) return signedInErrorResponse(auth);
   if (!getDb()) {
     return NextResponse.json({ error: "DATABASE_URL not configured" }, { status: 503 });
   }

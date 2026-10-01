@@ -5,7 +5,7 @@ import type { ClosedTradeInput } from "@/lib/agent/analyze-loss";
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
 import { trades } from "@/lib/db/schema";
-import { houseAdminErrorResponse, authenticateHouseAdmin } from "@/lib/auth/privy-server";
+import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** `?wallet=` scopes to one deployed bot's own trade history; omitted
  * means the house desk — see app/api/positions/route.ts for the same
@@ -34,10 +34,10 @@ export async function GET(request: NextRequest) {
  * shared house desk.
  */
 export async function POST(request: Request) {
-  // PR17: house-level mutation — verified Privy user with a linked EVM
-  // wallet in HOUSE_ADMIN_WALLETS (fail closed when unset).
-  const admin = await authenticateHouseAdmin(request);
-  if (!admin.ok) return houseAdminErrorResponse(admin);
+  // House dashboard action: any verified signed-in Noah operator (Privy
+  // access token). Never anonymous; no separate admin role.
+  const auth = await authenticateSignedInUser(request);
+  if (!auth.ok) return signedInErrorResponse(auth);
   let body: ClosedTradeInput & { walletAddress?: string | null };
   try {
     body = await request.json();

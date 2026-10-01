@@ -20,8 +20,7 @@ import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 
 import {
   authenticateEvmOwnerWith,
-  authenticateHouseAdminWith,
-  houseAdminWallets,
+  authenticateSignedInUserWith,
   isLinkedEvmWallet,
   parseBearerToken,
   type LinkedAccountLike,
@@ -242,25 +241,20 @@ async function main() {
     }
   }
 
-  // ═══ PR17: house administration ═══════════════════════════════════════
+  // ═══ House dashboard actions: verified signed-in user, no admin role ══
   {
-    const ADMIN = "0x1111111111111111111111111111111111111111";
-    const admins = houseAdminWallets(`${ADMIN.toLowerCase()}, not-an-address ,`);
-    assert(admins.size === 1 && admins.has(ADMIN), "HOUSE_ADMIN_WALLETS parsed; junk entries ignored");
-    const adminAccounts: LinkedAccountLike[] = [{ type: "wallet", chain_type: "ethereum", address: ADMIN }];
-    const ok = fakeBackend({ accounts: adminAccounts }).backend;
-    assert((await authenticateHouseAdminWith(ok, `Bearer ${FAKE_JWT}`, admins)).ok, "linked admin wallet → allowed");
-    const r1 = await authenticateHouseAdminWith(ok, `Bearer ${FAKE_JWT}`, new Set());
-    assert(!r1.ok && r1.status === 403, "empty allowlist → 403 (fail closed, nobody is admin)");
-    const r2 = await authenticateHouseAdminWith(fakeBackend({}).backend, `Bearer ${FAKE_JWT}`, admins);
-    assert(!r2.ok && r2.status === 403, "valid user without an admin wallet → 403");
-    const smart = fakeBackend({ accounts: [{ type: "smart_wallet", address: ADMIN }] }).backend;
-    const r3 = await authenticateHouseAdminWith(smart, `Bearer ${FAKE_JWT}`, admins);
-    assert(!r3.ok && r3.status === 403, "admin address only as a smart wallet → 403");
-    const r4 = await authenticateHouseAdminWith(ok, null, admins);
-    assert(!r4.ok && r4.status === 401, "house admin: missing token → 401");
-    const r5 = await authenticateHouseAdminWith(null, `Bearer ${FAKE_JWT}`, admins);
-    assert(!r5.ok && r5.status === 503, "house admin: unconfigured Privy → 503");
+    const ok = fakeBackend({}).backend;
+    const r = await authenticateSignedInUserWith(ok, `Bearer ${FAKE_JWT}`);
+    assert(r.ok, "signed-in user (valid Privy token) → allowed, no allowlist/role");
+    const r1 = await authenticateSignedInUserWith(ok, null);
+    assert(!r1.ok && r1.status === 401, "house action without token → 401 (not public)");
+    const bad = fakeBackend({ verify: async () => { throw new Error("expired"); } }).backend;
+    const r2 = await authenticateSignedInUserWith(bad, `Bearer ${FAKE_JWT}`);
+    assert(!r2.ok && r2.status === 401, "house action with invalid/expired token → 401");
+    const r3 = await authenticateSignedInUserWith(null, `Bearer ${FAKE_JWT}`);
+    assert(!r3.ok && r3.status === 503, "house action with Privy unconfigured → 503 (fail closed)");
+    const src = readFileSync(join(process.cwd(), "lib/auth/privy-server.ts"), "utf8");
+    assert(!/HOUSE_ADMIN_WALLETS/.test(src), "no HOUSE_ADMIN_WALLETS requirement in server auth");
   }
 
   // Every mutating handler ANYWHERE under app/api must authenticate before
@@ -283,7 +277,7 @@ async function main() {
         assert(/status: (410|501)|return retired\(\)/.test(h), `${route} ${method}: stateless handler is a fail-closed stub`);
         continue;
       }
-      const authAt = h.search(/authenticate(EvmOwner|HouseAdmin)\(/);
+      const authAt = h.search(/authenticate(EvmOwner|SignedInUser)\(/);
       const firstState = h.search(/\.(select|update|insert|delete)\(|updateSniperConfig\(|setPaused\(|recordClosedTrade\(/);
       assert(authAt > 0 && (firstState < 0 || authAt < firstState), `${route} ${method}: authenticated before any state access`);
     }
