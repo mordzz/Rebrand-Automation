@@ -7,7 +7,7 @@ import { useRef } from "react";
 
 import { WordsPullUpMultiStyle } from "./words-pull-up";
 
-/** Whitepaper §19. Denominated in SOL, and charged once at deploy rather
+/** Whitepaper §19. Denominated in ETH on Robinhood Chain, and charged once at deploy rather
  * than monthly. A weaker recurring-revenue structure, chosen anyway
  * because a monthly charge against a small trading balance is a drag the
  * operator pays whether or not the agent is working (§16.2). */
@@ -16,7 +16,7 @@ const TIERS = [
     number: "01",
     name: "Paper",
     price: "0",
-    unit: "SOL",
+    unit: "ETH",
     cadence: "free, no wallet needed",
     blurb:
       "The complete decision pipeline with simulated fills. The right arena to prove a configuration before paying anything.",
@@ -33,15 +33,17 @@ const TIERS = [
   {
     number: "02",
     name: "Live",
-    price: "0.5",
-    unit: "SOL",
+    // Same fiat value as the previous 0.5 SOL fee, at the 2026-10-01 spot
+    // snapshot, rounded to the nearest 0.001 ETH.
+    price: "0.022",
+    unit: "ETH",
     cadence: "once, per deployed agent",
     blurb:
       "One agent trading a wallet of its own, funded by your deposit, inside the limits you set.",
     featured: true,
     features: [
       "Everything in Paper",
-      "A dedicated agent wallet, key exportable",
+      "A dedicated agent wallet of its own",
       "Rule-based automatic exits, best-effort",
       "Circuit breaker on losing streaks",
       "Stop it any time; open positions still exit by their rules",
@@ -70,14 +72,16 @@ const TIERS = [
 
 /** §16.2. Illustrative arithmetic, not measured results: 2% position size,
  * a 35% stop, an average win of 120% of position, 4% round-trip cost, 100
- * trades/month, 0.5 SOL deployed once. Published because a serious reader
- * computes it in two minutes anyway. */
+ * trades/month, 0.022 ETH deployed once. Break-even win rate is the no-fee
+ * 25.2% (0.39 / 1.55) plus half the fee share. Deposits are the previous
+ * SOL examples converted at the same fiat value. Published because a
+ * serious reader computes it in two minutes anyway. */
 const BREAK_EVEN = [
-  ["20 SOL", "2.5%", "26.4%"],
-  ["10 SOL", "5.0%", "27.7%"],
-  ["5 SOL", "10.0%", "30.3%"],
-  ["2 SOL", "25.0%", "37.7%"],
-  ["1 SOL", "50.0%", "50.2%"],
+  ["0.877 ETH", "2.5%", "26.4%"],
+  ["0.438 ETH", "5.0%", "27.7%"],
+  ["0.219 ETH", "10.0%", "30.2%"],
+  ["0.088 ETH", "25.0%", "37.7%"],
+  ["0.044 ETH", "50.0%", "50.2%"],
 ];
 
 const CARD_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -100,7 +104,7 @@ export function PrismaPricing() {
           <WordsPullUpMultiStyle
             segments={[
               {
-                text: "One fee, once, in SOL.",
+                text: "One fee, once, in ETH.",
                 className: "text-primary",
               },
               {
@@ -286,11 +290,11 @@ export function PrismaPricing() {
               average win of 120% of position, 4% round-trip cost, 100 trades a
               month. Because the fee is one-time it stops mattering once an
               agent has run long enough to amortise it. The first month is where
-              a small balance is punished: at 1 SOL deposited, half the balance
+              a small balance is punished: at 0.044 ETH deposited, half the balance
               is the fee and the arithmetic is close to hopeless before the
               agent has placed a trade.
             </p>
-          </motion.div>n
+          </motion.div>
         </div>
       </div>
     </section>
