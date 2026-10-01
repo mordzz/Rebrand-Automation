@@ -118,8 +118,8 @@ export function LivePositions({
           </em>
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Every token below is backed by a real perpetual futures position
-          on Drift Protocol.
+          Historical launches from the retired Solana/Drift Perpspad. New
+          launches are paused.
         </p>
       </div>
 

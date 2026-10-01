@@ -13,15 +13,15 @@ import { WordsPullUpMultiStyle } from "./words-pull-up";
  * rendered on the server too, and Date.now() there would not match the
  * client's first paint. */
 const LINES = [
-  { time: "17:04:12", tier: "T0", agent: "Sisyphus", verb: "refused", mint: "4Hq2…", reason: "freeze authority active" },
-  { time: "17:04:12", tier: "T0", agent: "Little Boat", verb: "refused", mint: "4Hq2…", reason: "freeze authority active" },
-  { time: "17:04:15", tier: "T0", agent: "Driftwood", verb: "refused", mint: "7Ty9…", reason: "transfer hook present" },
-  { time: "17:04:19", tier: "T1", agent: "Sisyphus", verb: "refused", mint: "9Kp7…", reason: "top-10 holds 61%" },
-  { time: "17:04:23", tier: "T1", agent: "Driftwood", verb: "refused", mint: "Bn3x…", reason: "sell simulation failed" },
-  { time: "17:04:27", tier: "T1", agent: "Little Boat", verb: "refused", mint: "Bn3x…", reason: "liquidity below floor" },
-  { time: "17:04:31", tier: "T2", agent: "Little Boat", verb: "refused", mint: "Cw8m…", reason: "deployer: 4 prior rugs" },
-  { time: "17:05:44", tier: "T0", agent: "Sisyphus", verb: "refused", mint: "Jm2v…", reason: "mint authority not revoked" },
-  { time: "17:06:02", tier: "RV", agent: "Driftwood", verb: "exited", mint: "Ka4p…", reason: "sell simulation began failing" },
+  { time: "17:04:12", tier: "T0", agent: "Sisyphus", verb: "refused", token: "0x4f2a…", reason: "contract owner not renounced" },
+  { time: "17:04:12", tier: "T0", agent: "Little Boat", verb: "refused", token: "0x4f2a…", reason: "contract owner not renounced" },
+  { time: "17:04:15", tier: "T0", agent: "Driftwood", verb: "refused", token: "0x7c19…", reason: "blacklist capability present" },
+  { time: "17:04:19", tier: "T1", agent: "Sisyphus", verb: "refused", token: "0x9b37…", reason: "top-10 holds 61%" },
+  { time: "17:04:23", tier: "T1", agent: "Driftwood", verb: "refused", token: "0xb03e…", reason: "sell simulation failed" },
+  { time: "17:04:27", tier: "T1", agent: "Little Boat", verb: "refused", token: "0xb03e…", reason: "liquidity below floor" },
+  { time: "17:04:31", tier: "T2", agent: "Little Boat", verb: "refused", token: "0xc58d…", reason: "deployer: 4 prior rugs" },
+  { time: "17:05:44", tier: "T0", agent: "Sisyphus", verb: "refused", token: "0xe2a1…", reason: "creator holds 23%" },
+  { time: "17:06:02", tier: "RV", agent: "Driftwood", verb: "exited", token: "0xa4f0…", reason: "sell simulation began failing" },
 ];
 
 const TIER_LABEL: Record<string, string> = {
@@ -126,7 +126,7 @@ export function PrismaRefusalFeed() {
                   {line.verb}
                 </span>
                 <span className="w-[3.5rem] shrink-0 text-gray-600">
-                  {line.mint}
+                  {line.token}
                 </span>
                 <span className="text-gray-400">{line.reason}</span>
               </motion.div>

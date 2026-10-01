@@ -9,7 +9,7 @@ import { getWhitepaperToc } from "@/lib/whitepaper";
 export const metadata: Metadata = {
   title: "Whitepaper · Noah Engine",
   description:
-    "A public fleet of autonomous trading agents on Solana: the tiered safety gate, shared verdict model, idempotent execution, and honest limits of stop-loss on an AMM.",
+    "A public fleet of autonomous trading agents on Robinhood Chain: the tiered safety gate, shared verdict model, idempotent execution, and honest limits of stop-loss on an AMM.",
 };
 
 export default function WhitepaperPage() {
