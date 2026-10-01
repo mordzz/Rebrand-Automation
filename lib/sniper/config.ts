@@ -61,9 +61,9 @@ export type SniperConfig = {
   metadataFetchTimeoutMs: number;
 
   /* Robinhood native risk limits (lib/sniper/risk-limits-robinhood.ts).
-   * Deliberately nullable and not seeded with any default: choosing an
-   * ETH risk number is a product decision. `null` (or nativeSymbol not
-   * exactly "ETH") means "not yet configured", and
+   * Default to the approved ETH product constants (see
+   * DEFAULT_TRADING_CONFIG). An operator may still null one out: `null`
+   * (or nativeSymbol not exactly "ETH") means "not configured", and
    * resolveRobinhoodNativeLimits() fails closed on that. */
   maxNativePerSnipe: number | null;
   maxNativeDeployed: number | null;
@@ -109,10 +109,12 @@ export const DEFAULT_TRADING_CONFIG: Readonly<SniperConfig> = Object.freeze({
 
   metadataFetchTimeoutMs: 3000,
 
-  maxNativePerSnipe: null,
-  maxNativeDeployed: null,
-  maxDailyDrawdownNative: null,
-  nativeSymbol: null,
+  // The original engine's 0.05 / 0.15 / 0.1 SOL defaults converted to ETH
+  // at the same fiat value as the live fee (1 SOL = 0.04385 ETH).
+  maxNativePerSnipe: 0.0022,
+  maxNativeDeployed: 0.0066,
+  maxDailyDrawdownNative: 0.0044,
+  nativeSymbol: "ETH",
 } satisfies SniperConfig);
 
 /** A fresh, mutable copy of the product defaults. */
