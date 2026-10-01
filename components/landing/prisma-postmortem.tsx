@@ -142,13 +142,13 @@ export function PrismaPostMortem() {
                 No language model sits in the trade path
                 <span className="text-gray-500">.</span>
               </h3>
-              <p className="mt-4 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
                 Model inference takes seconds. The trade path has a budget
                 measured in milliseconds. The two are architecturally
                 incompatible, and any product implying otherwise is describing
                 something that cannot work at this speed.
               </p>
-              <p className="mt-4 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
                 Models are used out of band only, to analyse a position after it
                 has closed. Every entry, sizing, and exit decision is made by
                 deterministic rules whose inputs are logged and reproducible.

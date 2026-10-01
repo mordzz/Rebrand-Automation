@@ -1,7 +1,7 @@
 # Noah Engine
 ### A Public Fleet of Autonomous Trading Agents (original Solana design)
 
-**Technical Whitepaper · v1.0-rc**
+**Technical Whitepaper · v1.5**
 
 > **Migration notice.** This whitepaper describes Noah Engine's original Solana design (pump.fun and GMGN feeds, Jupiter routing, SOL-denominated limits and fees). Noah now runs on Robinhood Chain: spot trades settle on Robinhood Chain, perpetuals run on Lighter, discovery comes from GMGN, and the live fee is a one-time 0.022 ETH. The safety, strategy, risk and learning workflow is unchanged. Sections describing Solana-specific execution are historical.
 

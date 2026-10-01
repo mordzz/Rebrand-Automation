@@ -38,7 +38,7 @@ function transform(text: string): string {
     .replace(/⟦FILL⟧/g, "[FILL](#fill)")
     .replace(
       /§(\d+(?:\.\d+)?)/g,
-      (_m, num: string) => `[§${num}](/whitepaper#section-${num.replace(/\./g, "-")})`
+      (_m, num: string) => `[$${num}](/whitepaper#section-${num.replace(/\./g, "-")})`
     );
 }
 

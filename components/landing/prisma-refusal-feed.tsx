@@ -13,22 +13,27 @@ import { WordsPullUpMultiStyle } from "./words-pull-up";
  * rendered on the server too, and Date.now() there would not match the
  * client's first paint. */
 const LINES = [
-  { time: "17:04:12", tier: "T0", agent: "Sisyphus", verb: "refused", token: "0x4f2a…", reason: "contract owner not renounced" },
-  { time: "17:04:12", tier: "T0", agent: "Little Boat", verb: "refused", token: "0x4f2a…", reason: "contract owner not renounced" },
-  { time: "17:04:15", tier: "T0", agent: "Driftwood", verb: "refused", token: "0x7c19…", reason: "blacklist capability present" },
+  { time: "17:04:12", tier: "T0", agent: "Sisyphus", verb: "refused", token: "0x4f2a…", reason: "deployer rug history 60%" },
+  { time: "17:04:12", tier: "T0", agent: "Little Boat", verb: "refused", token: "0x4f2a…", reason: "deployer rug history 60%" },
+  { time: "17:04:15", tier: "T1", agent: "Driftwood", verb: "refused", token: "0x7c19…", reason: "blacklist capability present" },
   { time: "17:04:19", tier: "T1", agent: "Sisyphus", verb: "refused", token: "0x9b37…", reason: "top-10 holds 61%" },
-  { time: "17:04:23", tier: "T1", agent: "Driftwood", verb: "refused", token: "0xb03e…", reason: "sell simulation failed" },
-  { time: "17:04:27", tier: "T1", agent: "Little Boat", verb: "refused", token: "0xb03e…", reason: "liquidity below floor" },
-  { time: "17:04:31", tier: "T2", agent: "Little Boat", verb: "refused", token: "0xc58d…", reason: "deployer: 4 prior rugs" },
-  { time: "17:05:44", tier: "T0", agent: "Sisyphus", verb: "refused", token: "0xe2a1…", reason: "creator holds 23%" },
-  { time: "17:06:02", tier: "RV", agent: "Driftwood", verb: "exited", token: "0xa4f0…", reason: "sell simulation began failing" },
+  { time: "17:04:23", tier: "T1", agent: "Driftwood", verb: "refused", token: "0xb03e…", reason: "flagged as a honeypot" },
+  { time: "17:04:27", tier: "T1", agent: "Little Boat", verb: "refused", token: "0xb03e…", reason: "sell tax 18% over limit" },
+  { time: "17:04:31", tier: "T0", agent: "Little Boat", verb: "refused", token: "0xc58d…", reason: "bundled launch: 42% bundler-held" },
+  { time: "17:04:38", tier: "T1", agent: "Sisyphus", verb: "refused", token: "0xd71b…", reason: "contract owner not renounced" },
+  { time: "17:05:44", tier: "T2", agent: "Sisyphus", verb: "refused", token: "0xe2a1…", reason: "creator holds 23%" },
+  { time: "17:06:02", tier: "EX", agent: "Driftwood", verb: "exited", token: "0xa4f0…", reason: "stop level reached" },
 ];
+
+/** Lines already on screen when the feed starts and when it loops, so the
+ * frame is never shown empty. */
+const INITIAL_SHOWN = 6;
 
 const TIER_LABEL: Record<string, string> = {
   T0: "Tier 0",
   T1: "Tier 1",
   T2: "Tier 2",
-  RV: "Re-verify",
+  EX: "Exit rule",
 };
 
 const LINE_INTERVAL_MS = 900;
@@ -39,13 +44,13 @@ export function PrismaRefusalFeed() {
   const inView = useInView(frameRef, { margin: "-80px" });
   // Starts empty so the server-rendered markup and the client's first paint
   // agree; lines only begin arriving once the frame is actually on screen.
-  const [shown, setShown] = useState(0);
+  const [shown, setShown] = useState(INITIAL_SHOWN);
 
   useEffect(() => {
     if (!inView) return;
 
     if (shown >= LINES.length) {
-      const restart = setTimeout(() => setShown(0), LOOP_PAUSE_MS);
+      const restart = setTimeout(() => setShown(INITIAL_SHOWN), LOOP_PAUSE_MS);
       return () => clearTimeout(restart);
     }
 
@@ -106,7 +111,7 @@ export function PrismaRefusalFeed() {
                 <span className="text-gray-600">{line.time}</span>
                 <span
                   className={
-                    line.tier === "RV"
+                    line.tier === "EX"
                       ? "text-primary/80 w-[3.5rem] shrink-0"
                       : "w-[3.5rem] shrink-0 text-gray-500"
                   }
@@ -148,7 +153,7 @@ export function PrismaRefusalFeed() {
             One safety gate serves the whole fleet: a verdict is a property of
             a token, not of an operator, so it is computed once per token per
             tier and published to every agent watching. Two agents refusing
-            the same mint in the same second is that, not a coincidence.
+            the same token in the same second is that, not a coincidence.
           </p>
         </div>
 

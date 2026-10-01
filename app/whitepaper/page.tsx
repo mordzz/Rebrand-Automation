@@ -51,9 +51,8 @@ export default function WhitepaperPage() {
                 </em>
               </h1>
               <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
-                v1.0-rc: the mechanisms, not the intentions. Fields marked
-                ⟦FILL⟧ are values not yet measured, decided, or reviewed;
-                see Appendix D.
+                v1.5: the mechanisms, not the intentions. Values not yet
+                measured or decided are marked as pending; see Appendix D.
               </p>
             </div>
             <dl className="flex shrink-0 gap-8 text-xs">
@@ -69,7 +68,7 @@ export default function WhitepaperPage() {
                 <dt className="text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase">
                   Version
                 </dt>
-                <dd className="mt-1.5 text-lg font-medium">v1.1</dd>
+                <dd className="mt-1.5 text-lg font-medium">v1.5</dd>
               </div>
             </dl>
           </div>

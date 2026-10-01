@@ -139,7 +139,7 @@ export const markdownComponents: Components = {
     if (href === "#fill") {
       return (
         <span className="inline-flex items-center rounded-full bg-accent/15 px-2 py-0.5 font-mono text-[0.8em] whitespace-nowrap text-accent">
-          ⟦{flattenText(children)}⟧
+          {flattenText(children).replace(/^FILL/, "Pending")}
         </span>
       );
     }

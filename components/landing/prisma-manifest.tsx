@@ -184,7 +184,7 @@ export function PrismaManifest() {
               <h3 className="text-primary text-lg font-medium">
                 Fail closed<span className="text-gray-500">.</span>
               </h3>
-              <p className="mt-3 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
+              <p className="mt-3 text-xs leading-relaxed text-gray-300 sm:text-sm">
                 A token has to affirmatively pass every applicable check.
                 Missing or unreadable data is a failure, never a pass. If the
                 security read fails, the candidate is refused outright, and an
