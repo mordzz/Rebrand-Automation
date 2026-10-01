@@ -21,14 +21,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           theme: "light",
           accentColor: "#d97757",
           // Robinhood Chain is EVM - the connected wallet establishes
-          // ownership only (see components/deploy/deploy-shell.tsx), so
-          // any standard EVM wallet (MetaMask, Coinbase Wallet, WalletConnect,
-          // etc.) works here. `walletList` is left at Privy's own default.
-          //
-          // EVM-only (PR09A): the Solana runtime - including the Solana
-          // reveal-key flow that was the last reason to keep Solana login -
-          // is retired. Historical Solana-keyed bots' data stays in the DB.
+          // ownership only (see components/deploy/deploy-shell.tsx).
+          // MetaMask is the only offered login wallet.
           walletChainType: "ethereum-only",
+          walletList: ["metamask"],
         },
         // New embedded wallets default to Robinhood Chain; external
         // wallets are prompted to switch to it if they're elsewhere.
