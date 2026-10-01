@@ -32,7 +32,7 @@ function str(value: unknown): string | null {
 /* A token's socials rarely change once set - worth remembering across the
    short poll windows the KOL table refreshes on, so a page of results
    already seen doesn't re-spend a GMGN call per mint every cycle. Negative
-   results are cached too, same reasoning as lib/jupiter/token-icons.ts. */
+   results are cached too, same reasoning as components/token-icon.tsx. */
 const MAX_CACHE_ENTRIES = 2000;
 const cache = new Map<string, TokenSocials>();
 

@@ -20,7 +20,7 @@ export type RankedToken = {
   symbol: string | null;
   name: string | null;
   /** GMGN's own logo URL - same 403-to-non-gmgn-origins restriction as
-   * discovery.ts#DiscoveredToken.logo. Resolve via lib/jupiter/token-icons
+   * discovery.ts#DiscoveredToken.logo. Resolve via components/token-icon.tsx
    * before rendering, never as-is. */
   logo: string | null;
   priceUsd: number | null;

@@ -37,7 +37,7 @@ export type KolPositionCycle = {
   gmgnAvatarUrl: string | null;
   mint: string;
   symbol: string | null;
-  /** Raw GMGN URL - resolve via lib/jupiter/token-icons.ts before
+  /** Raw GMGN URL - resolve via components/token-icon.tsx before
    * rendering, same as every other GMGN-sourced token logo here. */
   tokenLogo: string | null;
   /** Circulating supply as reported alongside the trade - pump.fun mints
