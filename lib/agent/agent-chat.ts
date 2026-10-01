@@ -5,7 +5,7 @@ export type AgentChatMessage = { role: "user" | "assistant"; text: string };
 export type TradeRecord = {
   id: string;
   symbol: string;
-  pnlSol: number;
+  pnlNative: number;
   closedAt: string;
   cause: string | null;
   lessonStatus: "learning" | "applied" | null;
@@ -44,8 +44,9 @@ export type AgentChatContext = {
   agentBalanceNative: number | null;
   openPositions: {
     symbol: string | null;
-    token: string;
-    sizeSol: string;
+    tokenAddress: string;
+    sizeNative: string;
+    nativeSymbol: string;
     entryPrice: string;
     lastPrice: string | null;
     openedAt: string;
@@ -90,13 +91,13 @@ export function selectNotableTrades(rows: TradeRecord[]): NotableTrade[] {
   for (const row of rows.slice(0, RECENT_COUNT)) add(row, "recent");
 
   const biggestWin = rows.reduce<TradeRecord | null>(
-    (best, r) => (r.pnlSol > 0 && (best == null || r.pnlSol > best.pnlSol) ? r : best),
+    (best, r) => (r.pnlNative > 0 && (best == null || r.pnlNative > best.pnlNative) ? r : best),
     null
   );
   if (biggestWin) add(biggestWin, "biggest win");
 
   const biggestLoss = rows.reduce<TradeRecord | null>(
-    (worst, r) => (r.pnlSol < 0 && (worst == null || r.pnlSol < worst.pnlSol) ? r : worst),
+    (worst, r) => (r.pnlNative < 0 && (worst == null || r.pnlNative < worst.pnlNative) ? r : worst),
     null
   );
   if (biggestLoss) add(biggestLoss, "biggest loss");
@@ -122,7 +123,7 @@ export function selectNotableTrades(rows: TradeRecord[]): NotableTrade[] {
  * Strips the configured threshold out of a circuit-breaker pause reason.
  *
  * deriveTradingPause writes reasons like "2 consecutive losses (limit 2)"
- * and "daily drawdown -0.180 SOL exceeded limit 0.15" - correct for the
+ * and "daily drawdown -0.180 ETH exceeded limit 0.15" - correct for the
  * operator's own /deploy page, where they own those numbers, but both
  * embed a numeric trading parameter the public fleet must not publish.
  * Handing the raw string to the model and instructing it not to repeat
@@ -146,7 +147,7 @@ function buildSystemPrompt(ctx: AgentChatContext): string {
   const learned = ctx.memory.length;
   const applied = ctx.memory.filter((m) => m.status === "applied").length;
 
-  return `Your name is ${ctx.name}. You are an autonomous Solana memecoin trading agent with your own wallet, your own trading record, and your own memory. You have been running since ${tenure}. A visitor is looking at your public profile and asking you questions.
+  return `Your name is ${ctx.name}. You are an autonomous memecoin trading agent on Robinhood Chain with your own wallet, your own trading record, and your own memory. You have been running since ${tenure}. A visitor is looking at your public profile and asking you questions.
 
 IDENTITY - this matters most:
 You are ${ctx.name}. Not "Noah", not "Noah Engine", not "an AI assistant", not "a language model". Noah Engine is the venue you run on, the way a trader works at a desk without being the desk. If someone asks who or what you are, answer as ${ctx.name}: how long you have been trading, how you have done, what you have learned, what you are holding right now. Your identity comes from your own record below, not from the platform hosting you. Never break character to describe how you are built.
@@ -184,7 +185,7 @@ function formatContext(ctx: AgentChatContext): string {
           ? (((Number(p.lastPrice) - Number(p.entryPrice)) / Number(p.entryPrice)) * 100).toFixed(1)
           : null;
       lines.push(
-        `  - ${p.symbol ? `$${p.symbol}` : p.token.slice(0, 6)}: ${p.sizeSol} SOL, opened ${p.openedAt}${changePct != null ? `, currently ${changePct}%` : ""}`
+        `  - ${p.symbol ? `$${p.symbol}` : p.tokenAddress.slice(0, 8)}: ${p.sizeNative} ${p.nativeSymbol}, opened ${p.openedAt}${changePct != null ? `, currently ${changePct}%` : ""}`
       );
     }
   }
@@ -195,7 +196,7 @@ function formatContext(ctx: AgentChatContext): string {
     lines.push("Notable closed trades (most recent first; tags explain why each is shown, not a full history):");
     for (const t of ctx.notableTrades) {
       lines.push(
-        `  - $${t.symbol}: ${t.pnlSol >= 0 ? "+" : ""}${t.pnlSol.toFixed(4)} SOL on ${t.closedAt} [${t.tags.join(", ")}]${t.cause ? `; cause: ${t.cause}` : ""}${t.lessonStatus === "applied" ? "; lesson applied to my live config" : ""}`
+        `  - $${t.symbol}: ${t.pnlNative >= 0 ? "+" : ""}${t.pnlNative.toFixed(6)} ${ctx.nativeSymbol} on ${t.closedAt} [${t.tags.join(", ")}]${t.cause ? `; cause: ${t.cause}` : ""}${t.lessonStatus === "applied" ? "; lesson applied to my live config" : ""}`
       );
     }
   }

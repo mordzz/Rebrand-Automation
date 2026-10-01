@@ -13,13 +13,12 @@ import { formatMarketCap } from "@/lib/sniper/market-cap";
 
 export type OpenPositionDto = {
   id: string;
-  token: string;
+  tokenAddress: string;
   symbol: string | null;
   strategy: string;
   entryPrice: string;
-  sizeSol: string;
-  /** PR04 neutral size + chain - pick the unit per position (PR14). */
-  sizeNative?: string | null;
+  sizeNative: string;
+  nativeSymbol?: string | null;
   chain?: string | null;
   lastPrice: string | null;
   openedAt: string;
@@ -121,7 +120,7 @@ function PositionRow({ position }: { position: OpenPositionDto }) {
     <li className="flex items-center gap-3 border-t border-white/5 px-4 py-2.5">
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium">
-          {position.symbol ? `$${position.symbol}` : shortMint(position.token)}
+          {position.symbol ? `$${position.symbol}` : shortMint(position.tokenAddress)}
           <span className="ml-2 font-normal text-muted-foreground">
             {position.strategy}
           </span>

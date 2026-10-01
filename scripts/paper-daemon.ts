@@ -5,36 +5,28 @@
 // effective config (house base + saved overlay), writing real positions/
 // trades rows scoped to that bot's wallet address - the same schema the
 // house desk uses, just with walletAddress set instead of null (see the
-// "null = house desk" convention documented on drizzle/schema/trading.ts#trades).
+// "null = house desk" convention documented on lib/db/schema.ts#trades).
 //
-// This process is structurally incapable of moving real funds: it never
-// imports lib/solana/wallet.ts's signing helpers or reads
-// PRIVATE_KEY_SOLANA_WALLET. Every entry/exit signature is the literal
-// string "paper". Trading behavior is per-user config
+// This process is structurally incapable of moving real funds: it imports
+// no swap, signing or key-decryption code, and every entry/exit is a paper
+// simulation (no transaction hash). Trading behavior is per-user config
 // (lib/sniper/effective-config.ts#getEffectiveConfig), re-read on a
 // roster refresh interval - no restart needed for a user's config change
 // to take effect.
 //
 // Circuit-breaker state (consecutive losses, daily drawdown) is derived
 // fresh from each wallet's own trades every cycle rather than persisted -
-// see lib/sniper/risk-limits.ts#deriveTradingPause for why.
-//
-// Second responsibility: every fresh mint is also evaluated once against
-// the house's own Sniper config (independent of whether any bot is
-// deployed) and, if it passes, recorded to alpha_candidates for the
-// "Alpha" discovery page (app/alpha) - reusing the same already-fetched
-// token safety data as the per-user evaluation above, not a second fetch.
+// see lib/sniper/risk-limits-robinhood.ts#deriveRobinhoodTradingPause.
 import "dotenv/config";
 
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import { writeLog } from "@/lib/logs";
-import { positions, userBots, type SniperState, type UserBot } from "@/drizzle/schema";
+import { positions, userBots, type UserBot } from "@/lib/db/schema";
 import { isGmgnConfigured } from "@/lib/gmgn/client";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { DUST_THRESHOLD_NATIVE, DUST_THRESHOLD_SOL, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
-import { getCurrentPrice } from "@/lib/sniper/exit-price";
+import { DUST_THRESHOLD_NATIVE, evaluateFullExit, evaluateTieredExits } from "@/lib/sniper/exit-logic";
 import {
   closePosition,
   getOpenPositions,
@@ -47,8 +39,8 @@ import type { SniperConfig } from "@/lib/sniper/config";
 
 // ── PR07: Robinhood Chain paper trading ─────────────────────────────────
 // Read-only discovery/security/safety/price adapters and chain-scoped
-// risk helpers only - no swap, no signing, no Solana/Jupiter/EVM
-// execution code is imported below. See openRobinhoodPaperPosition and
+// risk helpers only - no swap, no signing, no EVM execution code is
+// imported below. See openRobinhoodPaperPosition and
 // the ROBINHOOD-PAPER-ONLY markers further down for the structural
 // boundary this relies on.
 import { discoverRobinhoodTokens, type RobinhoodDiscoveredToken } from "@/lib/gmgn/discovery-robinhood";
@@ -62,6 +54,7 @@ import {
   deriveRobinhoodTradingPause,
   resolveRobinhoodNativeLimits,
   sizeForRobinhoodSnipe,
+  type BreakerState,
   type RobinhoodNativeLimits,
 } from "@/lib/sniper/risk-limits-robinhood";
 import { getOpenPositionsByChain } from "@/lib/sniper/positions";
@@ -79,7 +72,7 @@ const PENDING_MAX_AGE_MS = 10 * 60 * 1000;
 const MIN_EXIT_CHECK_INTERVAL_MS = 2000;
 const DEFAULT_EXIT_CHECK_INTERVAL_MS = 4000;
 // Circuit-breaker state is re-derived from the trades table (see
-// lib/sniper/wallet-trade-stats.ts) rather than persisted - cache briefly
+// lib/sniper/wallet-trade-stats-robinhood.ts) rather than persisted - cache briefly
 // so a burst of pending-token evaluations for the same wallet doesn't
 // re-run three DB queries per token.
 const BREAKER_CACHE_TTL_MS = 8_000;
@@ -107,21 +100,13 @@ async function refreshRoster(): Promise<void> {
   );
 }
 
-type BreakerState = Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt">;
-const breakerCache = new Map<string, { state: BreakerState; expiresAt: number }>();
-
-function invalidateBreakerCache(wallet: string): void {
-  breakerCache.delete(wallet);
-}
-
 // Serializes the risk-check-then-write critical section per wallet.
-// Different pending tokens are evaluated concurrently (scheduleQueueDrain
-// fires processPendingToken for every queued item without awaiting between
-// them), so two distinct tokens passing safety for the same wallet at
+// Different candidates for the same wallet can be evaluated concurrently,
+// so two distinct tokens passing safety for the same wallet at
 // nearly the same time would otherwise both read the same pre-write
-// getOpenPositions() snapshot, both pass canOpenNewPosition, and both
+// getOpenPositions() snapshot, both pass the risk gate, and both
 // write - a classic TOCTOU race that silently blows through
-// maxConcurrentPositions/maxTotalDeployedSol (observed live: one wallet
+// maxConcurrentPositions/maxNativeDeployed (observed live: one wallet
 // opened 5 positions against a configured cap of 2). Different wallets
 // never block each other.
 const walletQueues = new Map<string, Promise<unknown>>();
@@ -136,8 +121,7 @@ function runExclusive<T>(wallet: string, fn: () => Promise<T>): Promise<T> {
 }
 
 
-/** A vetted Robinhood entry candidate - PR07. Structurally separate from
- * the retired Solana entry candidate (PR09A). Only ever passed to
+/** A vetted Robinhood entry candidate. Only ever passed to
  * openRobinhoodPaperPosition. */
 type RobinhoodEntryCandidate = {
   chain: "robinhood";
@@ -170,18 +154,12 @@ type RobinhoodEntryCandidate = {
 // either here would be exactly the "Robinhood live fallback" this PR
 // must not create.
 // scripts/test-robinhood-paper-trading.ts statically greps this file for
-// forbidden swap/signing/Solana-RPC identifiers, so this boundary is
+// forbidden swap/signing identifiers, so this boundary is
 // regression-tested, not just documented.
 // ══════════════════════════════════════════════════════════════════════
 
-/** Per-wallet Robinhood-only breaker cache - deliberately separate from
- * `breakerCache` above (which is Solana-scoped, reading pnlSol/
- * maxDailyDrawdownSol). Keeps a wallet's Robinhood ETH circuit breaker
- * fully independent of its Solana SOL one; never merged, never summed. */
-const robinhoodBreakerCache = new Map<
-  string,
-  { state: Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt">; expiresAt: number }
->();
+/** Per-wallet breaker cache (see BREAKER_CACHE_TTL_MS). */
+const robinhoodBreakerCache = new Map<string, { state: BreakerState; expiresAt: number }>();
 
 function invalidateRobinhoodBreakerCache(wallet: string): void {
   robinhoodBreakerCache.delete(wallet);
@@ -192,7 +170,7 @@ async function getCachedRobinhoodBreakerState(
   breakerResetAt: Date | null,
   config: Pick<SniperConfig, "maxConsecutiveLosses">,
   limits: RobinhoodNativeLimits
-): Promise<Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt">> {
+): Promise<BreakerState> {
   const cached = robinhoodBreakerCache.get(wallet);
   if (cached && cached.expiresAt > Date.now()) return cached.state;
 
@@ -238,8 +216,8 @@ async function openRobinhoodPaperPosition(
       // Wallet-global, ALL chains - maxConcurrentPositions keeps its
       // existing single meaning, unchanged by this PR.
       getOpenPositions(bot.walletAddress),
-      // Chain-scoped - the deployed-native sum below must never include
-      // a Solana sizeSol figure.
+      // Chain-scoped - the deployed-native sum below only counts
+      // Robinhood rows.
       getOpenPositionsByChain(bot.walletAddress, "robinhood"),
       getCachedRobinhoodBreakerState(bot.walletAddress, bot.breakerResetAt, config, limits),
     ]);
@@ -270,12 +248,6 @@ async function openRobinhoodPaperPosition(
     });
 
     await openPosition({
-      // Legacy NOT NULL compatibility shadows - see OpenPositionInput's
-      // doc comments in lib/sniper/positions.ts. Never read for any
-      // Robinhood decision; tokenAddress/sizeNative below are.
-      token: candidate.tokenAddress,
-      sizeSol: sizeNative,
-      entryTxSignature: "paper",
       symbol: candidate.symbol,
       entryPrice: candidate.entryPrice,
       takeProfitPct: config.takeProfitPct,
@@ -303,11 +275,8 @@ async function openRobinhoodPaperPosition(
 // ROBINHOOD-PAPER-ONLY-END
 
 
-/** Robinhood counterpart to logRefusal - writes tokenAddress/chain/
- * network instead of tokenMint, so an EVM `0x...` address is never
- * persisted into the Solana-shaped tokenMint column, and never loses
- * its chain/network. txHash stays null (a refusal never has a
- * transaction). */
+/** Logs a refused entry with its token address, chain and network.
+ * txHash stays null (a refusal never has a transaction). */
 function logRobinhoodRefusal(
   bot: UserBot,
   tokenAddress: string,
@@ -368,20 +337,14 @@ async function checkAllExits(): Promise<void> {
   if (dueWallets.size === 0) return;
 
   const priceCache = new Map<string, Promise<number | null>>();
-  /** `chain` picks the price source: Robinhood positions price against
-   * GMGN's USD-per-token field (lib/gmgn/price-robinhood.ts), matching
-   * the same source used at entry so entryPriceUnit === currentPriceUnit
-   * holds. Everything else (chain null/"solana") is unchanged - priced
-   * against DexScreener's SOL-denominated priceNative, as before. */
-  function priceFor(token: string, chain: string | null): Promise<number | null> {
-    const key = `${chain ?? "solana"}:${token}`;
-    let cached = priceCache.get(key);
+  /** Prices against GMGN's USD-per-token field
+   * (lib/gmgn/price-robinhood.ts), the same source used at entry, so
+   * entryPriceUnit === currentPriceUnit holds. */
+  function priceFor(tokenAddress: string): Promise<number | null> {
+    let cached = priceCache.get(tokenAddress);
     if (!cached) {
-      cached =
-        chain === "robinhood"
-          ? getRobinhoodTokenPriceUsd(token).then((r) => (r.ok ? r.priceUsd : null))
-          : getCurrentPrice(token);
-      priceCache.set(key, cached);
+      cached = getRobinhoodTokenPriceUsd(tokenAddress).then((r) => (r.ok ? r.priceUsd : null));
+      priceCache.set(tokenAddress, cached);
     }
     return cached;
   }
@@ -397,51 +360,21 @@ async function checkAllExits(): Promise<void> {
     // Honour this bot's own cadence, not the fleet's tightest.
     if (!dueWallets.has(walletAddress)) continue;
 
-    const isRobinhood = position.chain === "robinhood";
-    // ROBINHOOD-PAPER-ONLY: token/current-price lookup for a Robinhood
-    // position uses GMGN's USD-per-token adapter (see priceFor above),
-    // never DexScreener/Jupiter/a Solana RPC. `position.tokenAddress`
-    // is the EVM address; `position.token` (legacy) holds the same
-    // value as a compatibility shadow (see positions.ts), so either
-    // works here, but tokenAddress is used to keep intent explicit.
-    const currentPrice = await priceFor(
-      isRobinhood ? (position.tokenAddress ?? position.token) : position.token,
-      position.chain
-    );
+    // ROBINHOOD-PAPER-ONLY: this loop only ever paper-exits Robinhood
+    // positions (openRobinhoodPaperPosition only writes engine:"paper").
+    if (position.chain !== "robinhood") continue;
+
+    const currentPrice = await priceFor(position.tokenAddress);
     if (currentPrice == null) continue;
 
     const entryPrice = Number(position.entryPrice);
-    // For a Robinhood position this is the ETH notional (sizeNative),
-    // stored in sizeSol only as the legacy NOT-NULL compatibility shadow
-    // - both hold the same number, so reading either is equivalent, but
-    // sizeNative is read here to keep the Robinhood risk figure explicit
-    // and never silently mixed with a Solana SOL amount.
-    const sizeSol = isRobinhood
-      ? Number(position.sizeNative ?? position.sizeSol)
-      : Number(position.sizeSol);
-
-    /* A position opened with real money has to be closed with a real
-       sale, whole or in tiers. Gated on the position itself, not the bot's
-       current mode: switching a bot back to paper must not strand a live
-       position with no way out.
-       ROBINHOOD-PAPER-ONLY: liveBot is unconditionally null for a
-       Robinhood position - no round-trip through positionContext.engine
-       is possible, since openRobinhoodPaperPosition only ever writes
-       engine:"paper". This is a second, independent guarantee beyond
-       "PR07 never writes engine:'live' for Robinhood": even if that
-       invariant were ever violated by a bug, this line still forces the
-       paper-only exit path for every chain="robinhood" row. */
-    const positionContext = (position.context ?? {}) as Record<string, unknown>;
-    /* PR09A: the Solana live-execution runtime is retired. A historical
-       Solana position opened with real money cannot be sold from here any
-       more, and closing it on paper would book a fill that never happened,
-       so it is left open and untouched (historical data preserved). */
-    if (!isRobinhood && positionContext.engine === "live") continue;
+    const sizeNative = Number(position.sizeNative);
+    const nativeSymbol = position.nativeSymbol ?? "ETH";
 
     const decision = evaluateFullExit(
       {
         entryPrice,
-        sizeSol,
+        sizeNative,
         lastPrice: position.lastPrice != null ? Number(position.lastPrice) : null,
         peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null,
         openedAt: position.openedAt,
@@ -453,131 +386,71 @@ async function checkAllExits(): Promise<void> {
     await updatePositionPrice(position.id, currentPrice, decision.peakPrice ?? undefined);
 
     if (decision.exit) {
-      const { reason, pnlSol } = decision;
-      const exitTxSignature = "paper";
-      /* The modelled fill, not the observed mark: a threshold exit is
-         credited at its trigger (see evaluateFullExit). */
-      const exitPrice = decision.fillPrice;
+      const { reason, pnlNative } = decision;
 
-      if (isRobinhood) {
-        log(
-          `PAPER ${reason} (Robinhood) - ${position.symbol} (${position.tokenAddress ?? position.token}) wallet ${short(walletAddress)} pnl ${pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"}`
-        );
-        void writeLog({
-          level: pnlSol >= 0 ? "sell" : "guard",
-          source: "paper",
-          walletAddress,
-          tokenAddress: position.tokenAddress ?? position.token,
-          chain: "robinhood",
-          network: position.network,
-          message: `${reason} on $${position.symbol ?? "?"}: ${pnlSol >= 0 ? "+" : ""}${pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"} (Robinhood paper)`,
-        });
-      } else {
-        log(
-          `PAPER ${reason} - ${position.symbol} (${position.token}) wallet ${short(walletAddress)} pnl ${pnlSol.toFixed(4)} SOL`
-        );
-        void writeLog({
-          level: pnlSol >= 0 ? "sell" : "guard",
-          source: "paper",
-          walletAddress,
-          tokenMint: position.token,
-          message: `${reason} on $${position.symbol ?? "?"}: ${pnlSol >= 0 ? "+" : ""}${pnlSol.toFixed(4)} SOL`,
-        });
-      }
+      log(
+        `PAPER ${reason} (Robinhood) - ${position.symbol} (${position.tokenAddress}) wallet ${short(walletAddress)} pnl ${pnlNative.toFixed(6)} ${nativeSymbol}`
+      );
+      void writeLog({
+        level: pnlNative >= 0 ? "sell" : "guard",
+        source: "paper",
+        walletAddress,
+        tokenAddress: position.tokenAddress,
+        chain: "robinhood",
+        network: position.network,
+        message: `${reason} on $${position.symbol ?? "?"}: ${pnlNative >= 0 ? "+" : ""}${pnlNative.toFixed(6)} ${nativeSymbol} (Robinhood paper)`,
+      });
 
       await closePosition(position, {
-        exitPrice,
-        exitTxSignature,
-        pnlSol,
+        /* The modelled fill, not the observed mark: a threshold exit is
+           credited at its trigger (see evaluateFullExit). */
+        exitPrice: decision.fillPrice,
+        exitTxHash: null,
+        pnlNative,
         reason,
-        ...(isRobinhood
-          ? {
-              sizeNative: Number(position.sizeNative ?? position.sizeSol),
-              pnlNative: pnlSol,
-              nativeSymbol: position.nativeSymbol ?? "ETH",
-              chain: "robinhood",
-              network: position.network,
-              tokenAddress: position.tokenAddress ?? position.token,
-            }
-          : {}),
       });
-      invalidateBreakerCache(walletAddress);
-      if (isRobinhood) invalidateRobinhoodBreakerCache(walletAddress);
+      invalidateRobinhoodBreakerCache(walletAddress);
       continue;
     }
 
     const context = (position.context as { triggeredTiers?: number[] } | null) ?? {};
     const triggeredTiers = context.triggeredTiers ?? [];
-    const tieredResults = evaluateTieredExits({ entryPrice, sizeSol, triggeredTiers }, config, currentPrice);
+    const tieredResults = evaluateTieredExits({ entryPrice, sizeNative, triggeredTiers }, config, currentPrice);
 
     let latestPosition = position;
-    let remainingSizeSol = sizeSol;
+    let remainingSizeNative = sizeNative;
     for (const tier of tieredResults) {
-      const tierExitSignature = "paper";
-      const tierExitPrice = tier.fillPrice;
-      const tierPnlSol = tier.pnlSol;
-
-      if (isRobinhood) {
-        log(
-          `PAPER tiered take-profit tier ${tier.tierIndex} (Robinhood) - ${position.symbol} (${position.tokenAddress ?? position.token}) wallet ${short(walletAddress)} sold ${tier.sellPortionPct}% pnl ${tier.pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"}`
-        );
-        void writeLog({
-          level: "sell",
-          source: "paper",
-          walletAddress,
-          tokenAddress: position.tokenAddress ?? position.token,
-          chain: "robinhood",
-          network: position.network,
-          message: `Tier ${tier.tierIndex} take-profit on $${position.symbol ?? "?"}: sold ${tier.sellPortionPct}%, ${tier.pnlSol >= 0 ? "+" : ""}${tier.pnlSol.toFixed(6)} ${position.nativeSymbol ?? "ETH"} (Robinhood paper)`,
-        });
-      } else {
-        log(
-          `PAPER tiered take-profit tier ${tier.tierIndex} - ${position.symbol} (${position.token}) wallet ${short(walletAddress)} sold ${tier.sellPortionPct}% pnl ${tier.pnlSol.toFixed(4)} SOL`
-        );
-        void writeLog({
-          level: "sell",
-          source: "paper",
-          walletAddress,
-          tokenMint: position.token,
-          message: `Tier ${tier.tierIndex} take-profit on $${position.symbol ?? "?"}: sold ${tier.sellPortionPct}%, ${tier.pnlSol >= 0 ? "+" : ""}${tier.pnlSol.toFixed(4)} SOL`,
-        });
-      }
+      log(
+        `PAPER tiered take-profit tier ${tier.tierIndex} (Robinhood) - ${position.symbol} (${position.tokenAddress}) wallet ${short(walletAddress)} sold ${tier.sellPortionPct}% pnl ${tier.pnlNative.toFixed(6)} ${nativeSymbol}`
+      );
+      void writeLog({
+        level: "sell",
+        source: "paper",
+        walletAddress,
+        tokenAddress: position.tokenAddress,
+        chain: "robinhood",
+        network: position.network,
+        message: `Tier ${tier.tierIndex} take-profit on $${position.symbol ?? "?"}: sold ${tier.sellPortionPct}%, ${tier.pnlNative >= 0 ? "+" : ""}${tier.pnlNative.toFixed(6)} ${nativeSymbol} (Robinhood paper)`,
+      });
 
       await recordPartialExit(latestPosition, {
-        soldSol: tier.soldSol,
-        exitPrice: tierExitPrice,
-        exitTxSignature: tierExitSignature,
-        pnlSol: tierPnlSol,
+        soldNative: tier.soldNative,
+        exitPrice: tier.fillPrice,
+        exitTxHash: null,
+        pnlNative: tier.pnlNative,
         tierIndex: tier.tierIndex,
-        ...(isRobinhood
-          ? {
-              sizeNative: tier.soldSol,
-              pnlNative: tierPnlSol,
-              nativeSymbol: position.nativeSymbol ?? "ETH",
-              chain: "robinhood",
-              network: position.network,
-              tokenAddress: position.tokenAddress ?? position.token,
-            }
-          : {}),
       });
-      invalidateBreakerCache(walletAddress);
-      if (isRobinhood) invalidateRobinhoodBreakerCache(walletAddress);
+      invalidateRobinhoodBreakerCache(walletAddress);
 
       triggeredTiers.push(tier.tierIndex);
-      remainingSizeSol -= tier.soldSol;
+      remainingSizeNative -= tier.soldNative;
       latestPosition = {
         ...latestPosition,
-        sizeSol: String(remainingSizeSol),
-        ...(isRobinhood ? { sizeNative: String(remainingSizeSol) } : {}),
+        sizeNative: String(remainingSizeNative),
         context: { ...context, triggeredTiers },
       };
 
-      // Same numeric threshold and math either way (DUST_THRESHOLD_SOL
-      // and DUST_THRESHOLD_NATIVE are the same constant - see
-      // lib/sniper/exit-logic.ts) - this line just names the concept
-      // correctly for whichever chain this position belongs to, without
-      // inventing any SOL<->ETH conversion.
-      if (remainingSizeSol <= (isRobinhood ? DUST_THRESHOLD_NATIVE : DUST_THRESHOLD_SOL)) {
+      if (remainingSizeNative <= DUST_THRESHOLD_NATIVE) {
         await markPositionClosed(position.id);
         break;
       }
@@ -589,10 +462,8 @@ async function checkAllExits(): Promise<void> {
 // ROBINHOOD-PAPER-ONLY-START (discovery)
 // ── PR07: Robinhood `pons new_creation` discovery ───────────────────────
 //
-// Structurally the same shape as the GMGN Solana loop above (poll →
-// pending map → per-wallet eligibility → safety → paper entry), but its
-// own discovery source, its own pending map, and - critically - its own
-// terminal function (openRobinhoodPaperPosition, ROBINHOOD-PAPER-ONLY
+// Poll → pending map → per-wallet eligibility → safety → paper entry, with
+// its own terminal function (openRobinhoodPaperPosition, ROBINHOOD-PAPER-ONLY
 // block above) that never touches Jupiter/live execution. v1 scope only:
 // `pons`, `new_creation` - both enforced by discoverRobinhoodTokens()
 // itself (lib/gmgn/discovery-robinhood.ts), not re-implemented here.
@@ -603,8 +474,7 @@ type RobinhoodPending = {
   token: RobinhoodDiscoveredToken;
   firstSeenAt: number;
   attemptedWallets: Set<string>;
-  /** Fetched once per pending item (not once per wallet/tick) - same
-   * "shared, not re-fetched" posture as PendingToken.tokenData above.
+  /** Fetched once per pending item (not once per wallet/tick).
    * `undefined` = not yet attempted; a real object = fetched
    * successfully (individual facts inside it may still be null/unknown
    * - evaluateRobinhoodSafety's existing per-fact fail-closed handling
@@ -629,7 +499,7 @@ async function processRobinhoodCandidates(): Promise<void> {
     // Every failure branch below is a FAILED cycle, never treated as an
     // empty market - see lib/gmgn/discovery-robinhood.ts's discriminated
     // RobinhoodDiscoveryResult.
-    if (result.reason === "not_configured") return; // GMGN_API_KEY unset - quiet, same as the Solana GMGN path's isGmgnConfigured() gate
+    if (result.reason === "not_configured") return; // GMGN_API_KEY unset - quiet
     if (result.reason === "launchpad_allowlist_not_configured") {
       log("Robinhood discovery: launchpad allow-list not configured (GMGN_ROBINHOOD_LAUNCHPADS unset) - skipping cycle");
       return;
@@ -677,8 +547,8 @@ async function processRobinhoodCandidates(): Promise<void> {
     );
     if (eligible.length === 0) continue;
 
-    // Claim synchronously before any await, same TOCTOU-avoidance reason
-    // as processPendingToken above.
+    // Claim synchronously before any await, so a concurrent cycle never
+    // evaluates the same token twice for one wallet.
     for (const { bot } of eligible) item.attemptedWallets.add(bot.walletAddress);
 
     // A security fetch is attempted once per item and cached either way.
@@ -738,9 +608,7 @@ async function processRobinhoodCandidates(): Promise<void> {
     for (const { bot, config } of eligible) {
       try {
         // Robinhood discovery is GMGN - a bot configured without "gmgn"
-        // in entrySources (e.g. ["pump"] only) must not enter a Robinhood
-        // candidate, same source-gate the Solana GMGN path already
-        // applies to itself.
+        // in entrySources must not enter a Robinhood candidate.
         if (!config.entrySources.includes("gmgn")) continue;
 
         const safety = await evaluateRobinhoodSafety(item.token, item.security ?? null, config, ageSec);
@@ -852,11 +720,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  /* PR09A: Solana entry sources (PumpPortal stream, GMGN Solana discovery)
-     and Solana live execution are retired. Entries come from Robinhood
-     discovery only (paper, PR07); existing Solana paper positions are still
-     watched and exited so their history closes correctly. */
-  log("Paper daemon starting - Robinhood paper trading; Solana entry/execution runtime retired.");
+  log("Paper daemon starting - Robinhood paper trading.");
 
   await refreshRoster();
   log(`Roster: ${roster.length} deployed bot(s).`);

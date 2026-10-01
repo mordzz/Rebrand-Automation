@@ -4,7 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import type { ClosedTradeInput } from "@/lib/agent/analyze-loss";
 import { recordClosedTrade } from "@/lib/agent/record-trade";
 import { getDb } from "@/lib/db";
-import { trades } from "@/drizzle/schema";
+import { trades } from "@/lib/db/schema";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** `?wallet=` scopes to one deployed bot's own trade history; omitted
@@ -45,9 +45,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body.token || !body.strategy || body.pnlSol === undefined) {
+  if (!body.token || !body.strategy || body.pnlNative === undefined) {
     return NextResponse.json(
-      { error: "token, strategy, and pnlSol are required" },
+      { error: "token, strategy, and pnlNative are required" },
       { status: 400 },
     );
   }

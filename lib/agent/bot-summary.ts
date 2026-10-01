@@ -1,12 +1,10 @@
 /**
- * Chain-correct bot summaries for display (stats, atelier, agent chat) -
- * PR14.
+ * Bot summaries for display (stats, atelier, agent chat).
  *
  * Display only - no trading decision is made here. It reuses the exact
- * functions scripts/paper-daemon.ts uses for Robinhood bots, so what the UI
- * shows matches what the daemon enforces:
- *   - PnL is summed per chain: Robinhood rows in ETH (pnlNative), historical
- *     Solana rows kept separate in SOL. Never summed across chains.
+ * functions scripts/paper-daemon.ts uses, so what the UI shows matches
+ * what the daemon enforces:
+ *   - PnL is summed in ETH (pnlNative).
  *   - Circuit-breaker status uses deriveRobinhoodTradingPause with the
  *     bot's Robinhood native limits (unset limits = entries refused, which
  *     is exactly how the daemon behaves).
@@ -24,29 +22,23 @@ import {
   getRecentRobinhoodOutcomes,
 } from "@/lib/sniper/wallet-trade-stats-robinhood";
 
-type TradeLike = { chain?: string | null; pnlSol: string | number; pnlNative?: string | number | null };
+type TradeLike = { pnlNative: string | number };
 
 export type PnlSummary = {
-  /** Active chain (Robinhood) realized PnL, in `nativeSymbol`. */
+  /** Realized PnL, in `nativeSymbol`. */
   pnlNative: number;
   nativeSymbol: typeof ROBINHOOD_NATIVE_SYMBOL;
-  /** Historical Solana realized PnL over the same window, in SOL. */
-  pnlSolHistorical: number;
 };
 
 export function summarizePnl(rows: TradeLike[]): PnlSummary {
   let pnlNative = 0;
-  let pnlSolHistorical = 0;
-  for (const t of rows) {
-    if (t.chain === "robinhood") pnlNative += Number(t.pnlNative ?? t.pnlSol) || 0;
-    else pnlSolHistorical += Number(t.pnlSol) || 0;
-  }
-  return { pnlNative, nativeSymbol: ROBINHOOD_NATIVE_SYMBOL, pnlSolHistorical };
+  for (const t of rows) pnlNative += Number(t.pnlNative) || 0;
+  return { pnlNative, nativeSymbol: ROBINHOOD_NATIVE_SYMBOL };
 }
 
-/** A trade's own-unit PnL sign - for win counting (unitless). */
+/** Whether a trade closed in profit - for win counting. */
 export function tradeWon(t: TradeLike): boolean {
-  return Number(t.chain === "robinhood" ? (t.pnlNative ?? t.pnlSol) : t.pnlSol) > 0;
+  return Number(t.pnlNative) > 0;
 }
 
 /** The breaker state the daemon enforces for this Robinhood bot. */

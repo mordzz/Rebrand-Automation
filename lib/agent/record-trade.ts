@@ -4,7 +4,7 @@ import {
   type LossAnalysis,
 } from "@/lib/agent/analyze-loss";
 import { getDb } from "@/lib/db";
-import { lessons, trades, type Lesson, type Trade } from "@/drizzle/schema";
+import { lessons, trades, type Lesson, type Trade } from "@/lib/db/schema";
 import { llmModelId } from "@/lib/agent/llm";
 
 export type RecordTradeResult =
@@ -36,12 +36,7 @@ export async function recordClosedTrade(
   input: ClosedTradeInput,
   walletAddress: string | null = null,
 ): Promise<RecordTradeResult> {
-  // PR07 hardening: pnlNative is authoritative when present (a Robinhood
-  // trade), not the pnlSol compatibility shadow - same number/sign for a
-  // Robinhood row today, but this stops depending on that coincidence.
-  // Solana trades never set pnlNative, so this is unchanged for them.
-  const pnl = Number(input.pnlNative ?? input.pnlSol);
-  const isLoss = pnl < 0;
+  const isLoss = Number(input.pnlNative) < 0;
 
   let analysis: LossAnalysis | null = null;
   let analysisError: string | null = null;
@@ -72,10 +67,8 @@ export async function recordClosedTrade(
       strategy: input.strategy,
       entryPrice: input.entryPrice != null ? String(input.entryPrice) : null,
       exitPrice: input.exitPrice != null ? String(input.exitPrice) : null,
-      sizeSol: input.sizeSol != null ? String(input.sizeSol) : null,
-      pnlSol: String(input.pnlSol),
       sizeNative: input.sizeNative != null ? String(input.sizeNative) : null,
-      pnlNative: input.pnlNative != null ? String(input.pnlNative) : null,
+      pnlNative: String(input.pnlNative),
       nativeSymbol: input.nativeSymbol ?? null,
       chain: input.chain ?? null,
       network: input.network ?? null,

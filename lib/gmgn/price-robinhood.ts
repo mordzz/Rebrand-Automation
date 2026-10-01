@@ -49,8 +49,7 @@ function extractPrice(data: Record<string, unknown>): number | null {
   if (raw === "" || raw == null) return null;
   const n = Number(raw);
   // A literal 0 (or negative) is treated as "no usable price", not a real
-  // quote - same posture as lib/sniper/exit-price.ts's DexScreener
-  // adapter: no live Robinhood pool has a genuine price of zero, so a
+  // quote: no live Robinhood pool has a genuine price of zero, so a
   // zero/negative reading means "not priced yet", not "worth nothing".
   return Number.isFinite(n) && n > 0 ? n : null;
 }

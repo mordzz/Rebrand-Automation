@@ -23,11 +23,6 @@ import { useAuthedFetch } from "@/lib/auth/use-privy-authed-fetch";
 type TakeProfitTier = { atPct: number; sellPortionPct: number };
 
 type SniperConfigValue = {
-  requireMintAuthorityRenounced: boolean;
-  requireFreezeAuthorityRenounced: boolean;
-  /* Robinhood/EVM safety + risk fields (PR06.5/PR07) - the ones the active
-     Robinhood runtime actually reads. The Solana fields above stay in the
-     type only so a save round-trips them untouched. */
   requireOwnerRenounced: boolean;
   requireNoBlacklistCapability: boolean;
   maxCreatorHoldPct: number | null;
@@ -38,13 +33,10 @@ type SniperConfigValue = {
   requireSocialLink: boolean;
   requireAlphaWalletBuy: boolean;
   alphaWallets: string[];
-  maxCreatorBuyPct: number;
   minTokenAgeSec: number;
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
-  maxSolPerSnipe: number;
   maxConcurrentPositions: number;
-  maxTotalDeployedSol: number;
   exitMode: "fixed" | "tiered";
   takeProfitPct: number;
   stopLossPct: number;
@@ -57,7 +49,6 @@ type SniperConfigValue = {
   crashDropPct: number;
   exitCheckIntervalMs: number;
   maxConsecutiveLosses: number;
-  maxDailyDrawdownSol: number;
   cooldownAfterLossSec: number;
   metadataFetchTimeoutMs: number;
 };
@@ -376,7 +367,7 @@ export function SniperConfigPanel({
           </p>
           <SwitchField
             label="Require contract ownership renounced"
-            hint="ERC-20 owner must be renounced - the EVM stand-in for Solana's mint/freeze authority checks."
+            hint="ERC-20 contract ownership must be renounced."
             checked={draft.requireOwnerRenounced}
             onChange={(v) => set("requireOwnerRenounced", v)}
           />

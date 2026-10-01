@@ -1,24 +1,29 @@
-import type { Position, SniperState } from "@/drizzle/schema";
-import { STREAK_RESET_MS } from "@/lib/sniper/risk-limits";
+import type { Position } from "@/lib/db/schema";
 import type { SniperConfig } from "@/lib/sniper/config";
 
 /**
- * Robinhood-scoped risk/sizing - PR07. Deliberately NOT a reuse of
- * lib/sniper/risk-limits.ts's SOL-denominated functions: those read
- * maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol directly, and
- * silently pointing them at ETH amounts would be exactly the invented
- * SOL→ETH conversion this PR must not perform. This module reads only
- * the chain-neutral maxNativePerSnipe/maxNativeDeployed/
- * maxDailyDrawdownNative/nativeSymbol fields (PR04 schema foundation,
- * exposed on SniperConfig in this PR) and fails closed when they aren't
- * explicitly configured for ETH.
+ * Robinhood risk/sizing. Reads only the native maxNativePerSnipe/
+ * maxNativeDeployed/maxDailyDrawdownNative/nativeSymbol fields and fails
+ * closed when they aren't explicitly configured for ETH.
  *
- * maxConcurrentPositions and cooldownAfterLossSec ARE reused directly
- * from the shared config - they're chain-neutral counts/durations, not
- * currency amounts, and maxConcurrentPositions is deliberately kept
- * wallet-global (see canOpenNewRobinhoodPosition below) rather than
- * split per chain, preserving its existing single meaning.
+ * maxConcurrentPositions and cooldownAfterLossSec are chain-neutral
+ * counts/durations, not currency amounts, and maxConcurrentPositions is
+ * wallet-global (see canOpenNewRobinhoodPosition below).
  */
+
+/** How long a quiet period must be before a losing streak stops counting,
+ * and how long a consecutive-loss pause lasts. Chosen to outlast the market
+ * condition that caused the streak without costing the agent a whole day;
+ * it is deliberately much longer than the 300s position hold cap. */
+export const STREAK_RESET_MS = 30 * 60 * 1000;
+
+/** Circuit-breaker state, re-derived from a wallet's own trades (never
+ * persisted - see userBots.breakerResetAt in lib/db/schema.ts). */
+export type BreakerState = {
+  tradingPaused: boolean;
+  pauseReason: string | null;
+  lastLossAt: Date | null;
+};
 
 export type RobinhoodNativeLimits = {
   maxNativePerSnipe: number;
@@ -34,9 +39,7 @@ export type RobinhoodLimitsResult =
 /**
  * Resolves the ETH-native risk limits for Robinhood paper trading, or an
  * explicit configuration-blocker reason. Fails closed - never silently
- * reinterprets a Solana `nativeSymbol="SOL"` historical backfill (or an
- * unset one) as ETH, and never derives a number from
- * maxSolPerSnipe/maxTotalDeployedSol/maxDailyDrawdownSol.
+ * treats an unset or non-ETH nativeSymbol as ETH.
  */
 export function resolveRobinhoodNativeLimits(
   config: Pick<
@@ -89,15 +92,14 @@ export function sizeForRobinhoodSnipe(limits: RobinhoodNativeLimits): number {
 /**
  * Robinhood-specific entry gate. `allOpenPositions` must be the wallet's
  * FULL open-position list (every chain) - maxConcurrentPositions stays a
- * single wallet-global cap, unchanged in meaning from the Solana path.
- * `robinhoodOpenPositions` must be pre-filtered to chain="robinhood"
- * only - the deployed-native sum below reads ONLY `sizeNative` from
- * these, and must never be added to any Solana `sizeSol` figure.
+ * single wallet-global cap. `robinhoodOpenPositions` must be pre-filtered
+ * to chain="robinhood" only - the deployed-native sum below reads ONLY
+ * `sizeNative` from these.
  */
 export function canOpenNewRobinhoodPosition(
   allOpenPositions: Pick<Position, "id">[],
   robinhoodOpenPositions: Pick<Position, "sizeNative">[],
-  breakerState: Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> | null,
+  breakerState: BreakerState | null,
   limits: RobinhoodNativeLimits,
   config: Pick<SniperConfig, "maxConcurrentPositions" | "cooldownAfterLossSec">
 ): { allowed: boolean; reason?: string } {
@@ -137,17 +139,16 @@ export type DerivedRobinhoodTradeStats = {
 };
 
 /**
- * Robinhood counterpart to lib/sniper/risk-limits.ts#deriveTradingPause -
- * identical consecutive-loss/cooldown/streak-reset semantics, reading
- * pnlNative and maxDailyDrawdownNative instead of pnlSol/
- * maxDailyDrawdownSol. maxConsecutiveLosses (a count, not a currency
- * amount) is the same shared config field both chains read.
+ * Per-wallet circuit breaker: trips on a current consecutive-loss streak
+ * (a streak older than STREAK_RESET_MS no longer counts) or on the rolling
+ * 24h native drawdown limit, and self-heals the moment the underlying
+ * trades no longer breach them.
  */
 export function deriveRobinhoodTradingPause(
   stats: DerivedRobinhoodTradeStats,
   config: Pick<SniperConfig, "maxConsecutiveLosses">,
   limits: RobinhoodNativeLimits
-): Pick<SniperState, "tradingPaused" | "pauseReason" | "lastLossAt"> {
+): BreakerState {
   let consecutiveLosses = 0;
   let previousClosedAt: Date | null = null;
   for (const trade of stats.recentOutcomes) {

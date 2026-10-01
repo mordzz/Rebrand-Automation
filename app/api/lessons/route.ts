@@ -2,7 +2,7 @@ import { desc, eq, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { lessons, trades } from "@/drizzle/schema";
+import { lessons, trades } from "@/lib/db/schema";
 import { authenticateSignedInUser, signedInErrorResponse } from "@/lib/auth/privy-server";
 
 /** Agent memory: lessons joined with the trades that taught them.
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     createdAt: lessons.createdAt,
     token: trades.token,
     strategy: trades.strategy,
-    pnlSol: trades.pnlSol,
+    nativeSymbol: trades.nativeSymbol,
     pnlNative: trades.pnlNative,
     chain: trades.chain,
     closedAt: trades.closedAt,

@@ -284,7 +284,7 @@ export function AgentDetailModal({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {p.symbol ? `$${p.symbol}` : shortMint(p.token)}
+                          {p.symbol ? `$${p.symbol}` : shortMint(p.tokenAddress)}
                           <span className="ml-2 font-normal text-muted-foreground">
                             {p.strategy}
                           </span>

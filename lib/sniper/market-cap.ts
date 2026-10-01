@@ -12,8 +12,7 @@ import { getRobinhoodPublicClient } from "@/lib/chain/rpc";
  *
  * Robinhood positions store prices in USD per whole token, so
  * cap = price x ERC-20 supply, with supply read on-chain rather than
- * assumed. Historical Solana rows get no cap: the Solana runtime and its
- * RPC reader are retired, and a "-" is more honest than a guess.
+ * assumed. When supply can't be read, a "-" is more honest than a guess.
  */
 
 export type TokenSupply = { supply: bigint; decimals: number };
@@ -64,25 +63,20 @@ function usdCap(priceUsd: number, supply: TokenSupply): number | null {
  * cannot be established, so a display never invents one.
  */
 export async function marketCapsForPositions(
-  positions: { token: string; entryPrice: string | null; lastPrice: string | null; chain?: string | null }[]
+  positions: { tokenAddress: string; entryPrice: string | null; lastPrice: string | null }[]
 ): Promise<Map<string, PositionMarketCaps>> {
   const out = new Map<string, PositionMarketCaps>();
   if (positions.length === 0) return out;
 
-  const robinhood = positions.filter((p) => p.chain === "robinhood");
   const supplies = new Map(
     await Promise.all(
-      [...new Set(robinhood.map((p) => p.token))].map(async (t) => [t, await getErc20Supply(t)] as const),
+      [...new Set(positions.map((p) => p.tokenAddress))].map(async (t) => [t, await getErc20Supply(t)] as const),
     ),
   );
   for (const p of positions) {
-    if (p.chain !== "robinhood") {
-      out.set(p.token, { entryUsd: null, currentUsd: null });
-      continue;
-    }
-    const supply = supplies.get(p.token) ?? null;
+    const supply = supplies.get(p.tokenAddress) ?? null;
     const cap = (price: string | null) => (price != null && supply ? usdCap(Number(price), supply) : null);
-    out.set(p.token, { entryUsd: cap(p.entryPrice), currentUsd: cap(p.lastPrice) });
+    out.set(p.tokenAddress, { entryUsd: cap(p.entryPrice), currentUsd: cap(p.lastPrice) });
   }
   return out;
 }

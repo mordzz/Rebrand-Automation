@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { userBots } from "@/drizzle/schema";
+import { userBots } from "@/lib/db/schema";
 import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
 import { getNativeBalance } from "@/lib/chain/rpc";
 import { loadRobinhoodAgentAccountView } from "@/lib/chain/robinhood-agent-wallet-view";

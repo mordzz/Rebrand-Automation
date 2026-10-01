@@ -9,11 +9,9 @@ import {
 } from "@/lib/agent/agent-chat";
 import { isLlmConfigured, llmLabel } from "@/lib/agent/llm";
 import { getDb } from "@/lib/db";
-import { lessons, trades, userBots } from "@/drizzle/schema";
+import { lessons, trades, userBots } from "@/lib/db/schema";
 import { getOpenPositions } from "@/lib/sniper/positions";
-import { deriveTradingPause } from "@/lib/sniper/risk-limits";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 
 export const dynamic = "force-dynamic";
@@ -67,20 +65,17 @@ async function buildContext(
   const since24h = new Date(Date.now() - DAY_MS);
   const since30d = new Date(Date.now() - 30 * DAY_MS);
 
-  const [config, openPositions, trades24h, trades30d, recentOutcomes, dailyPnlSol, lastLossAt, tradeWindow, memoryRows] =
+  const [config, openPositions, trades24h, trades30d, tradeWindow, memoryRows] =
     await Promise.all([
       getEffectiveConfig(bot),
       getOpenPositions(wallet),
       db.select().from(trades).where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since24h))),
       db.select().from(trades).where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since30d))),
-      getRecentOutcomes(wallet, 50, bot.breakerResetAt),
-      getDailyPnlSol(wallet, bot.breakerResetAt),
-      getLastLossAt(wallet, bot.breakerResetAt),
       db
         .select({
           id: trades.id,
           symbol: trades.token,
-          pnlSol: trades.pnlSol,
+          pnlNative: trades.pnlNative,
           closedAt: trades.closedAt,
           cause: lessons.cause,
           lessonStatus: lessons.status,
@@ -110,10 +105,7 @@ async function buildContext(
   const pnl24h = summarizePnl(trades24h);
   const wins30d = trades30d.filter(tradeWon).length;
   const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
-  const breaker =
-    bot.agentChain === "robinhood"
-      ? await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config)
-      : deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+  const breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
 
   // The agent's own trading wallet balance (Robinhood RPC, ETH).
   const agentBalanceNative = await agentNativeBalance(bot);
@@ -132,8 +124,9 @@ async function buildContext(
     agentBalanceNative,
     openPositions: openPositions.map((p) => ({
       symbol: p.symbol,
-      token: p.token,
-      sizeSol: p.sizeSol,
+      tokenAddress: p.tokenAddress,
+      sizeNative: p.sizeNative,
+      nativeSymbol: p.nativeSymbol ?? "ETH",
       entryPrice: p.entryPrice,
       lastPrice: p.lastPrice,
       openedAt: p.openedAt.toISOString(),
@@ -142,7 +135,7 @@ async function buildContext(
       tradeWindow.map((t) => ({
         id: t.id,
         symbol: t.symbol,
-        pnlSol: Number(t.pnlSol),
+        pnlNative: Number(t.pnlNative),
         closedAt: t.closedAt.toISOString(),
         cause: t.cause,
         lessonStatus: t.lessonStatus as "learning" | "applied" | null,

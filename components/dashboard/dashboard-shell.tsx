@@ -84,14 +84,13 @@ type StatsResponse = {
 
 type PositionRow = {
   id: string;
-  token: string;
+  tokenAddress: string;
   symbol: string | null;
   strategy: string;
   status: string;
   entryPrice: string;
-  sizeSol: string;
-  /** PR04 neutral size + chain - unit per position (PR14). */
-  sizeNative?: string | null;
+  sizeNative: string;
+  nativeSymbol?: string | null;
   chain?: string | null;
   lastPrice: string | null;
   entryMarketCapUsd: number | null;
@@ -578,7 +577,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
                           className="border-b border-white/5 transition-colors last:border-b-0 hover:bg-accent/[0.03]"
                         >
                           <td className="px-4 py-3 font-medium">
-                            ${p.symbol ?? shortAddress(p.token)}
+                            ${p.symbol ?? shortAddress(p.tokenAddress)}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             {p.strategy}
@@ -663,7 +662,7 @@ export function DashboardShell({ officialBot }: { officialBot: OfficialBot }) {
 
           <TabsContent value="mints">
             {/* Robinhood Chain launches from the same GMGN discovery the
-                agent reads (PR16 retired the Solana PumpPortal stream). */}
+                agent reads. */}
             <div className="flex flex-col gap-5">
               <NewLaunches />
             </div>

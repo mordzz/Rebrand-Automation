@@ -2,10 +2,10 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { userBots, type UserBot } from "@/drizzle/schema";
+import { userBots, type UserBot } from "@/lib/db/schema";
 
 /** The single public "Noah" agent shown on /dashboard - see
- * drizzle/schema/bots.ts#userBots.isOfficial. `null` when unconfigured or not
+ * lib/db/schema.ts#userBots.isOfficial. `null` when unconfigured or not
  * yet provisioned (see scripts/provision-official-bot.ts). */
 export async function getOfficialBot(): Promise<UserBot | null> {
   const db = getDb();

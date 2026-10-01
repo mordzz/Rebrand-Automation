@@ -1,19 +1,15 @@
 /**
- * Chain-aware display helpers - PR14 UI identity migration.
+ * Display helpers for trade/position/activity rows.
  *
- * Every trade/position/activity row carries its own `chain` (PR04). Active
- * Robinhood rows render in ETH with Robinhood-explorer tx-hash / token
- * links; historical Solana rows keep rendering truthfully in SOL with
- * Solana-explorer links. Never relabel one chain's numbers as the other's.
+ * Every row carries its own `chain`; rows render in the chain's native
+ * unit (ETH on Robinhood) with Robinhood-explorer tx-hash / token links.
  * Client-safe (no server imports).
  */
 import { explorerUrl } from "@/lib/chain/config";
 
 export type ChainRow = {
   chain?: string | null;
-  sizeSol?: string | number | null;
   sizeNative?: string | number | null;
-  pnlSol?: string | number | null;
   pnlNative?: string | number | null;
 };
 
@@ -21,8 +17,9 @@ export function isRobinhoodRow(row: { chain?: string | null }): boolean {
   return row.chain === "robinhood";
 }
 
-export function nativeSymbolFor(row: { chain?: string | null }): "ETH" | "SOL" {
-  return isRobinhoodRow(row) ? "ETH" : "SOL";
+/** The row's own native symbol when it carries one, else ETH. */
+export function nativeSymbolFor(row: object): string {
+  return (row as { nativeSymbol?: string | null }).nativeSymbol ?? "ETH";
 }
 
 const num = (v: string | number | null | undefined): number | null => {
@@ -31,14 +28,14 @@ const num = (v: string | number | null | undefined): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** The row's position size in its own chain's native unit. */
+/** The row's position size in its native unit. */
 export function rowSize(row: ChainRow): number | null {
-  return isRobinhoodRow(row) ? num(row.sizeNative) : num(row.sizeSol);
+  return num(row.sizeNative);
 }
 
-/** The row's realized PnL in its own chain's native unit. */
+/** The row's realized PnL in its native unit. */
 export function rowPnl(row: ChainRow): number | null {
-  return isRobinhoodRow(row) ? num(row.pnlNative) : num(row.pnlSol);
+  return num(row.pnlNative);
 }
 
 export function formatNative(value: number | null, symbol: string, decimals = 3, signed = false): string {
@@ -47,16 +44,14 @@ export function formatNative(value: number | null, symbol: string, decimals = 3,
   return `${sign}${value.toFixed(decimals)} ${symbol}`;
 }
 
-/** Transaction link: Robinhood explorer tx hash, or Solscan for Solana history. */
-export function txLink(row: { chain?: string | null }, hash: string): string {
-  return isRobinhoodRow(row) ? explorerUrl("tx", hash) : `https://solscan.io/tx/${hash}`;
+/** Robinhood explorer transaction link. */
+export function txLink(hash: string): string {
+  return explorerUrl("tx", hash);
 }
 
-/** Token link: Robinhood explorer token/contract address, or Solscan mint. */
-export function tokenLink(row: { chain?: string | null }, token: string): string {
-  return isRobinhoodRow(row) ? explorerUrl("address", token) : `https://solscan.io/token/${token}`;
+/** Robinhood explorer token/contract link. */
+export function tokenLink(token: string): string {
+  return explorerUrl("address", token);
 }
 
-export function explorerName(row: { chain?: string | null }): string {
-  return isRobinhoodRow(row) ? "Robinhood explorer" : "Solscan";
-}
+export const EXPLORER_NAME = "Robinhood explorer";

@@ -9,11 +9,7 @@ import { useEffect, useState } from "react";
 type TakeProfitTier = { atPct: number; sellPortionPct: number };
 
 type SniperConfigValue = {
-  requireMintAuthorityRenounced: boolean;
-  requireFreezeAuthorityRenounced: boolean;
   requireSocialLink: boolean;
-  maxCreatorBuyPct: number;
-  /* Robinhood/EVM fields the active runtime reads (PR06.5/PR07). */
   requireOwnerRenounced: boolean;
   requireNoBlacklistCapability: boolean;
   maxCreatorHoldPct: number | null;
@@ -23,9 +19,7 @@ type SniperConfigValue = {
   minTokenAgeSec: number;
   maxTokenAgeSec: number | null;
   blockedKeywords: string[];
-  maxSolPerSnipe: number;
   maxConcurrentPositions: number;
-  maxTotalDeployedSol: number;
   exitMode: "fixed" | "tiered";
   takeProfitPct: number;
   stopLossPct: number;
@@ -38,7 +32,6 @@ type SniperConfigValue = {
   crashDropPct: number;
   exitCheckIntervalMs: number;
   maxConsecutiveLosses: number;
-  maxDailyDrawdownSol: number;
   cooldownAfterLossSec: number;
   metadataFetchTimeoutMs: number;
 };

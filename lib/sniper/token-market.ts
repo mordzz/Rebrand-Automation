@@ -1,8 +1,7 @@
 /**
  * Live market data for a set of mints, via DexScreener's free public API
- * (no key required) - the same source lib/sniper/exit-price.ts already
- * uses for exit pricing, queried in batch here because the Alpha page
- * needs a figure for every row at once.
+ * (no key required), queried in batch because the Alpha page needs a
+ * figure for every row at once.
  *
  * Response shape confirmed against live pump.fun mints, not assumed:
  * each pair carries `marketCap`, `fdv`, `priceUsd`, `priceNative`,

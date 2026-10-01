@@ -15,10 +15,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { explorerUrl } from "@/lib/chain/config";
 
-/** Mirrors lib/sniper/safety-checks.ts#SafetyCheckResult - kept as a plain
- * type here (not imported) since this file is a client component and the
- * source type lives in server-only code (same convention as
- * components/dashboard/sniper-config-readout.tsx). */
+/** Mirrors lib/gmgn/safety-robinhood.ts's result - kept as a plain type here
+ * (not imported) since this file is a client component and the source type
+ * lives in server-only code. */
 type SafetyMetadata = {
   name?: string;
   symbol?: string;
@@ -31,11 +30,6 @@ type SafetyMetadata = {
 type SafetyResult = {
   passed: boolean;
   reasons: string[];
-  /* Solana (historical) facts */
-  mintAuthorityRenounced?: boolean | null;
-  freezeAuthorityRenounced?: boolean | null;
-  creatorBuyPct?: number | null;
-  /* Robinhood/EVM facts (lib/gmgn/safety-robinhood.ts) */
   ownerRenounced?: boolean | null;
   isBlacklistCapable?: boolean | null;
   creatorHoldPct?: number | null;
@@ -59,16 +53,11 @@ type TokenMarket = {
 
 type AlphaCandidateRow = {
   id: string;
-  /** "robinhood" for the active feed; absent on historical Solana rows. */
   chain?: "robinhood";
   token: string;
   symbol: string | null;
   name: string | null;
   ageSec: string | number;
-  creatorBuyPct?: string | null;
-  mintAuthorityRenounced?: boolean | null;
-  freezeAuthorityRenounced?: boolean | null;
-  hasSocialLink?: boolean | null;
   safety: SafetyResult;
   detectedAt: string;
   icon: string | null;
@@ -147,71 +136,9 @@ const CHECK_GLYPH_SKIPPED = (
   </span>
 );
 
-/** Why a row earned its shield: the same criteria the page's own tagline
- * promises ("mint/freeze authority, creator buy %, socials"), made
- * concrete per-token instead of just a green checkmark. `reasons` on a
- * stored row is always empty (only passing candidates are inserted - see
- * app/api/alpha/route.ts), so this reads the underlying booleans instead. */
+/** Why a row earned its shield: the facts the house's Robinhood safety
+ * policy actually checked (owner, blacklist, creator holding, socials). */
 function ChecklistTooltip({ row }: { row: AlphaCandidateRow }) {
-  if (row.chain === "robinhood") return <RobinhoodChecklist row={row} />;
-  const creatorPct =
-    row.creatorBuyPct != null ? Number(row.creatorBuyPct) : null;
-  const alphaWalletDetected = row.safety?.alphaWalletDetected === true;
-
-  return (
-    <span className="group/shield relative inline-flex shrink-0">
-      <button
-        type="button"
-        className="appearance-none border-0 bg-transparent p-0"
-        aria-label="Why this token passed"
-      >
-        <ShieldCheck
-          className="text-sol-green-ink size-3.5 shrink-0"
-          aria-hidden="true"
-        />
-      </button>
-      <div
-        role="tooltip"
-        className="invisible absolute top-full left-0 z-20 mt-2 w-60 rounded-lg border border-white/10 bg-popover p-3 opacity-0 shadow-lg transition-opacity duration-150 group-hover/shield:visible group-hover/shield:opacity-100 group-focus-within/shield:visible group-focus-within/shield:opacity-100"
-      >
-        <p className="mb-1.5 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
-          Passed the checks
-        </p>
-        <ul className="space-y-1 text-xs text-popover-foreground">
-          <li className="flex items-center gap-1.5">
-            {row.mintAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
-            Mint authority renounced
-          </li>
-          <li className="flex items-center gap-1.5">
-            {row.freezeAuthorityRenounced ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
-            Freeze authority renounced
-          </li>
-          <li className="flex items-center gap-1.5">
-            {row.hasSocialLink ? CHECK_GLYPH_OK : CHECK_GLYPH_SKIPPED}
-            Has a social link
-          </li>
-          {creatorPct != null && (
-            <li className="flex items-center gap-1.5">
-              {CHECK_GLYPH_OK}
-              Creator bought {creatorPct.toFixed(1)}%
-            </li>
-          )}
-          {alphaWalletDetected && (
-            <li className="flex items-center gap-1.5">
-              {CHECK_GLYPH_OK}
-              Tracked wallet already in
-            </li>
-          )}
-        </ul>
-      </div>
-    </span>
-  );
-}
-
-/** Robinhood/EVM version of the checklist: the facts the house's
- * Robinhood safety policy actually checked (owner, blacklist, creator
- * holding, socials) - never the Solana mint/freeze concepts. */
-function RobinhoodChecklist({ row }: { row: AlphaCandidateRow }) {
   const s = row.safety;
   return (
     <span className="group/shield relative inline-flex shrink-0">
@@ -258,13 +185,7 @@ function RobinhoodChecklist({ row }: { row: AlphaCandidateRow }) {
 
 export function AlphaTable() {
   const [page, setPage] = useState(1);
-  // Active Robinhood Chain feed by default; the Solana archive on request.
-  const [source, setSource] = useState<"robinhood" | "solana">("robinhood");
-  const response = usePolledJson<AlphaResponse>(
-    source === "robinhood" ? "/api/alpha" : `/api/alpha?source=solana&page=${page}`,
-    25_000,
-  );
-  const robinhood = source === "robinhood";
+  const response = usePolledJson<AlphaResponse>("/api/alpha", 25_000);
   const [now, setNow] = useState(() => Date.now());
   const [copiedMint, setCopiedMint] = useState<string | null>(null);
 
@@ -306,30 +227,11 @@ export function AlphaTable() {
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
         <div className="flex items-center gap-3">
           <div>
-            <div className="flex items-center gap-1.5" role="tablist" aria-label="Alpha source">
-              {(["robinhood", "solana"] as const).map((src) => (
-                <button
-                  key={src}
-                  type="button"
-                  role="tab"
-                  aria-selected={source === src}
-                  onClick={() => {
-                    setSource(src);
-                    setPage(1);
-                  }}
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-[0.65rem] font-semibold tracking-[0.15em] uppercase transition-colors",
-                    source === src ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {src === "robinhood" ? "Robinhood Chain · live" : "Solana · historical"}
-                </button>
-              ))}
-            </div>
+            <span className="rounded-full bg-secondary px-2.5 py-1 text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-foreground">
+              Robinhood Chain · live
+            </span>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {robinhood
-                ? "Fresh Robinhood Chain launches that passed the house's own entry checks: contract ownership, blacklist capability, creator holding, socials."
-                : "Archive from the retired Solana engine, newest first, one row per ticker. Every row passed the Raven\u2019s Solana entry criteria at the time: mint/freeze authority, creator buy %, socials."}
+              Fresh Robinhood Chain launches that passed the house&apos;s own entry checks: contract ownership, blacklist capability, creator holding, socials.
             </p>
           </div>
         </div>
@@ -362,7 +264,7 @@ export function AlphaTable() {
         <p className="px-4 py-12 text-center text-sm text-muted-foreground">
           {!response
             ? "Loading…"
-            : robinhood && response.error
+            : response.error
               ? `No passing launches yet (${/429|provider_error/.test(response.error) ? "GMGN is rate-limiting right now" : response.error}).`
               : "No candidates yet; the engine is still watching."}
         </p>
@@ -374,7 +276,7 @@ export function AlphaTable() {
                 <th className={HEAD_CELL}>Token</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Market cap</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Change</th>
-                <th className={cn(HEAD_CELL, "text-right")}>{robinhood ? "Creator holds" : "Dev buy"}</th>
+                <th className={cn(HEAD_CELL, "text-right")}>Creator holds</th>
                 <th className={HEAD_CELL}>Who&apos;s in</th>
                 <th className={cn(HEAD_CELL, "text-right")}>Seen</th>
                 <th className={cn(HEAD_CELL, "text-right")}>
@@ -384,12 +286,7 @@ export function AlphaTable() {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const creatorPct =
-                  row.chain === "robinhood"
-                    ? (row.safety?.creatorHoldPct ?? null)
-                    : row.creatorBuyPct != null
-                      ? Number(row.creatorBuyPct)
-                      : null;
+                const creatorPct = row.safety?.creatorHoldPct ?? null;
                 const social = row.safety?.metadata;
                 const socialLink =
                   social?.twitter || social?.website || social?.telegram;
@@ -502,7 +399,7 @@ export function AlphaTable() {
                           )}
                         </button>
                         <a
-                          href={socialLink || (row.chain === "robinhood" ? explorerUrl("address", row.token) : `https://pump.fun/coin/${row.token}`)}
+                          href={socialLink || explorerUrl("address", row.token)}
                           target="_blank"
                           rel="noreferrer"
                           aria-label={`Open ${row.symbol ?? "token"}`}

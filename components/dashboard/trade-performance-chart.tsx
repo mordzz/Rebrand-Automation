@@ -20,16 +20,14 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { isRobinhoodRow, rowPnl } from "@/lib/chain/display";
+import { rowPnl } from "@/lib/chain/display";
 
 export type TradeRow = {
   id: string;
   token: string;
   strategy: string;
-  pnlSol: string;
-  /** PR04 chain-neutral fields - pick the unit per row (PR14). */
   chain?: string | null;
-  pnlNative?: string | null;
+  pnlNative: string;
   closedAt: string;
   context: { exitReason?: string } | null;
 };
@@ -54,13 +52,8 @@ export function TradePerformanceChart({
   // Chronological series - the API returns newest-first, so re-sort
   // ascending before accumulating (via reduce, not a mutated loop
   // variable, so the render body stays pure).
-  // One unit per chart: Robinhood (ETH) rows if any exist, otherwise the
-  // historical Solana (SOL) rows. ETH and SOL are never summed together.
-  // Only a desk whose ledger is purely historical Solana charts in SOL.
-  const solanaOnly = trades.length > 0 && !trades.some(isRobinhoodRow);
-  const unit = solanaOnly ? "SOL" : "ETH";
-  const perfSeries = trades
-    .filter((t) => isRobinhoodRow(t) !== solanaOnly)
+  const unit = "ETH";
+  const perfSeries = [...trades]
     .sort(
       (a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime()
     )

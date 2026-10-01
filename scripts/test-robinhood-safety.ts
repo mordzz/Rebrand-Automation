@@ -14,7 +14,10 @@ import { normalizeRobinhoodSecurity } from "@/lib/gmgn/security-robinhood";
 import { normalizeRobinhoodToken, type RobinhoodDiscoveredToken } from "@/lib/gmgn/discovery-robinhood";
 import { checkAlphaWalletBuyRobinhood, type Erc20BalanceReader } from "@/lib/chain/alpha-wallets-robinhood";
 import { resolveLaunchpadAllowlist } from "@/lib/gmgn/discovery-robinhood";
-import { validateMaxCreatorHoldPct, envSeededDefaults, type SniperConfig } from "@/lib/sniper/config";
+import { getTableColumns } from "drizzle-orm";
+
+import { sniperConfig } from "@/lib/db/schema";
+import { DEFAULT_TRADING_CONFIG, defaultSniperConfig, validateMaxCreatorHoldPct, type SniperConfig } from "@/lib/sniper/config";
 import { sanitize } from "@/lib/sniper/effective-config";
 
 let failures = 0;
@@ -60,7 +63,7 @@ function baseConfig(overrides: Partial<SniperConfig> = {}): Pick<
     // Test-helper default is deliberately null (not the production
     // default of 10) so each test is explicit about what it's checking -
     // the actual approved-default assertion lives in its own test below,
-    // against envSeededDefaults() directly.
+    // against defaultSniperConfig() directly.
     maxCreatorHoldPct: null,
     requireSocialLink: false,
     requireAlphaWalletBuy: false,
@@ -205,11 +208,9 @@ async function main() {
     assert(!result.reasons.some((r) => r.includes("creator holds")), "creatorHoldPct exactly 10% (== limit) → passes");
   }
   {
-    // Approved v1 default: a fresh install's SniperConfig (no DB row,
-    // env-seeded fallback) has maxCreatorHoldPct = 10, not null.
-    assertEqual(envSeededDefaults().maxCreatorHoldPct, 10, "envSeededDefaults(): maxCreatorHoldPct defaults to 10 (approved v1 value)");
-    // The legacy Solana field is untouched by this decision.
-    assertEqual(envSeededDefaults().maxCreatorBuyPct, 10, "envSeededDefaults(): maxCreatorBuyPct (Solana) is unaffected by the Robinhood v1 default change");
+    // Approved v1 default: a fresh install's SniperConfig has
+    // maxCreatorHoldPct = 10, not null.
+    assertEqual(defaultSniperConfig().maxCreatorHoldPct, 10, "defaultSniperConfig(): maxCreatorHoldPct defaults to 10 (approved v1 value)");
   }
   {
     // No creator_balance_rate at all, but a threshold IS configured →
@@ -236,11 +237,9 @@ async function main() {
     assertEqual(result.passed, false, "a candidate cannot pass while maxCreatorHoldPct is unconfigured");
   }
   {
-    // maxCreatorBuyPct (the legacy Solana field) must never be consulted
-    // by the Robinhood evaluator - proven by the fact its Pick<> type
-    // doesn't even include it (a TypeScript-level guarantee), plus a
-    // runtime check that a wildly-different maxCreatorBuyPct value has
-    // zero effect on the creator-hold outcome.
+    // A stray unknown field on the config object (here the retired
+    // Solana maxCreatorBuyPct) must have zero effect on the creator-hold
+    // outcome.
     const token = makeToken({ creator_balance_rate: 0.05 });
     const configWithLegacyField = { ...baseConfig({ maxCreatorHoldPct: 10 }) } as Record<string, unknown>;
     configWithLegacyField.maxCreatorBuyPct = 1; // would refuse a 5% hold if consulted
@@ -252,7 +251,7 @@ async function main() {
     );
     assert(
       !result.reasons.some((r) => r.includes("creator holds")),
-      "maxCreatorBuyPct is not consulted for Robinhood - a stray value on the object has no effect"
+      "a stray retired maxCreatorBuyPct value on the object has no effect"
     );
   }
 
@@ -670,30 +669,27 @@ async function main() {
     }
   }
 
-  // ═══ legacy Solana config fields remain present/unchanged ════════════
+  // ═══ typed defaults match the schema column defaults ═══════════════════
   {
-    // Type-level guarantee: SniperConfig still has the legacy Solana
-    // fields, untouched, alongside the new Robinhood ones. A runtime
-    // check confirms the values aren't coerced/renamed anywhere in this
-    // module (it never imports or reads them at all - see the Pick<> in
-    // evaluateRobinhoodSafety's signature).
-    const legacyFieldsShape: Pick<
-      SniperConfig,
-      "requireMintAuthorityRenounced" | "requireFreezeAuthorityRenounced" | "maxCreatorBuyPct" | "minLiquiditySol"
-    > = {
-      requireMintAuthorityRenounced: true,
-      requireFreezeAuthorityRenounced: true,
-      maxCreatorBuyPct: 10,
-      minLiquiditySol: 20,
-    };
-    assert(
-      typeof legacyFieldsShape.requireMintAuthorityRenounced === "boolean" &&
-        typeof legacyFieldsShape.requireFreezeAuthorityRenounced === "boolean" &&
-        typeof legacyFieldsShape.maxCreatorBuyPct === "number" &&
-        typeof legacyFieldsShape.minLiquiditySol === "number",
-      "legacy Solana config fields (requireMintAuthorityRenounced, requireFreezeAuthorityRenounced, " +
-        "maxCreatorBuyPct, minLiquiditySol) remain present on SniperConfig, unrenamed, unrepurposed"
-    );
+    // DEFAULT_TRADING_CONFIG (no-DB path) and the sniper_config column
+    // defaults (fresh-DB path) must describe the same product defaults.
+    const columns = getTableColumns(sniperConfig) as Record<string, { default?: unknown; dataType: string }>;
+    for (const [key, value] of Object.entries(DEFAULT_TRADING_CONFIG)) {
+      if (key === "entrySources") continue; // code default, not a column
+      const column = columns[key];
+      if (!column) {
+        assert(false, `sniper_config has a column for default "${key}"`);
+        continue;
+      }
+      const raw = column.default;
+      const columnDefault =
+        raw === undefined ? null : typeof value === "number" ? Number(raw) : raw;
+      assertEqual(columnDefault, value, `schema default for "${key}" matches DEFAULT_TRADING_CONFIG`);
+    }
+    for (const retired of ["maxSolPerSnipe", "maxTotalDeployedSol", "maxDailyDrawdownSol", "maxCreatorBuyPct", "requireMintAuthorityRenounced", "requireFreezeAuthorityRenounced"]) {
+      assert(!(retired in columns), `retired Solana column "${retired}" is absent from sniper_config`);
+      assert(!(retired in DEFAULT_TRADING_CONFIG), `retired Solana field "${retired}" is absent from SniperConfig`);
+    }
   }
 
   console.log(`\n${failures === 0 ? "All checks passed." : `${failures} check(s) FAILED.`}`);

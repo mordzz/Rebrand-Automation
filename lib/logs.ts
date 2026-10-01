@@ -1,5 +1,5 @@
 import { getDb } from "@/lib/db";
-import { logs } from "@/drizzle/schema";
+import { logs } from "@/lib/db/schema";
 
 export type LogLevel = "info" | "buy" | "sell" | "guard" | "warn" | "error";
 
@@ -20,15 +20,8 @@ export async function writeLog(entry: {
   level: LogLevel;
   message: string;
   source?: string;
-  txSignature?: string;
   walletAddress?: string | null;
-  tokenMint?: string | null;
-  /* PR07 chain-neutral fields (PR04 schema foundation). All optional -
-   * every existing caller (Solana) keeps writing only txSignature/
-   * tokenMint and these stay null, unchanged. A Robinhood caller passes
-   * tokenAddress/chain/network and leaves txHash null for a paper log
-   * (never the "paper" sentinel - that convention is txSignature-only,
-   * for the legacy column). */
+  /** null for paper events - only a real broadcast has a hash. */
   txHash?: string | null;
   tokenAddress?: string | null;
   chain?: string | null;
@@ -43,8 +36,6 @@ export async function writeLog(entry: {
       level: entry.level,
       source: entry.source ?? "sniper",
       message: entry.message,
-      txSignature: entry.txSignature ?? null,
-      tokenMint: entry.tokenMint ?? null,
       txHash: entry.txHash ?? null,
       tokenAddress: entry.tokenAddress ?? null,
       chain: entry.chain ?? null,

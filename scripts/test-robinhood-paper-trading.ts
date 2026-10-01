@@ -20,14 +20,13 @@ import { join } from "path";
 import { normalizeRobinhoodToken, type RobinhoodDiscoveredToken } from "@/lib/gmgn/discovery-robinhood";
 import { normalizeRobinhoodSecurity } from "@/lib/gmgn/security-robinhood";
 import { evaluateRobinhoodSafety } from "@/lib/gmgn/safety-robinhood";
-import { envSeededDefaults, type SniperConfig } from "@/lib/sniper/config";
+import { type SniperConfig } from "@/lib/sniper/config";
 import {
   canOpenNewRobinhoodPosition,
   deriveRobinhoodTradingPause,
   resolveRobinhoodNativeLimits,
   sizeForRobinhoodSnipe,
 } from "@/lib/sniper/risk-limits-robinhood";
-import { canOpenNewPosition } from "@/lib/sniper/risk-limits";
 import { computeRemainingSize } from "@/lib/sniper/positions";
 
 let passed = 0;
@@ -186,8 +185,8 @@ async function main() {
   // ═══ 11: canOpenNewRobinhoodPosition never sums Solana + Robinhood sizes ═══
   {
     const limits = { maxNativePerSnipe: 0.01, maxNativeDeployed: 0.02, maxDailyDrawdownNative: 0.05, nativeSymbol: "ETH" };
-    // Wallet holds 5 Solana positions (irrelevant sizeSol values) plus 1
-    // Robinhood position already using 0.015 ETH of a 0.02 ETH cap.
+    // Wallet holds 6 open positions in total, only 1 of them on Robinhood
+    // (already using 0.015 ETH of a 0.02 ETH cap).
     const allOpenPositions = Array.from({ length: 6 }, (_, i) => ({ id: `pos-${i}` }));
     const robinhoodOpenPositions = [{ sizeNative: "0.015" }];
     const result = canOpenNewRobinhoodPosition(
@@ -199,7 +198,7 @@ async function main() {
     );
     assert(
       !result.allowed && (result.reason?.includes("deployed") ?? false),
-      "deployed-native cap is computed from Robinhood sizeNative only (0.015 + 0.01 > 0.02 cap), never from Solana sizeSol"
+      "deployed-native cap is computed from the Robinhood rows' sizeNative (0.015 + 0.01 > 0.02 cap)"
     );
   }
   {
@@ -287,12 +286,14 @@ async function main() {
       }
     }
 
-    // A Robinhood paper entry/exit never writes the "paper" sentinel into
-    // a chain-neutral hash column (entryTxHash/txHash) - only into the
-    // legacy entryTxSignature/txSignature compatibility shadows.
+    // A Robinhood paper entry/exit never writes a fabricated hash.
     assert(
       /entryTxHash:\s*null/.test(source),
       'openRobinhoodPaperPosition sets entryTxHash: null (never a fabricated hash)'
+    );
+    assert(
+      /exitTxHash:\s*null/.test(source),
+      'paper exits set exitTxHash: null (never a fabricated hash)'
     );
     assert(
       !/entryTxHash:\s*"paper"/.test(source) && !/txHash:\s*"paper"/.test(source),
@@ -315,94 +316,6 @@ async function main() {
     }
   }
 
-  // ═══ Hardening pass: reverse Solana/Robinhood contamination ══════════
-  {
-    // A Robinhood row's sizeSol compatibility shadow must never be
-    // summed into Solana's deployed-SOL figure. allOpenPositions carries
-    // BOTH a Solana and a Robinhood row (mirroring what getOpenPositions
-    // would actually return); solanaOpenPositions (as
-    // getOpenSolanaPositions would produce) carries only the Solana one.
-    const config = envSeededDefaults();
-    config.maxSolPerSnipe = 0.05;
-    config.maxTotalDeployedSol = 0.1;
-    config.maxConcurrentPositions = 10;
-
-    const allOpenPositions = [{ id: "solana-1" }, { id: "robinhood-1" }];
-    // Solana already has 0.05 SOL deployed; a Robinhood row's shadow
-    // sizeSol (e.g. 10 "ETH" worth) must be excluded from this sum, or
-    // the next SOL entry would be wrongly refused.
-    const solanaOnlyPositions = [{ sizeSol: "0.05" }];
-    const result = canOpenNewPosition(allOpenPositions, solanaOnlyPositions, null, config);
-    assert(
-      result.allowed,
-      "Robinhood position's sizeSol shadow does not increase Solana's deployed-SOL sum (0.05 + 0.05 = 0.1, not over the 0.1 cap)"
-    );
-  }
-  {
-    // Same setup, but prove the OLD bug would have refused: if the
-    // Robinhood shadow (10) were included in the sum, 10 + 0.05 would
-    // vastly exceed a 0.1 cap. This documents exactly the contamination
-    // being fixed.
-    const config = envSeededDefaults();
-    config.maxSolPerSnipe = 0.05;
-    config.maxTotalDeployedSol = 0.1;
-    config.maxConcurrentPositions = 10;
-    const contaminatedSum = [{ sizeSol: "0.05" }, { sizeSol: "10" }]; // what the bug would have summed
-    const buggyResult = canOpenNewPosition(
-      [{ id: "a" }, { id: "b" }],
-      contaminatedSum,
-      null,
-      config
-    );
-    assert(!buggyResult.allowed, "sanity check: summing a Robinhood-sized shadow value WOULD incorrectly refuse (proves the fix matters)");
-  }
-  {
-    // maxConcurrentPositions still counts every chain.
-    const config = envSeededDefaults();
-    config.maxConcurrentPositions = 2;
-    config.maxSolPerSnipe = 0.01;
-    config.maxTotalDeployedSol = 1;
-    const allOpenPositions = [{ id: "solana-1" }, { id: "robinhood-1" }];
-    const result = canOpenNewPosition(allOpenPositions, [], null, config);
-    assert(
-      !result.allowed && (result.reason?.includes("concurrent") ?? false),
-      "maxConcurrentPositions (wallet-global) still counts a Robinhood position toward the Solana-side cap too"
-    );
-  }
-  {
-    // legacy chain=NULL Solana rows and explicit chain="solana" rows
-    // both still count toward the deployed-SOL sum (this is exactly
-    // what getOpenSolanaPositions is meant to select - this test proves
-    // the pure canOpenNewPosition function treats them identically, the
-    // DB-side filter itself is covered by the source-level check below).
-    const config = envSeededDefaults();
-    config.maxSolPerSnipe = 0.05;
-    config.maxTotalDeployedSol = 0.1;
-    config.maxConcurrentPositions = 10;
-    const legacyAndExplicit = [{ sizeSol: "0.03" }, { sizeSol: "0.03" }];
-    const result = canOpenNewPosition([{ id: "a" }, { id: "b" }], legacyAndExplicit, null, config);
-    assert(!result.allowed, "legacy chain=NULL and explicit chain='solana' rows both still contribute to the deployed-SOL sum");
-  }
-
-  // ═══ wallet-trade-stats.ts source check: Solana queries exclude
-  // chain="robinhood" trades from recent-loss/daily-PnL/last-loss ═════
-  {
-    const source = readFileSync(join(process.cwd(), "lib", "sniper", "wallet-trade-stats.ts"), "utf8");
-    assert(
-      source.includes('SOLANA_CHAIN_FILTER = or(isNull(trades.chain), eq(trades.chain, "solana"))'),
-      "wallet-trade-stats.ts defines an explicit Solana-only chain filter"
-    );
-    const queryFunctions = ["getRecentOutcomes", "getDailyPnlSol", "getLastLossAt"];
-    for (const fn of queryFunctions) {
-      const fnMatch = source.match(new RegExp(`export async function ${fn}[\\s\\S]*?\\n}`));
-      assert(!!fnMatch, `${fn} found in wallet-trade-stats.ts`);
-      assert(
-        !!fnMatch && fnMatch[0].includes("SOLANA_CHAIN_FILTER"),
-        `${fn} applies SOLANA_CHAIN_FILTER - a Robinhood trade's pnlSol shadow cannot enter the Solana circuit breaker`
-      );
-    }
-  }
-
   // ═══ Robinhood partial-exit sizeNative persistence (item 2) ══════════
   {
     assertEqual(computeRemainingSize("1.5", 0.5), 1, "computeRemainingSize: initial 1.5, sold 0.5 -> remaining 1");
@@ -415,12 +328,12 @@ async function main() {
   {
     const source = readFileSync(join(process.cwd(), "lib", "sniper", "positions.ts"), "utf8");
     assert(
-      source.includes("position.sizeNative != null ? computeRemainingSize(position.sizeNative, exit.soldSol) : null"),
-      "recordPartialExit computes the remaining sizeNative using the same computeRemainingSize helper as sizeSol"
+      source.includes("computeRemainingSize(position.sizeNative, exit.soldNative)"),
+      "recordPartialExit computes the remaining sizeNative with computeRemainingSize"
     );
     assert(
-      source.includes("remainingSizeNative != null ? { sizeNative: String(remainingSizeNative) } : {}"),
-      "recordPartialExit persists the remaining sizeNative back to the DB when the position has one"
+      source.includes("sizeNative: String(remainingSizeNative)"),
+      "recordPartialExit persists the remaining sizeNative back to the DB"
     );
   }
 
@@ -449,7 +362,7 @@ async function main() {
     const source = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
     assert(
       source.includes('if (!config.entrySources.includes("gmgn")) continue;'),
-      'a Robinhood candidate is skipped for any bot whose entrySources does not include "gmgn" (e.g. ["pump"] only)'
+      'a Robinhood candidate is skipped for any bot whose entrySources does not include "gmgn"'
     );
   }
 
@@ -475,42 +388,36 @@ async function main() {
     const source = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
     assert(
       source.includes("function logRobinhoodRefusal("),
-      "a dedicated logRobinhoodRefusal helper exists, separate from the Solana-shaped logRefusal"
+      "a dedicated logRobinhoodRefusal helper exists"
     );
     const helperBody = source.match(/function logRobinhoodRefusal\([\s\S]*?\n\}/)?.[0] ?? "";
-    assert(helperBody.includes("tokenAddress,") && !helperBody.includes("tokenMint:"), "logRobinhoodRefusal writes tokenAddress, never tokenMint");
+    assert(helperBody.includes("tokenAddress,"), "logRobinhoodRefusal writes tokenAddress");
     assert(helperBody.includes('chain: "robinhood"'), "logRobinhoodRefusal writes chain: \"robinhood\"");
     assert(helperBody.includes("network,"), "logRobinhoodRefusal writes the network");
     assert(helperBody.includes("txHash: null"), "logRobinhoodRefusal writes txHash: null (a refusal never has a transaction)");
 
-    // Every Robinhood-side refusal call site uses the dedicated helper,
-    // not the generic Solana-shaped one.
-    assert(
-      !source.includes('logRefusal(bot, candidate.tokenAddress'),
-      "openRobinhoodPaperPosition's refusal calls no longer use the Solana-shaped logRefusal"
-    );
-    assert(
-      !source.includes("logRefusal(bot, item.token.tokenAddress"),
-      "processRobinhoodCandidates' refusal calls no longer use the Solana-shaped logRefusal"
-    );
   }
 
-  // ═══ dust threshold naming (item 7) ════════════════════════════════════
+  // ═══ dust threshold (item 7) ═══════════════════════════════════════════
   {
     const exitLogicSource = readFileSync(join(process.cwd(), "lib", "sniper", "exit-logic.ts"), "utf8");
     assert(
       exitLogicSource.includes("export const DUST_THRESHOLD_NATIVE = 1e-6;"),
-      "exit-logic.ts exports a chain-neutral DUST_THRESHOLD_NATIVE"
-    );
-    assert(
-      exitLogicSource.includes("export const DUST_THRESHOLD_SOL = DUST_THRESHOLD_NATIVE;"),
-      "DUST_THRESHOLD_SOL remains a backwards-compatible alias with the same numeric value - no Solana behavior change"
+      "exit-logic.ts exports DUST_THRESHOLD_NATIVE"
     );
     const daemonSource = readFileSync(join(process.cwd(), "scripts", "paper-daemon.ts"), "utf8");
     assert(
-      daemonSource.includes("isRobinhood ? DUST_THRESHOLD_NATIVE : DUST_THRESHOLD_SOL"),
-      "the Robinhood exit path references DUST_THRESHOLD_NATIVE, not a SOL-named constant, for its own dust check"
+      daemonSource.includes("remainingSizeNative <= DUST_THRESHOLD_NATIVE"),
+      "the exit path's dust check uses DUST_THRESHOLD_NATIVE on the native remainder"
     );
+  }
+
+  // ═══ fresh schema: no Solana columns remain on the trading tables ══════
+  {
+    const schemaSource = readFileSync(join(process.cwd(), "lib", "db", "schema.ts"), "utf8");
+    for (const column of ["size_sol", "pnl_sol", "daily_pnl_sol", "entry_tx_signature", '"tx_signature"', "token_mint", "max_sol_per_snipe", "_migrations", "sniper_state", "alpha_candidates", "rpc_url"]) {
+      assert(!schemaSource.includes(column), `lib/db/schema.ts does not define ${column}`);
+    }
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

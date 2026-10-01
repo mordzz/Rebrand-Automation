@@ -2,12 +2,10 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { trades, userBots } from "@/drizzle/schema";
+import { trades, userBots } from "@/lib/db/schema";
 import { getEffectiveConfig } from "@/lib/sniper/effective-config";
 import { agentNativeBalance, robinhoodBreakerStatus, summarizePnl, tradeWon } from "@/lib/agent/bot-summary";
 import { getOpenPositions } from "@/lib/sniper/positions";
-import { deriveTradingPause } from "@/lib/sniper/risk-limits";
-import { getDailyPnlSol, getLastLossAt, getRecentOutcomes } from "@/lib/sniper/wallet-trade-stats";
 import { redactPauseReason } from "@/lib/agent/agent-chat";
 import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
@@ -38,7 +36,7 @@ export async function GET() {
   const agents = await Promise.all(
     bots.map(async (bot) => {
       const wallet = bot.walletAddress;
-      const [config, openPositions, trades24h, trades30d, recentOutcomes, dailyPnlSol, lastLossAt] =
+      const [config, openPositions, trades24h, trades30d] =
         await Promise.all([
           getEffectiveConfig(bot),
           getOpenPositions(wallet),
@@ -50,9 +48,6 @@ export async function GET() {
             .select()
             .from(trades)
             .where(and(eq(trades.walletAddress, wallet), gte(trades.closedAt, since30d))),
-          getRecentOutcomes(wallet, 50, bot.breakerResetAt),
-          getDailyPnlSol(wallet, bot.breakerResetAt),
-          getLastLossAt(wallet, bot.breakerResetAt),
         ]);
 
 
@@ -60,11 +55,8 @@ export async function GET() {
       const pnl24h = summarizePnl(trades24h);
       const wins30d = trades30d.filter(tradeWon).length;
       const winRate30d = trades30d.length > 0 ? (wins30d / trades30d.length) * 100 : null;
-      // Robinhood bots: the breaker the daemon actually enforces.
-      const breaker =
-        bot.agentChain === "robinhood"
-          ? await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config)
-          : deriveTradingPause({ recentOutcomes, dailyPnlSol, lastLossAt }, config);
+      // The breaker the daemon actually enforces.
+      const breaker = await robinhoodBreakerStatus(wallet, bot.breakerResetAt, config);
 
       // Agent wallet balance for live bots (Robinhood RPC, ETH).
       const agentBalanceNative =
@@ -85,23 +77,22 @@ export async function GET() {
         pauseReason: redactPauseReason(breaker.pauseReason),
         pnl24hNative: pnl24h.pnlNative,
         nativeSymbol: pnl24h.nativeSymbol,
-        pnl24hSol: pnl24h.pnlSolHistorical,
         winRate30d,
         trades30dCount: trades30d.length,
         agentBalanceNative,
         openPositions: openPositions.map((p) => {
-          /* Market cap alongside the raw price: a per-token figure like
-             5.76e-8 SOL says nothing about whether an entry was early or
+          /* Market cap alongside the raw price: a tiny per-token figure
+             says nothing about whether an entry was early or
              late, and cap is the unit this market is actually read in. */
-          const caps = capsByMint.get(p.token);
+          const caps = capsByMint.get(p.tokenAddress);
           return {
             id: p.id,
-            token: p.token,
+            tokenAddress: p.tokenAddress,
             symbol: p.symbol,
             strategy: p.strategy,
             entryPrice: p.entryPrice,
-            sizeSol: p.sizeSol,
             sizeNative: p.sizeNative,
+            nativeSymbol: p.nativeSymbol,
             chain: p.chain,
             lastPrice: p.lastPrice,
             openedAt: p.openedAt,

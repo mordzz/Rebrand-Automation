@@ -2,7 +2,7 @@ import type { Provider } from "@elizaos/core";
 import { desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
-import { lessons } from "@/drizzle/schema";
+import { lessons } from "@/lib/db/schema";
 
 /**
  * Surfaces applied trading lessons (rules learned from past losses) into

@@ -3,14 +3,14 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { assertNotOfficial } from "@/lib/db/official-bot";
-import { userBots } from "@/drizzle/schema";
+import { userBots } from "@/lib/db/schema";
 import { authErrorResponse, authenticateEvmOwner } from "@/lib/auth/privy-server";
 
 export const dynamic = "force-dynamic";
 
 /** Starts or stops a deployed bot - the master switch scripts/paper-daemon.ts
  * reads to decide whether to open new positions for it (see the comment on
- * drizzle/schema/bots.ts#userBots.active). Requires a verified Privy owner of
+ * lib/db/schema.ts#userBots.active). Requires a verified Privy owner of
  * the EVM wallet (lib/auth/privy-server.ts), like every my-bot mutation. Takes an explicit
  * desired end-state rather than "toggle" to stay correct if the caller's
  * UI state is stale (e.g. two tabs open). */

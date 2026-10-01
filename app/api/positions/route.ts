@@ -2,10 +2,10 @@ import { desc, eq, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { positions } from "@/drizzle/schema";
+import { positions } from "@/lib/db/schema";
 import { marketCapsForPositions } from "@/lib/sniper/market-cap";
 
-// Position state changes continuously while the sniper daemon runs -
+// Position state changes continuously while the paper daemon runs -
 // never cache this route.
 export const dynamic = "force-dynamic";
 
@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
     configured: true,
     data: rows.map((r) => ({
       ...r,
-      entryMarketCapUsd: caps.get(r.token)?.entryUsd ?? null,
-      currentMarketCapUsd: caps.get(r.token)?.currentUsd ?? null,
+      entryMarketCapUsd: caps.get(r.tokenAddress)?.entryUsd ?? null,
+      currentMarketCapUsd: caps.get(r.tokenAddress)?.currentUsd ?? null,
     })),
   });
 }

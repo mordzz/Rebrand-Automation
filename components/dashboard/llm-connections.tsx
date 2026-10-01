@@ -79,7 +79,6 @@ type LessonApiRow = {
   createdAt: string;
   token: string | null;
   strategy: string | null;
-  pnlSol: string | null;
   pnlNative?: string | null;
   chain?: string | null;
   closedAt: string | null;

@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db";
-import { logs, trades } from "@/drizzle/schema";
+import { logs, trades } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ type FeedRow = {
    * rendering it as a txid would invite an operator to go looking for
    * something that was never broadcast. */
   txHash: string | null;
-  /** The token itself (ERC-20 contract, or a historical Solana mint) -
+  /** The token itself (ERC-20 contract) -
    * real even for a paper fill. */
   tokenAddress: string | null;
   /** "robinhood" | "solana" | null - picks the explorer and unit (PR14). */
@@ -84,8 +84,8 @@ export async function GET(request: Request) {
     level: row.level,
     source: row.source,
     message: row.message,
-    txHash: realSignature(row.txHash ?? row.txSignature),
-    tokenAddress: row.tokenAddress ?? row.tokenMint,
+    txHash: realSignature(row.txHash),
+    tokenAddress: row.tokenAddress,
     chain: row.chain,
     createdAt: row.createdAt.toISOString(),
   }));
@@ -106,21 +106,13 @@ export async function GET(request: Request) {
 
   for (const trade of tradeRows) {
     const context = (trade.context ?? {}) as Record<string, unknown>;
-    const robinhood = trade.chain === "robinhood";
-    const mint =
-      typeof context.tokenAddress === "string"
-        ? context.tokenAddress
-        : typeof context.mint === "string"
-          ? context.mint
-          : null;
+    const mint = typeof context.tokenAddress === "string" ? context.tokenAddress : null;
     const closedAt = trade.closedAt;
-    const pnl = Number(robinhood ? (trade.pnlNative ?? trade.pnlSol) : trade.pnlSol);
+    const pnl = Number(trade.pnlNative);
     const reason =
       typeof context.exitReason === "string" ? context.exitReason : "closed";
-    // Same per-chain formats scripts/paper-daemon.ts logs, so dedupe matches.
-    const message = robinhood
-      ? `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(6)} ${trade.nativeSymbol ?? "ETH"} (Robinhood paper)`
-      : `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} SOL`;
+    // Same format scripts/paper-daemon.ts logs, so dedupe matches.
+    const message = `${reason} on $${trade.token}: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(6)} ${trade.nativeSymbol ?? "ETH"} (Robinhood paper)`;
 
     const match = loggedByMessage
       .get(message)
