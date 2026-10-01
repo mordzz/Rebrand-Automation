@@ -80,6 +80,52 @@ const TESTNET_CONFIG: RobinhoodExecutionConfig = {
   mode: "native_v4",
 };
 
+/**
+ * Robinhood MAINNET (chain 4663) Uniswap v4 contracts — READINESS ONLY.
+ *
+ * Source: Uniswap's own v4 deployments page, section "Robinhood Chain: 4663"
+ * (developers.uniswap.org/docs/protocols/v4/deployments, read 2026-10-01),
+ * with Blockscout links on robinhoodchain.blockscout.com. Independently
+ * verified read-only against https://rpc.mainnet.chain.robinhood.com:
+ *   - eth_chainId == 4663
+ *   - eth_getCode non-empty for every address below
+ *   - poolManager() on Quoter / StateView / PositionManager / both
+ *     UniversalRouters returns exactly `poolManager` below
+ *   - Permit2 DOMAIN_SEPARATOR() callable
+ *   - WETH / USDG match docs.robinhood.com/chain/contracts
+ *   - read-only Quoter eth_call on hookless native-ETH/USDG pools priced
+ *     ETH ≈ $2,710 (sane)
+ * A third router address seen only in a docs PR snippet
+ * (0x06afBA43…F99) has code but its poolManager() reverts — NOT used.
+ *
+ * This constant is deliberately NOT returned by
+ * resolveRobinhoodExecutionConfig: mainnet execution stays disabled until
+ * explicit operator approval and a controlled mainnet canary.
+ */
+export const ROBINHOOD_MAINNET_V4_VERIFIED = {
+  chainId: 4663,
+  poolManager: "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+  quoter: "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94",
+  stateView: "0xF3334192D15450CdD385c8B70e03f9A6bD9E673b",
+  positionManager: "0x58daec3116aae6d93017baaea7749052e8a04fa7",
+  /** Same router address the PR10 testnet canary executed through. */
+  universalRouter: "0x8876789976dEcBfCbBbe364623C63652db8C0904",
+  /** Listed as "Universal Router 2.1.2"; verified, not selected. */
+  universalRouterV2_1_2: "0x204FAca1764B154221e35c0d20aBb3c525710498",
+  permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+  usdg: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+  /** Documented smoke-quote pool: native ETH / USDG, fee 500, ts 10, hookless. */
+  smokePool: {
+    poolId: "0x387bf619da4d3fb62bb276482693dba1b9b3520f573cabdfe033384a24125982",
+    currency0: "0x0000000000000000000000000000000000000000",
+    currency1: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    fee: 500,
+    tickSpacing: 10,
+    hooks: "0x0000000000000000000000000000000000000000",
+  },
+} as const;
+
 export type RobinhoodExecutionConfigResult =
   | { ok: true; config: RobinhoodExecutionConfig }
   | { ok: false; reason: string };
@@ -97,11 +143,9 @@ export function resolveRobinhoodExecutionConfig(
   return {
     ok: false,
     reason:
-      "Robinhood mainnet v4 execution addresses (PoolManager/Quoter/StateView) " +
-      "have not been independently verified on-chain by this codebase — only " +
-      "task-supplied addresses exist, and Uniswap v3 (not v4) mainnet contracts " +
-      "were the ones actually eth_getCode-confirmed in ROBINHOOD_SWAP_EXECUTION_AUDIT.md. " +
-      "Failing closed rather than guessing; see that audit before adding mainnet v4 addresses here.",
+      "Robinhood mainnet execution is disabled. Mainnet v4 contracts are verified " +
+      "(ROBINHOOD_MAINNET_V4_VERIFIED, readiness only) but mainnet state-changing " +
+      "execution requires explicit operator approval and a controlled mainnet canary.",
   };
 }
 
