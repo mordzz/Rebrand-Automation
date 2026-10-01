@@ -117,7 +117,7 @@ export async function GET(request: Request) {
  * of which exists for withdrawals yet, so this fails closed for every bot. */
 export async function POST() {
   return NextResponse.json(
-    { error: "Agent-wallet withdrawal is unavailable: the Solana path is retired and Robinhood withdrawal is not implemented yet." },
+    { error: "Agent-wallet withdrawal is not available yet on Robinhood Chain." },
     { status: 501 }
   );
 }

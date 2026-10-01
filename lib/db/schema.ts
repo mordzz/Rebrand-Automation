@@ -302,16 +302,19 @@ export const sniperConfig = pgTable("sniper_config", {
    * evaluator refuses with an explicit configuration blocker. */
   maxCreatorHoldPct: numeric("max_creator_hold_pct").default("10"),
 
-  // Sizing and risk (lib/sniper/risk-limits-robinhood.ts). The native
-  // limits deliberately have no default: until an operator sets all three
-  // plus nativeSymbol = "ETH", Robinhood entries fail closed.
+  // Sizing and risk (lib/sniper/risk-limits-robinhood.ts). The original
+  // engine's defaults (0.05 SOL per entry, 0.15 SOL deployed, 0.1 SOL daily
+  // drawdown) converted to ETH at the same fiat value used for the 0.022 ETH
+  // live fee (2026-10-01 snapshot, 1 SOL = 0.04385 ETH), rounded to 0.0001.
+  // Approved product constants. Setting any of these back to null makes
+  // Robinhood entries fail closed again.
   maxConcurrentPositions: numeric("max_concurrent_positions")
     .notNull()
     .default("3"),
-  maxNativePerSnipe: numeric("max_native_per_snipe"),
-  maxNativeDeployed: numeric("max_native_deployed"),
-  maxDailyDrawdownNative: numeric("max_daily_drawdown_native"),
-  nativeSymbol: text("native_symbol"),
+  maxNativePerSnipe: numeric("max_native_per_snipe").default("0.0022"),
+  maxNativeDeployed: numeric("max_native_deployed").default("0.0066"),
+  maxDailyDrawdownNative: numeric("max_daily_drawdown_native").default("0.0044"),
+  nativeSymbol: text("native_symbol").default("ETH"),
 
   // Exit strategy (lib/sniper/exit-logic.ts)
   exitMode: text("exit_mode").notNull().default("fixed"), // fixed | tiered

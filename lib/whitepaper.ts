@@ -32,7 +32,7 @@ function transformPlainText(text: string): string {
   out = out.replace(/⟦FILL⟧/g, "[FILL](#fill)");
   out = out.replace(
     /§(\d+(?:\.\d+)?)/g,
-    (_m, num: string) => `[§${num}](#section-${num.replace(/\./g, "-")})`
+    (_m, num: string) => `[$${num}](#section-${num.replace(/\./g, "-")})`
   );
   return out;
 }

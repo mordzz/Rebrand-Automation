@@ -8,12 +8,10 @@ import { Logo } from "@/components/logo";
 import { NavPill } from "@/components/nav-pill";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
-import { CopyAddress } from "./copy-address";
 import { WordsPullUp } from "./words-pull-up";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-const CONTRACT_ADDRESS = "361S7aDFRo64BHV662nBvvZWVR3Df6P5pHBKhhg6pump";
 
 const MotionLink = motion.create(Link);
 
@@ -109,15 +107,6 @@ export function PrismaHero() {
                   Read the whitepaper
                 </MotionLink>
               </div>
-
-              <motion.div
-                className="w-full min-w-0"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9, duration: 0.8, ease: EASE }}
-              >
-                <CopyAddress address={CONTRACT_ADDRESS} label="CA" />
-              </motion.div>
 
               <motion.p
                 className="text-[10px] leading-[1.4] text-black/45 sm:text-[11px]"

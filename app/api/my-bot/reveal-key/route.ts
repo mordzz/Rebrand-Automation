@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 function retired() {
   return NextResponse.json(
-    { error: "Agent key export is unavailable: the Solana reveal flow is retired and EVM key export is not supported." },
+    { error: "Agent key export is not available yet for Robinhood Chain agent wallets." },
     { status: 410 }
   );
 }

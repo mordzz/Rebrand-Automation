@@ -12,7 +12,7 @@ const STEPS = [
     step: "01",
     title: "Create Token",
     description:
-      "Choose your underlying market (SOL, BTC, ETH…), pick a direction (LONG or SHORT), set your target leverage, and deposit initial USDC collateral.",
+      "Choose your underlying market (BTC, ETH…), pick a direction (LONG or SHORT), set your target leverage, and deposit initial USDC collateral.",
     icon: (
       <svg
         className="size-5"

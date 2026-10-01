@@ -17,7 +17,7 @@ export function MarketSelector({
   onChange,
   className,
 }: MarketSelectorProps) {
-  const [selected, setSelected] = useState(value ?? "SOL");
+  const [selected, setSelected] = useState(value ?? "ETH");
   const markets = useMarkets();
 
   const handleSelect = (symbol: string) => {

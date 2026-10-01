@@ -44,9 +44,8 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
                 </em>
               </h1>
               <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
-                Fields marked ⟦FILL⟧ are values this document cannot assert
-                until they are decided or reviewed. Legal review is
-                outstanding.
+                Values marked as pending cannot be asserted until they are
+                decided or reviewed. Legal review is outstanding.
               </p>
             </div>
             {updated && (
