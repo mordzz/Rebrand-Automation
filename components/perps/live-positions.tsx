@@ -118,8 +118,8 @@ export function LivePositions({
           </em>
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Historical launches from the retired Solana/Drift Perpspad. New
-          launches are paused.
+          Launches from the earlier Perpspad version. New launches are
+          paused.
         </p>
       </div>
 

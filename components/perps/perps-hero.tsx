@@ -11,7 +11,7 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const PILLARS = [
   {
     title: "Real perp backing",
-    body: "Each historical token mapped to its own isolated position on Drift (Solana).",
+    body: "Each launched token mapped to its own isolated perpetual position.",
   },
   {
     title: "Fees compound",
