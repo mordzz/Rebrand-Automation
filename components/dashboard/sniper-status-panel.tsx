@@ -91,6 +91,9 @@ export function SniperStatusPanel() {
   const config = configData?.config ?? null;
 
   const dailyPnl = state ? Number(state.dailyPnlSol) : null;
+  // The house row is the retired Solana engine's last recorded state unless
+  // something is actually heartbeating it (nothing does since PR09A).
+  const historical = daemonStatus !== "online";
   const consecutiveLosses = state ? Number(state.consecutiveLosses) : null;
 
   return (
@@ -117,9 +120,11 @@ export function SniperStatusPanel() {
           )}
           {state == null
             ? "Trading status unknown"
-            : state.tradingPaused
-              ? "Trading paused"
-              : "Trading active"}
+            : historical
+              ? "Solana house engine · retired"
+              : state.tradingPaused
+                ? "Trading paused"
+                : "Trading active"}
         </span>
 
         {state && (
@@ -139,7 +144,7 @@ export function SniperStatusPanel() {
       <div className="grid grid-cols-2 gap-1 p-1 pt-0">
         <div className="rounded-xl bg-secondary px-4 py-4">
           <p className="text-[0.65rem] font-semibold tracking-[0.15em] uppercase text-muted-foreground">
-            Today&apos;s P&amp;L
+            {historical ? "Last recorded P&L · Solana (historical)" : "Today’s P&L"}
           </p>
           <p
             className={cn(
@@ -151,7 +156,11 @@ export function SniperStatusPanel() {
             {dailyPnl != null ? `${dailyPnl >= 0 ? "+" : ""}${dailyPnl.toFixed(3)} SOL` : "—"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {config ? `Halts at −${config.maxDailyDrawdownSol} SOL` : "Daily drawdown halt"}
+            {historical
+              ? "Not a live Robinhood figure — see per-bot desks"
+              : config
+                ? `Halts at −${config.maxDailyDrawdownSol} SOL`
+                : "Daily drawdown halt"}
           </p>
         </div>
         <div className="rounded-xl bg-secondary px-4 py-4">
