@@ -73,7 +73,7 @@ export type SniperConfig = {
 
 /**
  * Product defaults. Mirrors the sniper_config column defaults in
- * lib/db/schema.ts (asserted equal by scripts/test-robinhood-safety.ts) and
+ * lib/db/schema.ts (asserted equal by tests/gmgn.ts) and
  * is used directly only when DATABASE_URL isn't configured at all.
  */
 export const DEFAULT_TRADING_CONFIG: Readonly<SniperConfig> = Object.freeze({

@@ -10,8 +10,7 @@ import { ROBINHOOD_NETWORK, type RobinhoodNetwork } from "@/lib/chain/config";
  * LIVE-VERIFIED 2026-09-29 against `chain=robinhood`, `new_creation`, via
  * GMGN's public read-only demo key (60 sampled items, 3 launchpads: flap,
  * flap_pve, longxyz - see the PR05 GMGN field-mapping notes (git history) for the full
- * comparison and scripts/inspect-gmgn-robinhood.ts for how to re-run
- * this). Fields below are now real-payload-confirmed unless noted
+ * comparison). Fields below are now real-payload-confirmed unless noted
  * otherwise:
  *
  *   - `address`, `created_timestamp`, `launchpad_platform`/`launchpad`,
@@ -317,7 +316,7 @@ export type ParseOutcome =
  * allow-list-filtered, deduplicated tokens - or an explicit
  * `malformed_payload` result. Factored out from discoverRobinhoodTokens
  * specifically so it's testable without a network mock (see
- * scripts/test-gmgn-robinhood-adapter.ts).
+ * tests/gmgn.ts).
  *
  * Required semantics (do not weaken without re-reading the PR05 review):
  *   - `new_creation` missing/not-an-array/response-not-an-object → malformed_payload

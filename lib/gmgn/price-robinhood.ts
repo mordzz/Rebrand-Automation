@@ -13,9 +13,8 @@ import { gmgnRequest } from "./client";
  * GMGN `/v1/token/info` for `chain=robinhood` returns a `price.price`
  * field - a USD-per-token value. This is NOT a fresh assumption for
  * PR07: it is the exact field the liquidity investigation (PR06.5
- * hardening; see the PR05 GMGN field-mapping notes (git history) and
- * scripts/inspect-robinhood-liquidity.ts /
- * lib/gmgn/liquidity-collector.ts) already live-verified and relied on
+ * hardening; see the PR05 GMGN field-mapping notes in git history)
+ * already live-verified and relied on
  * - there, `/v1/token/info`'s `price.price` for the WETH quote token
  * consistently returned values in the $2710–$2714 range across multiple
  * independent live runs, matching real-world ETH/USD prices at the time

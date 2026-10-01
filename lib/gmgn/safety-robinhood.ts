@@ -136,11 +136,8 @@ import { checkAlphaWalletBuyRobinhood } from "@/lib/chain/alpha-wallets-robinhoo
  * classification). It only means: no USD threshold has been chosen, and
  * none is added here (no `minLiquidityUsd` field exists).
  *
- * Liquidity data is still collected - GMGN's `liquidity`/reserve fields
- * remain on `RobinhoodDiscoveredToken`, and
- * `scripts/collect-robinhood-new-creation-liquidity.ts` keeps gathering
- * a longitudinal dataset independently of this runtime policy, for a
- * possible future, separately-reviewed threshold decision.
+ * GMGN's `liquidity`/reserve fields remain on `RobinhoodDiscoveredToken`
+ * for a possible future, separately-reviewed threshold decision.
  *
  * This does NOT use `minLiquiditySol` (Solana, SOL-denominated) in any
  * form - not as a value, not as an on/off signal. It is not renamed or

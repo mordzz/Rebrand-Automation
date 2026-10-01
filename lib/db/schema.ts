@@ -267,7 +267,7 @@ export type ModelRequest = typeof modelRequests.$inferSelect;
  * The column defaults below are the product defaults: the row is created
  * from them on first read (lib/sniper/config.ts#getSniperConfig), and
  * lib/sniper/config.ts#DEFAULT_TRADING_CONFIG mirrors them for the no-DB
- * path (asserted equal by scripts/test-robinhood-safety.ts).
+ * path (asserted equal by tests/gmgn.ts).
  */
 export const sniperConfig = pgTable("sniper_config", {
   id: uuid("id").defaultRandom().primaryKey(),
