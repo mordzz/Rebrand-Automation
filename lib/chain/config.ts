@@ -19,7 +19,7 @@ const CHAIN_IDS: Record<RobinhoodNetwork, number> = {
 };
 
 /** Robinhood's own public RPCs. Documented as rate-limited and "not for
- * production" - set NEXT_PUBLIC_ROBINHOOD_RPC_URL / ROBINHOOD_RPC_URL to a
+ * production" - set ROBINHOOD_RPC_URL (server-only) to a
  * dedicated provider (Alchemy, QuickNode, Chainstack, Dwellir) for any
  * real traffic. */
 const DEFAULT_RPC_URLS: Record<RobinhoodNetwork, string> = {
@@ -68,12 +68,10 @@ export const ROBINHOOD_CHAIN_ID: number = CHAIN_IDS[ROBINHOOD_NETWORK];
 export const ROBINHOOD_RPC_URL: string =
   process.env.ROBINHOOD_RPC_URL || DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
 
-/** Browser-side RPC. Only ever populate this with a URL that's safe to
- * ship to every visitor's client bundle - never put provider secrets
- * here. */
-export const ROBINHOOD_PUBLIC_RPC_URL: string =
-  process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ||
-  DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
+/** Browser-side RPC: always the network's public endpoint. A configured
+ * server RPC is never shipped to the client bundle, since provider URLs
+ * frequently carry an API key. */
+export const ROBINHOOD_PUBLIC_RPC_URL: string = DEFAULT_RPC_URLS[ROBINHOOD_NETWORK];
 
 /** The active network's Blockscout base URL - the single source of truth
  * for explorer links (this module and anything built on it, e.g.

@@ -39,8 +39,10 @@ export function buildElizaSettings(): Record<string, string> {
     settings.OPENROUTER_SMALL_MODEL =
       process.env.OPENROUTER_SMALL_MODEL || "openrouter/free";
   }
-  if (process.env.POSTGRES_URL) {
-    settings.POSTGRES_URL = process.env.POSTGRES_URL;
+  // ElizaOS's SQL plugin reads its connection from the POSTGRES_URL
+  // *setting*; it is the same database as the app's DATABASE_URL.
+  if (process.env.DATABASE_URL) {
+    settings.POSTGRES_URL = process.env.DATABASE_URL;
   }
 
   return settings;

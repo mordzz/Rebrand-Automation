@@ -131,19 +131,16 @@ let cachedBackend: PrivyAuthBackend | null | undefined;
 export function getPrivyAuthBackend(): PrivyAuthBackend | null {
   if (cachedBackend !== undefined) return cachedBackend;
 
-  const appId = process.env.PRIVY_APP_ID || process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  // The app ID is a public identifier; the browser and server share it.
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
   const appSecret = process.env.PRIVY_APP_SECRET;
   if (!appId || !appSecret) {
     cachedBackend = null;
     return cachedBackend;
   }
 
-  const client = new PrivyClient({
-    appId,
-    appSecret,
-    // Optional: pins the dashboard verification key instead of fetching JWKS.
-    jwtVerificationKey: process.env.PRIVY_JWT_VERIFICATION_KEY || undefined,
-  });
+  // Access tokens are verified against Privy's published JWKS.
+  const client = new PrivyClient({ appId, appSecret });
 
   cachedBackend = {
     verifyAccessToken: (token) => client.utils().auth().verifyAccessToken(token),
