@@ -191,13 +191,13 @@ export function PrismaManifest() {
                 unknown honeypot, tax or ownership status is treated as
                 hostile rather than ignored.
               </p>
-              <p className="mt-4 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
                 Passing one tier does not cancel a failure in another. The
                 checks work together: a promising entry signal cannot override
-                a failed safety check, and a low fee does not make an active
-                authority safe.
+                a failed safety check, and a low tax does not make an
+                unrenounced contract owner safe.
               </p>
-              <p className="mt-4 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
+              <p className="mt-4 text-xs leading-relaxed text-gray-300 sm:text-sm">
                 This is a refusal policy, not a safety guarantee. A token that
                 passes has met the applicable checks with the data available at
                 that moment. Conditions can still change, which is why the

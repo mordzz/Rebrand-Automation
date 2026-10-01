@@ -15,7 +15,7 @@ const INSTINCTS = [
     role: "Generates",
     tagline: "The only instinct that opens a position.",
     description:
-      "Acts on Tier 0 and Tier 1 verdicts, because nothing slower completes inside the window a fresh mint gives you. It cannot size itself: what it may risk is decided elsewhere, and it has no authority to argue.",
+      "Acts on Tier 0 and Tier 1 verdicts, because nothing slower completes inside the window a fresh launch gives you. It cannot size itself: what it may risk is decided elsewhere, and it has no authority to argue.",
   },
   {
     number: "02",
