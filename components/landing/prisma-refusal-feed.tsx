@@ -99,26 +99,26 @@ export function PrismaRefusalFeed() {
 
           {/* Fixed height so the frame does not grow line by line and shove
               the rest of the page down while the loop runs. */}
-          <div className="h-[19rem] overflow-hidden px-4 py-4 font-mono text-[10px] leading-relaxed sm:px-5 sm:text-xs">
+          <div className="h-[19rem] overflow-x-hidden overflow-y-auto px-4 py-4 font-mono text-[10px] leading-relaxed sm:px-5 sm:text-xs">
             {LINES.slice(0, shown).map((line, i) => (
               <motion.div
                 key={`${line.time}-${line.agent}-${i}`}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                className="flex flex-wrap items-baseline gap-x-2 py-[0.2rem] sm:gap-x-3"
+                className="flex flex-wrap items-baseline gap-x-4 py-[0.2rem] sm:grid sm:grid-cols-[4.25rem_2rem_minmax(6.5rem,1fr)_4.5rem_4rem_minmax(0,2fr)] sm:gap-x-4 md:gap-x-6"
               >
                 <span className="text-gray-600">{line.time}</span>
                 <span
                   className={
                     line.tier === "EX"
-                      ? "text-primary/80 w-[3.5rem] shrink-0"
-                      : "w-[3.5rem] shrink-0 text-gray-500"
+                      ? "text-primary/80 w-[3.5rem] shrink-0 sm:w-auto"
+                      : "w-[3.5rem] shrink-0 text-gray-500 sm:w-auto"
                   }
                 >
                   {line.tier}
                 </span>
-                <span className="text-primary/90 w-[6.5rem] shrink-0 truncate">
+                <span className="text-primary/90 w-[6.5rem] shrink-0 truncate sm:w-auto">
                   {line.agent}
                 </span>
                 <span
@@ -133,7 +133,9 @@ export function PrismaRefusalFeed() {
                 <span className="w-[3.5rem] shrink-0 text-gray-600">
                   {line.token}
                 </span>
-                <span className="text-gray-400">{line.reason}</span>
+                <span className="text-gray-400 sm:min-w-0 sm:text-right">
+                  {line.reason}
+                </span>
               </motion.div>
             ))}
             {shown < LINES.length && (
