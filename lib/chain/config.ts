@@ -1,12 +1,10 @@
 /**
  * Centralized Robinhood Chain configuration.
  *
- * This does not replace the existing Solana constants
- * (`lib/perps/program.ts`, `SOLANA_RPC_URL`, etc.) — those stay in place
- * until their Robinhood-Chain replacements have passed verification (see
- * MIGRATION_MATRIX.md / plan PR16). This module is additive: it is the
- * single place new Robinhood-Chain code should read chain id, RPC URL,
- * and explorer links from, instead of re-deriving them per file.
+ * The single place Robinhood Chain code reads chain id, RPC URL and
+ * explorer links from, instead of re-deriving them per file. The Solana
+ * runtime is retired; only historical Perpspad explorer links remain in
+ * lib/perps/program.ts.
  *
  * Facts below (chain ids, default RPCs, explorer hosts, native symbol)
  * were verified against docs.robinhood.com/chain and Blockscout's own

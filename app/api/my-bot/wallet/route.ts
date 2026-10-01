@@ -4,18 +4,12 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { userBots } from "@/drizzle/schema";
 import { isAgentWalletConfigured } from "@/lib/wallet/secret-encryption";
-import { getEffectiveConfig } from "@/lib/sniper/effective-config";
-import { getAddressBalance } from "@/lib/solana/wallet";
 import { getNativeBalance } from "@/lib/chain/rpc";
 import { loadRobinhoodAgentAccountView } from "@/lib/chain/robinhood-agent-wallet-view";
 
 export const dynamic = "force-dynamic";
 
 
-/** Mirrors LIVE_FEE_HEADROOM_SOL in scripts/paper-daemon.ts: held back from
- * every live buy for the swap fee and the token account rent, so a wallet
- * can always afford to sell back out of what it bought. */
-const LIVE_FEE_HEADROOM_SOL = 0.01;
 
 /** Solana-only shape check — for values that must genuinely be a Solana
  * address (e.g. a SOL withdrawal destination below), not the identity
@@ -77,10 +71,8 @@ export async function GET(request: Request) {
   }
 
   /* Chain-aware dispatch: a Robinhood/EVM agent wallet's address is never
-     a valid input to the Solana balance reader below (getAddressBalance
-     decodes it as a Solana base58 address, which a 0x-shaped address is
-     not) — this branch must run BEFORE that call, never after a failed
-     attempt. */
+     read with the Robinhood RPC; legacy Solana wallets below are
+     historical and never read live. */
   if (bot.agentChain === "robinhood") {
     // loadRobinhoodAgentAccountView validates agentNetwork BEFORE ever
     // calling getBalance — a network-mismatched bot never triggers a
@@ -100,34 +92,17 @@ export async function GET(request: Request) {
     });
   }
 
-  const [balance, config] = await Promise.all([
-    getAddressBalance(bot.agentPublicKey),
-    getEffectiveConfig(bot),
-  ]);
-
-  /* What one trade actually costs this bot, computed from its own config
-     rather than a fixed number — an operator who raised their position
-     size needs to be told the larger figure, not a stale default. */
-  // Rounded: floating-point addition here yields 0.060000000000000005,
-  // and shipping that in an API response is just noise.
-  const requiredSol =
-    Math.round((config.maxSolPerSnipe + LIVE_FEE_HEADROOM_SOL) * 1e6) / 1e6;
-  const balanceSol = balance.balanceSol ?? null;
-
+  /* Legacy Solana agent wallet (historical only). The Solana runtime and
+     its live RPC reader are retired, so no live balance is read or
+     invented: the stored address is returned, balance unknown. */
   return NextResponse.json({
     configured: true,
     wallet: {
       address: bot.agentPublicKey,
-      balanceSol,
-      balanceUsd: balance.balanceUsd ?? null,
-      error: balance.error ?? null,
-      requiredSol,
-      // The position size on its own, so the go-live confirmation can
-      // quote what a trade costs without re-deriving it from requiredSol.
-      sizeSol: config.maxSolPerSnipe,
-      // null balance means "couldn't read", which must not read as
-      // "underfunded" — that would nag on every RPC hiccup.
-      sufficient: balanceSol == null ? null : balanceSol >= requiredSol,
+      chain: "solana",
+      nativeSymbol: "SOL",
+      balanceNative: null,
+      error: "Historical Solana wallet: live balance is no longer read",
     },
     tradingMode: bot.tradingMode,
     active: bot.active,

@@ -3,14 +3,12 @@ import { formatEther, isAddress } from "viem";
 
 import { ROBINHOOD_NATIVE_SYMBOL, ROBINHOOD_NETWORK } from "@/lib/chain/config";
 import { getNativeBalance } from "@/lib/chain/rpc";
-import { getAddressBalance } from "@/lib/solana/wallet";
 
 // Balance must be fresh on every request — never cache this route.
 export const dynamic = "force-dynamic";
 
 /** Public balance lookup for a wallet address. EVM (0x) addresses are
- * read on Robinhood Chain in ETH (PR14); legacy Solana addresses keep
- * the historical Solana reader. */
+ * read on Robinhood Chain in ETH; legacy Solana addresses are not read. */
 export async function GET(request: NextRequest) {
   const addr = request.nextUrl.searchParams.get("address");
   if (!addr) {
@@ -38,6 +36,10 @@ export async function GET(request: NextRequest) {
       });
     }
   }
-  const snapshot = await getAddressBalance(addr);
-  return NextResponse.json({ ...snapshot, chain: "solana", nativeSymbol: "SOL" });
+  // Non-EVM (legacy Solana) addresses: the Solana runtime is retired and
+  // no live Solana balance is read.
+  return NextResponse.json(
+    { address: addr, chain: "solana", nativeSymbol: "SOL", balanceNative: null, error: "Solana balances are no longer read" },
+    { status: 200 },
+  );
 }
