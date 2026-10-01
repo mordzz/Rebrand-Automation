@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { alphaCandidates } from "@/lib/db/schema";
 import { getTrackedTokenIndex } from "@/lib/gmgn/track";
+import { getRobinhoodAlpha } from "@/lib/alpha/robinhood-alpha";
 import { getTokenMarkets } from "@/lib/sniper/token-market";
 
 // New candidates land continuously while the paper daemon runs — never
@@ -32,8 +33,8 @@ function positiveInt(raw: string | null, fallback: number, max?: number): number
   return max ? Math.min(floored, max) : floored;
 }
 
-/** Fresh pump.fun mints that passed the house's own Sniper entry criteria
- * — populated by scripts/paper-daemon.ts. Chain-wide, no wallet scoping.
+/** HISTORICAL (`?source=solana`): fresh pump.fun mints that passed the
+ * house's Solana entry criteria — populated by the retired Solana engine. Chain-wide, no wallet scoping.
  *
  * One row per ticker: duplicate launches are rejected at insert time by a
  * unique index (see lib/db/schema.ts#alphaCandidates.symbolKey), so no
@@ -45,6 +46,11 @@ function positiveInt(raw: string | null, fallback: number, max?: number): number
  * yet, in which case `market` is null and the UI shows "not priced yet"
  * rather than a fabricated zero. */
 export async function GET(request: NextRequest) {
+  const params0 = request.nextUrl.searchParams;
+  // Default: the ACTIVE Robinhood Chain feed. `?source=solana` serves the
+  // historical Solana table below, unchanged.
+  if (params0.get("source") !== "solana") return robinhoodAlpha();
+
   const db = getDb();
   if (!db) {
     return NextResponse.json({
@@ -118,5 +124,43 @@ export async function GET(request: NextRequest) {
     total,
     totalPages,
     newestDetectedAt,
+  });
+}
+
+/** Active Robinhood feed (lib/alpha/robinhood-alpha.ts), enriched like the
+ * historical rows: DexScreener market data (address-based, chain-agnostic)
+ * and GMGN tracked-wallet activity (chain=robinhood). */
+async function robinhoodAlpha() {
+  const { rows, error, refreshedAt } = await getRobinhoodAlpha();
+  const [markets, trackedIndex] = await Promise.all([
+    getTokenMarkets(rows.map((r) => r.token)),
+    getTrackedTokenIndex(),
+  ]);
+  const data = rows.map((row) => {
+    const tracked = trackedIndex.get(row.token);
+    return {
+      ...row,
+      id: `robinhood:${row.token}`,
+      market: markets.get(row.token) ?? null,
+      tracked: tracked
+        ? {
+            buys: tracked.buys.length,
+            sells: tracked.sells.length,
+            names: [...tracked.buys, ...tracked.sells].slice(0, 3).map((t) => t.traderName),
+          }
+        : null,
+    };
+  });
+  return NextResponse.json({
+    configured: true,
+    source: "robinhood",
+    data,
+    page: 1,
+    pageSize: data.length,
+    total: data.length,
+    totalPages: 1,
+    newestDetectedAt: data[0]?.detectedAt ?? null,
+    refreshedAt,
+    error,
   });
 }

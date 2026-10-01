@@ -26,6 +26,7 @@
     "test:lighter-execution": "tsx scripts/test-lighter-execution.ts",
     "test:lighter-registration": "tsx scripts/test-lighter-registration.ts",
     "test:mainnet-guards": "tsx scripts/test-mainnet-guards.ts",
+    "test:robinhood-alpha": "tsx scripts/test-robinhood-alpha.ts",
     "build:lighter-signer": "sh scripts/build-lighter-signer.sh",
     "canary:robinhood-testnet": "tsx scripts/robinhood-testnet-canary.ts",
     "inspect:gmgn-robinhood": "tsx scripts/inspect-gmgn-robinhood.ts",
