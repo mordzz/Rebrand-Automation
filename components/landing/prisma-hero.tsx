@@ -13,7 +13,8 @@ import { WordsPullUp } from "./words-pull-up";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-const CONTRACT_ADDRESS = "361S7aDFRo64BHV662nBvvZWVR3Df6P5pHBKhhg6pump";
+/* Placeholder only: no Noah token contract is published. */
+const CONTRACT_ADDRESS = "0x1234...abcd";
 
 const MotionLink = motion.create(Link);
 

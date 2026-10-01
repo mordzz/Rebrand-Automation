@@ -1,5 +1,5 @@
 # Noah Engine
-### A Public Fleet of Autonomous Trading Agents on Solana
+### A Public Fleet of Autonomous Trading Agents (original Solana design)
 
 **Technical Whitepaper · v1.0-rc**
 

@@ -49,18 +49,17 @@ const STEPS = [
   },
 ];
 
-/** Shipped defaults, whitepaper Appendix A.1: the values a newly deployed
- * agent actually runs, deliberately kept separate from design targets.
- * ETH sizing has no shipped default on Robinhood Chain: an agent refuses
- * every entry until its operator sets it (PR07 fail-closed limits). */
+/** Shipped defaults: the values a newly deployed agent actually runs
+ * (lib/sniper/config.ts#DEFAULT_TRADING_CONFIG), deliberately kept
+ * separate from design targets. */
 const DEFAULTS = [
-  ["Max per entry", "You set it, in ETH"],
+  ["Max per entry", "0.0022 ETH"],
   ["Max concurrent", "3 positions"],
-  ["Max deployed", "You set it, in ETH"],
+  ["Max deployed", "0.0066 ETH"],
   ["Take profit", "50% up"],
   ["Stop level", "20% down"],
-  ["Daily loss limit", "You set it, in ETH"],
-  ["Consecutive losses", "3, then it halts"],
+  ["Daily loss limit", "0.0044 ETH"],
+  ["Consecutive losses", "8, then it halts"],
   ["Mode", "Paper, not started"],
 ];
 

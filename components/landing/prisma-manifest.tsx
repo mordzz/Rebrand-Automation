@@ -9,55 +9,55 @@ import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
 import { WordsPullUpMultiStyle } from "./words-pull-up";
 
-/** Whitepaper §9. The tiers are ordered by data cost, and the latency
- * labels are the design budget from Appendix B, not measured figures,
- * which is why they read as budgets here too. */
+/** The Robinhood entry gate (lib/gmgn/safety-robinhood.ts), grouped by
+ * where each fact comes from. Every check listed here is enforced in code;
+ * unknown facts fail closed. */
 const TIERS = [
   {
     number: "00",
     name: "Tier 0",
-    latency: "<10ms · zero extra RPC",
-    tagline: "Read straight from the transaction that created the pool.",
+    latency: "discovery feed · no extra request",
+    tagline: "Read from the GMGN discovery record itself.",
     items: [
-      "Mint authority must be revoked",
-      "Freeze authority must be revoked",
-      "Transfer hook, permanent delegate or non-transferable: refused",
-      "Fee config authority still live: refused, not just a low fee today",
+      "Launchpad allow-list and token age window",
+      "Blocked keywords and a required website, X or Telegram link",
+      "Deployer rug history",
+      "Bundler and insider concentration, wash-trading flag",
     ],
   },
   {
     number: "01",
     name: "Tier 1",
-    latency: "50 to 150ms · bounded RPC",
-    tagline: "The checks worth one network round trip.",
+    latency: "one security read · per token",
+    tagline: "The contract-level facts, fetched once per token.",
     items: [
-      "Pool reserves against a liquidity floor",
-      "LP burn or lock, unlock timestamp recorded",
-      "Top-10 concentration and deployer holdings",
-      "Sell simulation from the agent's own wallet, at real size",
+      "Contract ownership must be renounced",
+      "No blacklist capability in the contract",
+      "Honeypot flag, buy tax and sell tax limits",
+      "Top-10 holder concentration ceiling",
     ],
   },
   {
     number: "02",
     name: "Tier 2",
-    latency: "seconds · parallel, never blocking",
-    tagline: "Depth that cannot fit inside the entry window.",
+    latency: "per agent · your rules",
+    tagline: "The limits each operator sets on top of the house gate.",
     items: [
-      "Deployer history and how their prior mints ended",
-      "Funding-graph analysis of the early buyers",
-      "Same-slot buy clusters from linked wallets",
+      "Creator-holding ceiling, default 10%",
+      "A confirmed buy from a tracked wallet, when you require one",
+      "Your own age, keyword and social requirements",
     ],
   },
 ];
 
-/** Whitepaper §9.5. The first row is the one that matters: it is the only
- * defence against a honeypot that permits sells for an opening window. */
+/** lib/sniper/exit-logic.ts. Open positions are re-checked against these
+ * rules on every exit-check cycle. */
 const REVERIFY = [
-  ["Sell simulation starts failing", "Emergency exit, highest priority"],
-  ["Effective sell tax rises", "Immediate exit"],
-  ["LP unlock window approaching", "Forced exit before it opens"],
-  ["Liquidity drops below floor", "Immediate exit"],
-  ["Authority state changed", "Immediate exit"],
+  ["Price drops sharply within one check", "Emergency exit, highest priority"],
+  ["Stop level reached", "Immediate exit"],
+  ["Trailing stop or breakeven floor hit", "Immediate exit"],
+  ["Take profit reached", "Exit, or sell in tiers"],
+  ["Maximum hold time reached", "Forced exit"],
 ];
 
 const CARD_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -186,9 +186,9 @@ export function PrismaManifest() {
               </h3>
               <p className="mt-3 max-w-md text-xs leading-relaxed text-gray-300 sm:text-sm">
                 A token has to affirmatively pass every applicable check.
-                Missing or unreadable data is a failure, never a pass. If an
-                RPC times out or an account will not parse, the candidate is
-                refused, and an unrecognised Token-2022 extension is treated as
+                Missing or unreadable data is a failure, never a pass. If the
+                security read fails, the candidate is refused outright, and an
+                unknown honeypot, tax or ownership status is treated as
                 hostile rather than ignored.
               </p>
             </div>
@@ -205,7 +205,7 @@ export function PrismaManifest() {
             <p className="mt-3 text-xs leading-relaxed text-gray-400 sm:text-sm">
               A pre-trade gate is not enough, because the risks it screens for
               do not stop existing once you hold the token. Every open position
-              is re-verified on a cycle.
+              is re-checked against its exit rules on a cycle.
             </p>
             <ul className="mt-5 flex flex-col gap-2">
               {REVERIFY.map(([condition, response], i) => (
@@ -227,9 +227,9 @@ export function PrismaManifest() {
               ))}
             </ul>
             <p className="mt-5 text-xs leading-relaxed text-gray-500">
-              The first row closes the worst gap a single-pass gate leaves: a
-              time-delayed honeypot, where sells succeed for an opening window
-              and are then switched off. Only repeated simulation catches it.
+              The first row is the backstop: a sudden collapse inside a single
+              check exits immediately instead of waiting for the stop level.
+              Exits are rule-based and best-effort, never guaranteed.
             </p>
           </motion.div>
         </div>

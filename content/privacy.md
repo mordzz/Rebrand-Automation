@@ -92,8 +92,8 @@ We are not the only party that sees this data. Each of these has its own privacy
 |---|---|---|
 | Privy | Wallet sign-in | Authentication |
 | Robinhood Chain RPC providers | Addresses, transactions, balance queries | Reading the chain and submitting trades |
-| Jupiter | Token mints, trade sizes, your agent's address | Swap quotes and routing |
-| PumpPortal, GMGN, DexScreener | Token addresses being evaluated | The mint stream and safety data |
+| Lighter | Your agent's address, perpetuals orders and API key registration | Perpetuals trading |
+| GMGN, DexScreener | Token addresses being evaluated | Token discovery, market and safety data |
 | A language-model provider (OpenAI, OpenRouter, or Anthropic, depending on configuration) | The full context of a **losing** trade: entry conditions, safety verdicts, execution quality, exit trigger, subsequent price path | Post-mortem analysis |
 | Our hosting and database providers | Everything stored | Running the service |
 
